@@ -16,6 +16,9 @@ updates:
     directory: "/tools/oracle"
     schedule:
       interval: weekly
+    # torch is pinned below 2.15 by litert-torch: it moves with litert-torch.
+    ignore:
+      - dependency-name: torch
     commit-message:
       prefix: "build(deps)"
     groups:
