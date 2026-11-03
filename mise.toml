@@ -70,8 +70,12 @@ run = "cargo build --workspace --lib --target riscv32imc-unknown-none-elf"
 
 [tasks.no-malloc]
 description = "Check that no C library linked into nanonn references malloc/calloc/realloc/free"
-depends = ["cross-arm"]
-run = "tools/check-no-malloc.sh"
+# Sequential: concurrent builds in the same target directory race under mbx.
+run = [
+  { task = "cross-arm" },
+  { task = "cross-riscv32" },
+  "tools/check-no-malloc.sh",
+]
 
 [tasks.fuzz]
 description = "Fuzz the TFLite reader for a minute, seeded with the MLPerf Tiny models"
