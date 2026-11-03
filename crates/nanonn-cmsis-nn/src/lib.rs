@@ -11,6 +11,8 @@ mod depthwise;
 mod elementwise;
 mod fully_connected;
 mod layout;
+mod minmax;
+mod pad;
 mod pooling;
 mod softmax;
 
@@ -41,6 +43,9 @@ impl Backend for CmsisNn {
                 BuiltinOp::SOFTMAX => (&softmax::KERNEL, softmax::supports),
                 BuiltinOp::ADD => (&elementwise::ADD, elementwise::supports),
                 BuiltinOp::MUL => (&elementwise::MUL, elementwise::supports),
+                BuiltinOp::MAXIMUM => (&minmax::MAXIMUM, minmax::supports),
+                BuiltinOp::MINIMUM => (&minmax::MINIMUM, minmax::supports),
+                BuiltinOp::PAD | BuiltinOp::PADV2 => (&pad::KERNEL, pad::supports),
                 _ => return None,
             };
         supported(op).then_some(kernel)

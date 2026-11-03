@@ -14,7 +14,9 @@ On Cortex-M4/M7/M33 CMSIS-NN uses the DSP extension, on Armv8.1-M Helium; on oth
 | `AVERAGE_POOL_2D`, `MAX_POOL_2D` | int8 | rank 4, same input/output quantization |
 | `SOFTMAX` | int8 in/out | output zero point -128, scale 1/256 |
 | `ADD`, `MUL` | int8 | inputs and output of the same shape (no broadcasting) |
+| `MAXIMUM`, `MINIMUM` | int8 | rank up to 4, inputs of the output's shape or a single value |
+| `PAD`, `PADV2` | int8 | rank up to 4, constant int32/int64 paddings |
 
-Fused activations: none, `RELU`, `RELU6`, `RELU_N1_TO_1`.
+Fused activations: none, `RELU`, `RELU6`, `RELU_N1_TO_1`. int16 variants are not claimed yet.
 
 The crate depends on [`nanonn-cmsis-nn-sys`](https://crates.io/crates/nanonn-cmsis-nn-sys), which compiles CMSIS-NN with a C compiler for the target.

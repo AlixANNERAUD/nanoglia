@@ -156,6 +156,19 @@ impl Tensor {
         }
     }
 
+    /// A constant tensor of little-endian values (paddings, constant values...).
+    pub fn constant(dtype: DataType, dims: &[i32], bytes: &[u8]) -> Self {
+        Self {
+            dtype,
+            dims: dims.to_vec(),
+            scales: Vec::new(),
+            zero_points: Vec::new(),
+            axis: 0,
+            data: Aligned::from_bytes(bytes),
+            constant: true,
+        }
+    }
+
     pub fn with_zero_points(mut self, zero_points: &[i64]) -> Self {
         self.zero_points = zero_points.iter().flat_map(|z| z.to_le_bytes()).collect();
         self
