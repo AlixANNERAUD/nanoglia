@@ -8,6 +8,7 @@ mod conv;
 mod depthwise;
 mod elementwise;
 mod fully_connected;
+mod int16;
 mod minmax;
 mod pad;
 mod pooling;

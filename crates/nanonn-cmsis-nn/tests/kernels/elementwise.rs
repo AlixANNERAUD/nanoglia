@@ -61,6 +61,83 @@ fn mul_shapes() {
     }
 }
 
+fn run_i16(dims: &[i32], add: bool, activation: Activation, seed: u64) {
+    let mut rng = Rng::new(seed);
+    let len = dims.iter().product::<i32>() as usize;
+    let (s1, s2) = (rng.float(1e-5, 1e-3), rng.float(1e-5, 1e-3));
+    let so = if add {
+        (s1 + s2) * rng.float(0.5, 1.2)
+    } else {
+        s1 * s2 * 32768.0 * rng.float(0.2, 1.2)
+    };
+    let (a, b) = (rng.i16s(len), rng.i16s(len));
+    let input1 = Tensor::activation(DataType::I16, dims, s1, 0).with_data_i16(&a);
+    let input2 = Tensor::activation(DataType::I16, dims, s2, 0).with_data_i16(&b);
+    let output = Tensor::activation(DataType::I16, dims, so, 0);
+    let code = if add { BuiltinOp::ADD } else { BuiltinOp::MUL };
+    let op = Op::new(code, OpOptions::Elementwise { activation })
+        .input(&input1)
+        .input(&input2)
+        .output(&output);
+    let name = if add {
+        "cmsis-nn/add_s16"
+    } else {
+        "cmsis-nn/mul_s16"
+    };
+    assert_eq!(op.kernel_name(), name);
+    let want = if add {
+        reference::add_i16((s1, s2, so), activation, &a, &b)
+    } else {
+        reference::mul_i16((s1, s2, so), activation, &a, &b)
+    };
+    assert_eq!(op.run_i16(), want, "seed {seed}, add {add}");
+}
+
+#[test]
+fn elementwise_i16() {
+    let mut rng = Rng::new(7);
+    for seed in 0..40 {
+        let dims = [
+            rng.range(1, 2),
+            rng.range(1, 9),
+            rng.range(1, 9),
+            rng.range(1, 9),
+        ];
+        let activation = ACTIVATIONS[rng.range(0, 3) as usize];
+        run_i16(&dims, seed % 2 == 0, activation, 2000 + seed);
+    }
+}
+
+#[test]
+fn elementwise_i16_refusals() {
+    let dims = [1, 2, 2, 3];
+    let refused = |code, q: [(f32, i32); 3]| {
+        let input1 = Tensor::activation(DataType::I16, &dims, q[0].0, q[0].1);
+        let input2 = Tensor::activation(DataType::I16, &dims, q[1].0, q[1].1);
+        let output = Tensor::activation(DataType::I16, &dims, q[2].0, q[2].1);
+        !Op::new(
+            code,
+            OpOptions::Elementwise {
+                activation: Activation::None,
+            },
+        )
+        .input(&input1)
+        .input(&input2)
+        .output(&output)
+        .selected()
+    };
+    // Nonzero zero points (CMSIS-NN ignores the int16 offsets).
+    for code in [BuiltinOp::ADD, BuiltinOp::MUL] {
+        assert!(refused(code, [(0.001, 3), (0.002, 0), (0.003, 0)]));
+        assert!(refused(code, [(0.001, 0), (0.002, 0), (0.003, -1)]));
+        assert!(!refused(code, [(0.001, 0), (0.002, 0), (0.003, 0)]));
+    }
+    // Power-of-two scales: TFLite may run its `pot_scale_int16` kernel.
+    let pot = [(1.0 / 1024.0, 0), (1.0 / 2048.0, 0), (1.0 / 512.0, 0)];
+    assert!(refused(BuiltinOp::ADD, pot));
+    assert!(!refused(BuiltinOp::MUL, pot));
+}
+
 #[test]
 fn elementwise_random() {
     let mut rng = Rng::new(3);

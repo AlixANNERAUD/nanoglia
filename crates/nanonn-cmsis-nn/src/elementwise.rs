@@ -1,12 +1,15 @@
-//! `ADD` and `MUL` of two int8 tensors of the same shape, through `arm_elementwise_add_s8` and
-//! `arm_elementwise_mul_s8`. Broadcasting is left to other backends.
+//! `ADD` and `MUL` of two int8 or int16 tensors of the same shape, through
+//! `arm_elementwise_{add,mul}_{s8,s16}`. Broadcasting is left to other backends.
 //!
-//! Port of TFLite Micro's `kernels/cmsis_nn/{add,mul}.cc` with `CalculateOpDataAdd` (8-bit
-//! general path, `left_shift = 20`) and `CalculateOpDataMul`.
+//! Port of TFLite Micro's `kernels/cmsis_nn/{add,mul}.cc` with `CalculateOpDataAdd` (general
+//! path, `left_shift = 20` for int8 and `15` for int16) and `CalculateOpDataMul`. int16 tensors
+//! are symmetric (zero point 0). TFLite (not TFLite Micro) runs int16 `ADD` through another,
+//! power-of-two kernel when all scales are powers of two and the `pot_scale_int16` option is set:
+//! such operators are refused.
 
 use nanonn_cmsis_nn_sys as sys;
 use nanonn_core::backend::{EvalCtx, Kernel, KernelPlan};
-use nanonn_core::pod::Pod;
+use nanonn_core::pod::{Pod, cast_slice, cast_slice_mut};
 use nanonn_core::quant;
 use nanonn_core::{BuiltinOp, DataType, OpDesc, OpOptions, Result};
 
@@ -27,6 +30,22 @@ pub(crate) static MUL: Kernel = Kernel {
     plan,
     prepare,
     eval: eval_mul,
+};
+
+/// The int16 `ADD` kernel.
+pub(crate) static ADD_S16: Kernel = Kernel {
+    name: "cmsis-nn/add_s16",
+    plan,
+    prepare,
+    eval: eval_add_s16,
+};
+
+/// The int16 `MUL` kernel.
+pub(crate) static MUL_S16: Kernel = Kernel {
+    name: "cmsis-nn/mul_s16",
+    plan,
+    prepare,
+    eval: eval_mul_s16,
 };
 
 /// Persistent parameters (the input multipliers are only used by `ADD`).
@@ -53,6 +72,8 @@ unsafe impl Pod for Params {}
 
 /// The left shift applied to 8-bit inputs before rescaling them (TFLite `ADD`).
 const ADD_LEFT_SHIFT: i32 = 20;
+/// The left shift applied to 16-bit inputs before rescaling them (TFLite `ADD`).
+const ADD_LEFT_SHIFT_S16: i32 = 15;
 
 fn analyze(op: &OpDesc<'_, '_>) -> Option<Params> {
     let add = match op.builtin()? {
@@ -69,15 +90,31 @@ fn analyze(op: &OpDesc<'_, '_>) -> Option<Params> {
     let input1 = op.input(0)?;
     let input2 = op.input(1)?;
     let output = op.output(0)?;
-    let (scale1, zero_point1) = common::activation_quant(input1, DataType::I8)?;
-    let (scale2, zero_point2) = common::activation_quant(input2, DataType::I8)?;
-    let (output_scale, output_zero_point) = common::activation_quant(output, DataType::I8)?;
+    let dtype = output.dtype;
+    let (scale1, zero_point1) = common::activation_quant(input1, dtype)?;
+    let (scale2, zero_point2) = common::activation_quant(input2, dtype)?;
+    let (output_scale, output_zero_point) = common::activation_quant(output, dtype)?;
     if input1.dims != input2.dims || input1.dims != output.dims {
         return None;
     }
+    let left_shift = match dtype {
+        DataType::I8 => ADD_LEFT_SHIFT,
+        // CMSIS-NN ignores the offsets of int16 tensors.
+        DataType::I16 if zero_point1 == 0 && zero_point2 == 0 && output_zero_point == 0 => {
+            if add
+                && [scale1, scale2, output_scale]
+                    .into_iter()
+                    .all(quant::is_near_power_of_two)
+            {
+                return None;
+            }
+            ADD_LEFT_SHIFT_S16
+        }
+        _ => return None,
+    };
     let len = common::element_count(&output.dims)?;
     let (activation_min, activation_max) =
-        common::activation_range(activation, DataType::I8, output_scale, output_zero_point)?;
+        common::activation_range(activation, dtype, output_scale, output_zero_point)?;
 
     let mut p = Params {
         len,
@@ -93,11 +130,11 @@ fn analyze(op: &OpDesc<'_, '_>) -> Option<Params> {
         let real_input1 = f64::from(scale1) / twice_max_input_scale;
         let real_input2 = f64::from(scale2) / twice_max_input_scale;
         let real_output =
-            twice_max_input_scale / (f64::from(1i32 << ADD_LEFT_SHIFT) * f64::from(output_scale));
+            twice_max_input_scale / (f64::from(1i32 << left_shift) * f64::from(output_scale));
         let m1 = quant::quantize_multiplier_smaller_than_one(real_input1)?;
         let m2 = quant::quantize_multiplier_smaller_than_one(real_input2)?;
         let mo = quant::quantize_multiplier_smaller_than_one(real_output)?;
-        p.left_shift = ADD_LEFT_SHIFT;
+        p.left_shift = left_shift;
         (p.input1_multiplier, p.input1_shift) = (m1.multiplier, m1.shift);
         (p.input2_multiplier, p.input2_shift) = (m2.multiplier, m2.shift);
         (p.output_multiplier, p.output_shift) = (mo.multiplier, mo.shift);
@@ -109,9 +146,16 @@ fn analyze(op: &OpDesc<'_, '_>) -> Option<Params> {
     Some(p)
 }
 
-/// Whether this kernel runs `op`.
-pub(crate) fn supports(op: &OpDesc<'_, '_>) -> bool {
-    analyze(op).is_some()
+/// The kernel running `op`, if any.
+pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static Kernel> {
+    analyze(op)?;
+    let int16 = op.output(0)?.dtype == DataType::I16;
+    Some(match (op.builtin()?, int16) {
+        (BuiltinOp::ADD, false) => &ADD,
+        (BuiltinOp::ADD, true) => &ADD_S16,
+        (BuiltinOp::MUL, false) => &MUL,
+        _ => &MUL_S16,
+    })
 }
 
 fn plan(op: &OpDesc<'_, '_>) -> Result<KernelPlan> {
@@ -127,24 +171,23 @@ fn prepare(op: &OpDesc<'_, '_>, persist: &mut [u8]) -> Result<()> {
     write_params(persist, p)
 }
 
-/// The checked buffers of a binary elementwise operator.
-fn buffers(ctx: &mut EvalCtx<'_, '_>, p: &Params) -> Result<(*const i8, *const i8, *mut i8)> {
+/// The checked buffers of a binary elementwise operator on `T`.
+fn buffers<T: Pod>(ctx: &mut EvalCtx<'_, '_>, p: &Params) -> Result<(*const T, *const T, *mut T)> {
+    let bytes = p.len.saturating_mul(core::mem::size_of::<T>() as i32);
     let input1 = common::input(ctx.inputs, 0);
     let input2 = common::input(ctx.inputs, 1);
-    common::check_len(input1, p.len)?;
-    common::check_len(input2, p.len)?;
+    common::check_len(input1, bytes)?;
+    common::check_len(input2, bytes)?;
+    let input1 = cast_slice::<T>(input1)?.as_ptr();
+    let input2 = cast_slice::<T>(input2)?.as_ptr();
     let output = ctx.output(0);
-    common::check_len(output, p.len)?;
-    Ok((
-        input1.as_ptr().cast(),
-        input2.as_ptr().cast(),
-        output.as_mut_ptr().cast(),
-    ))
+    common::check_len(output, bytes)?;
+    Ok((input1, input2, cast_slice_mut::<T>(output)?.as_mut_ptr()))
 }
 
 fn eval_add(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
     let p: Params = read_params(ctx.persist)?;
-    let (input1, input2, output) = buffers(ctx, &p)?;
+    let (input1, input2, output) = buffers::<i8>(ctx, &p)?;
     // SAFETY: the three buffers hold `len` elements.
     let status = unsafe {
         sys::arm_elementwise_add_s8(
@@ -171,10 +214,59 @@ fn eval_add(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
 
 fn eval_mul(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
     let p: Params = read_params(ctx.persist)?;
-    let (input1, input2, output) = buffers(ctx, &p)?;
+    let (input1, input2, output) = buffers::<i8>(ctx, &p)?;
     // SAFETY: the three buffers hold `len` elements.
     let status = unsafe {
         sys::arm_elementwise_mul_s8(
+            input1,
+            input2,
+            p.input1_offset,
+            p.input2_offset,
+            output,
+            p.output_offset,
+            p.output_multiplier,
+            p.output_shift,
+            p.activation_min,
+            p.activation_max,
+            p.len,
+        )
+    };
+    common::check_status(status)
+}
+
+fn eval_add_s16(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
+    let p: Params = read_params(ctx.persist)?;
+    let (input1, input2, output) = buffers::<i16>(ctx, &p)?;
+    // SAFETY: the three buffers hold `len` aligned elements.
+    let status = unsafe {
+        sys::arm_elementwise_add_s16(
+            input1,
+            input2,
+            p.input1_offset,
+            p.input1_multiplier,
+            p.input1_shift,
+            p.input2_offset,
+            p.input2_multiplier,
+            p.input2_shift,
+            p.left_shift,
+            output,
+            p.output_offset,
+            p.output_multiplier,
+            p.output_shift,
+            p.activation_min,
+            p.activation_max,
+            p.len,
+        )
+    };
+    common::check_status(status)
+}
+
+fn eval_mul_s16(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
+    let p: Params = read_params(ctx.persist)?;
+    let (input1, input2, output) = buffers::<i16>(ctx, &p)?;
+    // SAFETY: the three buffers hold `len` aligned elements.
+    let status = unsafe {
+        sys::arm_elementwise_mul_s16(
             input1,
             input2,
             p.input1_offset,

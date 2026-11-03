@@ -71,9 +71,9 @@ fn conv_conditions() {
             .output(&output)
             .selected()
     );
-    // int16 activations (not supported yet).
+    // int16 input with an int8 output.
     let i16_input = Tensor::activation(DataType::I16, &[1, 4, 4, 2], 0.1, 0);
-    let i16_output = Tensor::activation(DataType::I16, &[1, 2, 2, 3], 0.2, 0);
+    let i16_output = Tensor::activation(DataType::I8, &[1, 2, 2, 3], 0.2, 0);
     assert!(
         !Op::new(BuiltinOp::CONV_2D, conv_options(Activation::None))
             .input(&i16_input)

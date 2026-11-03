@@ -116,6 +116,88 @@ pub fn conv_per_channel(
     output
 }
 
+/// `reference_integer_ops::ConvPerChannel` for 16x8 (int16 activations with zero points 0, int8
+/// weights, int64 bias and accumulator), without groups.
+#[allow(clippy::too_many_arguments)]
+pub fn conv_per_channel_16x8(
+    p: &ConvParams,
+    multipliers: &[Multiplier],
+    input_dims: [i32; 4],
+    input: &[i16],
+    filter_dims: [i32; 4],
+    filter: &[i8],
+    bias: Option<&[i64]>,
+    output_dims: [i32; 4],
+) -> Vec<i16> {
+    let mut output = vec![0i16; output_dims.iter().product::<i32>() as usize];
+    let [batches, in_h, in_w, _] = input_dims;
+    let [out_c, filter_h, filter_w, filter_c] = filter_dims;
+    let [_, out_h, out_w, _] = output_dims;
+    for b in 0..batches {
+        for oy in 0..out_h {
+            let in_y0 = oy * p.stride.0 - p.padding.0;
+            for ox in 0..out_w {
+                let in_x0 = ox * p.stride.1 - p.padding.1;
+                for oc in 0..out_c {
+                    let mut acc: i64 = 0;
+                    for fy in 0..filter_h {
+                        let in_y = in_y0 + p.dilation.0 * fy;
+                        for fx in 0..filter_w {
+                            let in_x = in_x0 + p.dilation.1 * fx;
+                            if in_x < 0 || in_x >= in_w || in_y < 0 || in_y >= in_h {
+                                continue;
+                            }
+                            for ic in 0..filter_c {
+                                let iv = input[offset(input_dims, b, in_y, in_x, ic)] as i64;
+                                let fv = filter[offset(filter_dims, oc, fy, fx, ic)] as i64;
+                                acc += fv * iv;
+                            }
+                        }
+                    }
+                    if let Some(bias) = bias {
+                        acc += bias[oc as usize];
+                    }
+                    let v =
+                        quant::multiply_by_quantized_multiplier_i64(acc, multipliers[oc as usize]);
+                    output[offset(output_dims, b, oy, ox, oc)] =
+                        v.clamp(p.activation.0, p.activation.1) as i16;
+                }
+            }
+        }
+    }
+    output
+}
+
+/// `reference_integer_ops::FullyConnected` for 16x8 (int16 activations with zero points 0, int8
+/// weights with zero point 0, int64 bias and accumulator).
+#[allow(clippy::too_many_arguments)]
+pub fn fully_connected_16x8(
+    activation: (i32, i32),
+    multipliers: &[Multiplier],
+    batches: usize,
+    accum_depth: usize,
+    output_depth: usize,
+    input: &[i16],
+    filter: &[i8],
+    bias: Option<&[i64]>,
+) -> Vec<i16> {
+    let mut output = vec![0i16; batches * output_depth];
+    for b in 0..batches {
+        for oc in 0..output_depth {
+            let mut acc: i64 = 0;
+            for d in 0..accum_depth {
+                acc += input[b * accum_depth + d] as i64 * filter[oc * accum_depth + d] as i64;
+            }
+            if let Some(bias) = bias {
+                acc += bias[oc];
+            }
+            let v = quant::multiply_by_quantized_multiplier_i64(acc, multipliers[oc]);
+            output[oc + output_depth * b] = v.clamp(activation.0, activation.1) as i16;
+        }
+    }
+    output
+}
+
 /// `reference_integer_ops::DepthwiseConvPerChannel` (int8).
 #[allow(clippy::too_many_arguments)]
 pub fn depthwise_conv_per_channel(
@@ -343,6 +425,54 @@ pub fn add(p: &AddParams, input1: &[i8], input2: &[i8]) -> Vec<i8> {
             let sum = smaller(v1, p.input1) + smaller(v2, p.input2);
             let out = smaller(sum, p.output) + p.output_offset;
             out.clamp(p.activation.0, p.activation.1) as i8
+        })
+        .collect()
+}
+
+/// `CalculateActivationRangeQuantized` for int16 (zero point 0).
+pub fn activation_range_i16(activation: Activation, scale: f32) -> (i32, i32) {
+    quant::activation_range_quantized(activation, scale, 0, -32768, 32767)
+}
+
+/// LiteRT `ADD` Prepare for int16 with general scales (`left_shift = 15`) and
+/// `reference_ops::AddElementwise` (same shapes).
+pub fn add_i16(
+    (s1, s2, so): (f32, f32, f32),
+    activation: Activation,
+    input1: &[i16],
+    input2: &[i16],
+) -> Vec<i16> {
+    let left_shift = 15;
+    let twice_max = 2.0 * s1.max(s2) as f64;
+    let m1 = quant::quantize_multiplier(s1 as f64 / twice_max);
+    let m2 = quant::quantize_multiplier(s2 as f64 / twice_max);
+    let mo = quant::quantize_multiplier(twice_max / ((1i64 << left_shift) as f64 * so as f64));
+    let (lo, hi) = activation_range_i16(activation, so);
+    input1
+        .iter()
+        .zip(input2)
+        .map(|(&a, &b)| {
+            let v1 = multiply_by_quantized_multiplier((a as i32) << left_shift, m1);
+            let v2 = multiply_by_quantized_multiplier((b as i32) << left_shift, m2);
+            multiply_by_quantized_multiplier(v1 + v2, mo).clamp(lo, hi) as i16
+        })
+        .collect()
+}
+
+/// `reference_integer_ops::Mul` (int16, same shapes), with TFLite Micro's Prepare.
+pub fn mul_i16(
+    (s1, s2, so): (f32, f32, f32),
+    activation: Activation,
+    input1: &[i16],
+    input2: &[i16],
+) -> Vec<i16> {
+    let m = quant::quantize_multiplier(s1 as f64 * s2 as f64 / so as f64);
+    let (lo, hi) = activation_range_i16(activation, so);
+    input1
+        .iter()
+        .zip(input2)
+        .map(|(&a, &b)| {
+            multiply_by_quantized_multiplier(a as i32 * b as i32, m).clamp(lo, hi) as i16
         })
         .collect()
 }

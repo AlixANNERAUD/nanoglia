@@ -10,15 +10,21 @@
 //!
 //! When CMSIS-NN needs kernel sums (Helium), they are computed once at prepare time if the weights
 //! and bias are constant, else at each evaluation in the scratch buffer.
+//!
+//! 16x8 layers (int16 activations with zero point 0, int8 weights, int64 bias) run through
+//! `arm_fully_connected_s16`, like in TensorFlow Lite Micro: per-tensor weights only (TFLite
+//! Micro refuses per-channel int16 layers), requantization shifts below 8. int32 biases are
+//! refused: LiteRT picks the bias type from the `quantized_bias_type` option, which nanonn does
+//! not decode, and reads the bias as int64 by default.
 
 use nanonn_cmsis_nn_sys as sys;
 use nanonn_core::backend::{EvalCtx, Kernel, KernelPlan};
-use nanonn_core::pod::{Pod, cast_slice};
+use nanonn_core::pod::{Pod, cast_slice, cast_slice_mut};
 use nanonn_core::quant;
 use nanonn_core::{BuiltinOp, DataType, Detail, Error, OpDesc, OpOptions, Result, TensorDesc};
 
 use crate::common::{self, nhwc};
-use crate::layout::{ChannelLayout, read_params};
+use crate::layout::{ChannelLayout, inconsistent, read_params};
 
 /// The `FULLY_CONNECTED` kernel.
 pub(crate) static KERNEL: Kernel = Kernel {
@@ -26,6 +32,14 @@ pub(crate) static KERNEL: Kernel = Kernel {
     plan,
     prepare,
     eval,
+};
+
+/// The 16x8 `FULLY_CONNECTED` kernel.
+pub(crate) static KERNEL_S16: Kernel = Kernel {
+    name: "cmsis-nn/fully_connected_s16",
+    plan,
+    prepare,
+    eval: eval_s16,
 };
 
 /// Persistent parameters, followed by the per-channel multipliers and shifts, then by the kernel
@@ -84,9 +98,14 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
     let bias = op.input(2);
     let output = op.output(0)?;
 
-    let (_, input_zero_point) = common::activation_quant(input, DataType::I8)?;
-    let (output_scale, output_zero_point) = common::activation_quant(output, DataType::I8)?;
+    let dtype = input.dtype;
+    let int16 = dtype == DataType::I16;
+    let (input_scale, input_zero_point) = common::activation_quant(input, dtype)?;
+    let (output_scale, output_zero_point) = common::activation_quant(output, dtype)?;
     if filter.dtype != DataType::I8 || filter.dims.rank() != 2 || output.dims.rank() == 0 {
+        return None;
+    }
+    if int16 && (input_zero_point != 0 || output_zero_point != 0) {
         return None;
     }
     let output_depth = filter.dims.get(0)?;
@@ -106,17 +125,24 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
     }
     common::weight_quant(filter, output_depth as usize, 0)?;
     let per_channel = filter.quant.scale.len() > 1;
+    let bias_type = if int16 { DataType::I64 } else { DataType::I32 };
     if let Some(b) = bias
-        && (b.dtype != DataType::I32 || common::element_count(&b.dims)? != output_depth)
+        && (b.dtype != bias_type || common::element_count(&b.dims)? != output_depth)
     {
         return None;
     }
-    let (act_min, act_max) = common::activation_range(
-        options.activation,
-        DataType::I8,
-        output_scale,
-        output_zero_point,
-    )?;
+    if int16 {
+        let real = quant::fully_connected_effective_scale(
+            input_scale,
+            common::weight_scale(filter, 0),
+            output_scale,
+        );
+        if per_channel || quant::quantize_multiplier(real).shift >= 8 {
+            return None;
+        }
+    }
+    let (act_min, act_max) =
+        common::activation_range(options.activation, dtype, output_scale, output_zero_point)?;
     let activation = sys::cmsis_nn_activation {
         min: act_min,
         max: act_max,
@@ -141,9 +167,12 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
     let filter_dims = nhwc(accum_depth, 1, 1, output_depth);
     let output_dims = nhwc(batches, 1, 1, output_depth);
 
-    let conv_path = output_rank > 2 && accum_depth % 4 == 0;
+    let conv_path = !int16 && output_rank > 2 && accum_depth % 4 == 0;
     let (mut scratch, mut sums_persistent, mut sums_in_scratch) = (0, false, false);
-    if conv_path {
+    if int16 {
+        // SAFETY: pointer to a live local, only read.
+        scratch = unsafe { sys::arm_fully_connected_s16_get_buffer_size(&filter_dims) };
+    } else if conv_path {
         // SAFETY: pointer to a live local, only read.
         scratch = unsafe { sys::arm_convolve_1x1_s8_fast_get_buffer_size(&input_dims) };
     } else {
@@ -190,9 +219,14 @@ fn layout(p: &Params) -> ChannelLayout<Params> {
     ChannelLayout::new(p.channels as usize, sums)
 }
 
-/// Whether this kernel runs `op`.
-pub(crate) fn supports(op: &OpDesc<'_, '_>) -> bool {
-    analyze(op).is_some()
+/// The kernel running `op`, if any.
+pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static Kernel> {
+    let a = analyze(op)?;
+    Some(if a.input.dtype == DataType::I16 {
+        &KERNEL_S16
+    } else {
+        &KERNEL
+    })
 }
 
 fn plan(op: &OpDesc<'_, '_>) -> Result<KernelPlan> {
@@ -332,6 +366,61 @@ fn eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
             bias,
             &p.output,
             output.as_mut_ptr().cast(),
+        )
+    };
+    common::check_status(status)
+}
+
+fn eval_s16(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
+    let persist = ctx.persist;
+    let p: Params = read_params(persist)?;
+    let layout = layout(&p);
+    let quant_params = sys::cmsis_nn_per_tensor_quant_params {
+        multiplier: *layout
+            .multiplier
+            .get(persist)?
+            .first()
+            .ok_or_else(inconsistent)?,
+        shift: *layout
+            .shift
+            .get(persist)?
+            .first()
+            .ok_or_else(inconsistent)?,
+    };
+
+    let input = common::input(ctx.inputs, 0);
+    let filter = common::input(ctx.inputs, 1);
+    common::check_len(input, common::dims_len(&p.input).saturating_mul(2))?;
+    let input = cast_slice::<i16>(input)?;
+    common::check_len(filter, p.channels * p.input.c)?;
+    let bias = if p.has_bias != 0 {
+        let bias = common::input(ctx.inputs, 2);
+        common::check_len(bias, p.channels.saturating_mul(8))?;
+        cast_slice::<i64>(bias)?.as_ptr()
+    } else {
+        core::ptr::null()
+    };
+    let bias_dims = nhwc(1, 1, 1, p.channels);
+    let scratch = common::scratch_context(ctx.scratch, p.scratch)?;
+    let output = ctx.output(0);
+    common::check_len(output, common::dims_len(&p.output).saturating_mul(2))?;
+    let output = cast_slice_mut::<i16>(output)?;
+
+    // SAFETY: the buffers match the dimensions and are aligned for their types, and the scratch
+    // buffer is as large as CMSIS-NN asked for.
+    let status = unsafe {
+        sys::arm_fully_connected_s16(
+            &scratch,
+            &p.fc,
+            &quant_params,
+            &p.input,
+            input.as_ptr(),
+            &p.filter,
+            filter.as_ptr().cast(),
+            &bias_dims,
+            bias,
+            &p.output,
+            output.as_mut_ptr(),
         )
     };
     common::check_status(status)

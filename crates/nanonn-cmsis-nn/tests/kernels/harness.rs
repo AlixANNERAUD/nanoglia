@@ -35,6 +35,10 @@ impl Rng {
         (0..n).map(|_| self.range(-128, 127) as i8).collect()
     }
 
+    pub fn i16s(&mut self, n: usize) -> Vec<i16> {
+        (0..n).map(|_| self.range(-32768, 32767) as i16).collect()
+    }
+
     pub fn i32s(&mut self, n: usize, lo: i32, hi: i32) -> Vec<i32> {
         (0..n).map(|_| self.range(lo, hi)).collect()
     }
@@ -77,6 +81,24 @@ impl Aligned {
         Self::from_bytes(&values.iter().map(|&v| v as u8).collect::<Vec<_>>())
     }
 
+    pub fn from_i16(values: &[i16]) -> Self {
+        Self::from_bytes(
+            &values
+                .iter()
+                .flat_map(|v| v.to_le_bytes())
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    pub fn from_i64(values: &[i64]) -> Self {
+        Self::from_bytes(
+            &values
+                .iter()
+                .flat_map(|v| v.to_le_bytes())
+                .collect::<Vec<_>>(),
+        )
+    }
+
     pub fn from_i32(values: &[i32]) -> Self {
         Self::from_bytes(
             &values
@@ -98,6 +120,11 @@ impl Aligned {
 
     pub fn as_i8(&self) -> Vec<i8> {
         self.bytes().iter().map(|&b| b as i8).collect()
+    }
+
+    pub fn as_i16(&self) -> Vec<i16> {
+        let (pairs, _) = self.bytes().as_chunks::<2>();
+        pairs.iter().map(|&b| i16::from_le_bytes(b)).collect()
     }
 }
 
@@ -156,6 +183,19 @@ impl Tensor {
         }
     }
 
+    /// A constant int64 bias tensor (16x8 operators).
+    pub fn bias_i64(values: &[i64]) -> Self {
+        Self {
+            dtype: DataType::I64,
+            dims: vec![values.len() as i32],
+            scales: Vec::new(),
+            zero_points: Vec::new(),
+            axis: 0,
+            data: Aligned::from_i64(values),
+            constant: true,
+        }
+    }
+
     /// A constant tensor of little-endian values (paddings, constant values...).
     pub fn constant(dtype: DataType, dims: &[i32], bytes: &[u8]) -> Self {
         Self {
@@ -176,6 +216,11 @@ impl Tensor {
 
     pub fn with_data_i8(mut self, values: &[i8]) -> Self {
         self.data = Aligned::from_i8(values);
+        self
+    }
+
+    pub fn with_data_i16(mut self, values: &[i16]) -> Self {
+        self.data = Aligned::from_i16(values);
         self
     }
 
@@ -257,8 +302,23 @@ impl<'t> Op<'t> {
         self.with_desc(|desc| BACKEND.select(desc).is_some())
     }
 
-    /// Runs the operator with the CMSIS-NN backend and returns the first output.
+    /// Runs the operator with the CMSIS-NN backend and returns the first output, of type int8.
     pub fn run(&self) -> Vec<i8> {
+        self.run_bytes().as_i8()
+    }
+
+    /// Runs the operator with the CMSIS-NN backend and returns the first output, of type int16.
+    pub fn run_i16(&self) -> Vec<i16> {
+        self.run_bytes().as_i16()
+    }
+
+    /// The name of the kernel the CMSIS-NN backend selects.
+    pub fn kernel_name(&self) -> &'static str {
+        self.with_desc(|desc| BACKEND.select(desc).expect("refused").name)
+    }
+
+    /// Runs the operator with the CMSIS-NN backend and returns the bytes of the first output.
+    pub fn run_bytes(&self) -> Aligned {
         self.with_desc(|desc| {
             let kernel = BACKEND
                 .select(desc)
@@ -284,7 +344,7 @@ impl<'t> Op<'t> {
                 };
                 (kernel.eval)(&mut ctx).expect("eval");
             }
-            output.as_i8()
+            output
         })
     }
 }

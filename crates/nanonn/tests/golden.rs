@@ -128,7 +128,6 @@ const PENDING: &[(&str, &str)] = &[
         "mlperf-tiny/golden/ad01_int8/sample_2",
         "LiteRT float requantization in FULLY_CONNECTED",
     ),
-    ("ops/conv2d_3x3_same_int16", "int16 kernels"),
     ("ops/fully_connected_per_channel_int16", "int16 kernels"),
     ("ops/softmax_2d_int16", "int16 kernels"),
 ];

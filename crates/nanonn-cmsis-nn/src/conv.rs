@@ -1,9 +1,19 @@
 //! `CONV_2D` with int8 activations, int8 weights (per-tensor or per-output-channel) and int32
-//! bias, through `arm_convolve_wrapper_s8`.
+//! bias, through `arm_convolve_wrapper_s8`, and with int16 activations (16x8: zero points 0, int8
+//! weights, int64 bias) through `arm_convolve_wrapper_s16`.
 //!
-//! Port of TFLite Micro's `kernels/cmsis_nn/conv.cc` (Prepare and EvalQuantizedPerChannel) and
-//! of `CalculateOpDataConv`/`PopulateConvolutionQuantizationParams`. Grouped convolutions (input
-//! channels a multiple of the filter's) are supported like in the TFLite reference kernel.
+//! Port of TFLite Micro's `kernels/cmsis_nn/conv.cc` (Prepare, EvalQuantizedPerChannel and
+//! EvalQuantizedPerChannel16x8) and of `CalculateOpDataConv`/
+//! `PopulateConvolutionQuantizationParams`. Grouped convolutions (input channels a multiple of the
+//! filter's) are supported like in the TFLite reference kernel, for int8 only.
+//!
+//! 16x8 restrictions, where CMSIS-NN or LiteRT would not compute the reference result:
+//!
+//! - int32 biases are refused: LiteRT picks the bias type from the `quantized_bias_type` option,
+//!   which nanonn does not decode, and reads the bias as int64 by default;
+//! - CMSIS-NN accumulates some outputs in 32 bits before adding the bias, so the filter may have
+//!   at most 511 values per output channel (`|int8 * int16| <= 2^22`);
+//! - requantization shifts must stay below 8 (TFLite's 64-bit `MultiplyByQuantizedMultiplier`).
 //!
 //! CMSIS-NN v8.0.0 advances the bias pointer of grouped convolutions even when it is null (and then
 //! reads through it), so a grouped convolution without bias gets an all-zero bias in its
@@ -11,7 +21,7 @@
 
 use nanonn_cmsis_nn_sys as sys;
 use nanonn_core::backend::{EvalCtx, Kernel, KernelPlan};
-use nanonn_core::pod::Pod;
+use nanonn_core::pod::{Pod, cast_slice, cast_slice_mut};
 use nanonn_core::quant::{self, Multiplier};
 use nanonn_core::{BuiltinOp, DataType, OpDesc, OpOptions, Result, TensorDesc};
 
@@ -25,6 +35,18 @@ pub(crate) static KERNEL: Kernel = Kernel {
     prepare,
     eval,
 };
+
+/// The 16x8 `CONV_2D` kernel.
+pub(crate) static KERNEL_S16: Kernel = Kernel {
+    name: "cmsis-nn/conv2d_s16",
+    plan,
+    prepare,
+    eval: eval_s16,
+};
+
+/// The most values per output channel of a 16x8 filter: CMSIS-NN may accumulate them in an
+/// `int32_t` before adding the int64 bias.
+const S16_MAX_FILTER_VALUES: i32 = 511;
 
 /// Persistent parameters, followed by the per-channel multipliers and shifts.
 #[repr(C)]
@@ -73,9 +95,12 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
     let bias = op.input(2);
     let output = op.output(0)?;
 
-    let (_, input_zero_point) = common::activation_quant(input, DataType::I8)?;
-    let (output_scale, output_zero_point) = common::activation_quant(output, DataType::I8)?;
-    if filter.dtype != DataType::I8 {
+    let dtype = input.dtype;
+    let int16 = dtype == DataType::I16;
+    let (input_scale, input_zero_point) = common::activation_quant(input, dtype)?;
+    let (output_scale, output_zero_point) = common::activation_quant(output, dtype)?;
+    if filter.dtype != DataType::I8 || (int16 && (input_zero_point != 0 || output_zero_point != 0))
+    {
         return None;
     }
     let [batches, in_h, in_w, in_c] = common::dims4(input)?;
@@ -85,19 +110,37 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
         return None;
     }
     let groups = in_c / filter_c;
-    if out_c % groups != 0 {
+    if out_c % groups != 0 || (int16 && groups != 1) {
         return None;
     }
     common::weight_quant(filter, out_c as usize, 0)?;
+    let bias_type = if int16 { DataType::I64 } else { DataType::I32 };
     let has_bias = match bias {
         Some(b) => {
-            if b.dtype != DataType::I32 || common::element_count(&b.dims)? != out_c {
+            if b.dtype != bias_type || common::element_count(&b.dims)? != out_c {
                 return None;
             }
             true
         }
         None => false,
     };
+    if int16 {
+        if filter_h * filter_w * filter_c > S16_MAX_FILTER_VALUES {
+            return None;
+        }
+        let shifts_ok = (0..out_c as usize).all(|c| {
+            let filter_scale = common::weight_scale(filter, c);
+            let m = quant::quantize_multiplier(quant::conv_effective_scale(
+                input_scale,
+                filter_scale,
+                output_scale,
+            ));
+            m.shift < 8
+        });
+        if !shifts_ok {
+            return None;
+        }
+    }
 
     let in_range = |v: i32| (1..=i16::MAX as i32).contains(&v);
     let (stride_h, stride_w) = (options.stride_h, options.stride_w);
@@ -112,12 +155,8 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
     if (computed_h, computed_w) != (out_h, out_w) {
         return None;
     }
-    let (act_min, act_max) = common::activation_range(
-        options.activation,
-        DataType::I8,
-        output_scale,
-        output_zero_point,
-    )?;
+    let (act_min, act_max) =
+        common::activation_range(options.activation, dtype, output_scale, output_zero_point)?;
 
     let conv = sys::cmsis_nn_conv_params {
         input_offset: -input_zero_point,
@@ -140,9 +179,23 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
     // Like TFLite Micro: the output channel count is taken from `output_dims`.
     let filter_dims = nhwc(1, filter_h, filter_w, filter_c);
     let output_dims = nhwc(batches, out_h, out_w, out_c);
-    // SAFETY: the pointers are to live locals; the function only reads them.
+    // SAFETY: the pointers are to live locals; the functions only read them.
     let scratch = unsafe {
-        sys::arm_convolve_wrapper_s8_get_buffer_size(&conv, &input_dims, &filter_dims, &output_dims)
+        if int16 {
+            sys::arm_convolve_wrapper_s16_get_buffer_size(
+                &conv,
+                &input_dims,
+                &filter_dims,
+                &output_dims,
+            )
+        } else {
+            sys::arm_convolve_wrapper_s8_get_buffer_size(
+                &conv,
+                &input_dims,
+                &filter_dims,
+                &output_dims,
+            )
+        }
     };
     let params = Params {
         conv,
@@ -168,9 +221,14 @@ fn layout(p: &Params) -> ChannelLayout<Params> {
     ChannelLayout::new(p.channels as usize, zero_bias as usize)
 }
 
-/// Whether this kernel runs `op`.
-pub(crate) fn supports(op: &OpDesc<'_, '_>) -> bool {
-    analyze(op).is_some()
+/// The kernel running `op`, if any.
+pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static Kernel> {
+    let a = analyze(op)?;
+    Some(if a.input.dtype == DataType::I16 {
+        &KERNEL_S16
+    } else {
+        &KERNEL
+    })
 }
 
 fn plan(op: &OpDesc<'_, '_>) -> Result<KernelPlan> {
@@ -241,6 +299,61 @@ fn eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
             bias,
             &p.output,
             output.as_mut_ptr().cast(),
+        )
+    };
+    common::check_status(status)
+}
+
+fn eval_s16(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
+    let persist = ctx.persist;
+    let p: Params = read_params(persist)?;
+    let layout = layout(&p);
+    let multiplier = layout.multiplier.get(persist)?;
+    let shift = layout.shift.get(persist)?;
+    let quant_params = sys::cmsis_nn_per_channel_quant_params {
+        // CMSIS-NN only reads the arrays despite the non-const pointers.
+        multiplier: multiplier.as_ptr().cast_mut(),
+        shift: shift.as_ptr().cast_mut(),
+    };
+
+    let input = common::input(ctx.inputs, 0);
+    let filter = common::input(ctx.inputs, 1);
+    common::check_len(input, common::dims_len(&p.input).saturating_mul(2))?;
+    let input = cast_slice::<i16>(input)?;
+    common::check_len(filter, p.filter_len)?;
+    let bias = if p.has_bias != 0 {
+        let bias = common::input(ctx.inputs, 2);
+        common::check_len(bias, p.channels.saturating_mul(8))?;
+        cast_slice::<i64>(bias)?.as_ptr()
+    } else {
+        core::ptr::null()
+    };
+    let bias = sys::cmsis_nn_bias_data {
+        data: bias.cast(),
+        is_int32_bias: false,
+    };
+    let bias_dims = nhwc(1, 1, 1, p.channels);
+    let scratch = common::scratch_context(ctx.scratch, p.scratch)?;
+    let output = ctx.output(0);
+    common::check_len(output, common::dims_len(&p.output).saturating_mul(2))?;
+    let output = cast_slice_mut::<i16>(output)?;
+
+    // SAFETY: every buffer was checked against the sizes CMSIS-NN derives from the dimensions and
+    // is aligned for its type, the scratch buffer is as large as CMSIS-NN asked for, and the
+    // per-channel arrays have `output.c` entries.
+    let status = unsafe {
+        sys::arm_convolve_wrapper_s16(
+            &scratch,
+            &p.conv,
+            &quant_params,
+            &p.input,
+            input.as_ptr(),
+            &p.filter,
+            filter.as_ptr().cast(),
+            &bias_dims,
+            &bias,
+            &p.output,
+            output.as_mut_ptr(),
         )
     };
     common::check_status(status)
