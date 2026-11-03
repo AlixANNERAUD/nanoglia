@@ -111,3 +111,11 @@ run = [
   { task = "test" },
   { task = "cross-arm" },
 ]
+
+[tasks.example-nano33ble]
+description = "Build the keyword-spotting firmware for the Arduino Nano 33 BLE (run it on the board with `cargo run --release` from examples/nano33ble, through a debug probe)"
+dir = "{{config_root}}/examples/nano33ble"
+run = [
+  "cargo build --release",
+  "arm-none-eabi-size target/thumbv7em-none-eabihf/release/nanonn-example-nano33ble",
+]
