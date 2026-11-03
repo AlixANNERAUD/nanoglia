@@ -596,7 +596,7 @@ wheels = [
 ]
 
 [[package]]
-name = "nanonn-oracle"
+name = "nanoglia-oracle"
 version = "0.0.0"
 source = { virtual = "." }
 dependencies = [

@@ -76,26 +76,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "nanonn-core"
+name = "nanoglia-core"
 version = "0.1.0"
 dependencies = [
  "allocator-api2",
 ]
 
 [[package]]
-name = "nanonn-fuzz"
+name = "nanoglia-fuzz"
 version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
- "nanonn-core",
- "nanonn-tflite",
+ "nanoglia-core",
+ "nanoglia-tflite",
 ]
 
 [[package]]
-name = "nanonn-tflite"
+name = "nanoglia-tflite"
 version = "0.1.0"
 dependencies = [
- "nanonn-core",
+ "nanoglia-core",
 ]
 
 [[package]]

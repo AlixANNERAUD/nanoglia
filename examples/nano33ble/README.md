@@ -1,6 +1,6 @@
 # Keyword spotting on the Arduino Nano 33 BLE
 
-Runs the MLPerf Tiny keyword-spotting model (DS-CNN, 13 operators) with nanonn on the nRF52840
+Runs the MLPerf Tiny keyword-spotting model (DS-CNN, 13 operators) with nanoglia on the nRF52840
 of an Arduino Nano 33 BLE, from a static 32 KiB arena (no heap), and prints over RTT the memory
 used, the kernel chosen for each operator (`DEFMT_LOG=debug`) and the inference time.
 

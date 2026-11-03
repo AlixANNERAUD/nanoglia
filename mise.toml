@@ -69,7 +69,7 @@ env.RUSTFLAGS = "-D warnings"
 run = "cargo build --workspace --lib --target riscv32imc-unknown-none-elf"
 
 [tasks.no-malloc]
-description = "Check that no C library linked into nanonn references malloc/calloc/realloc/free"
+description = "Check that no C library linked into nanoglia references malloc/calloc/realloc/free"
 # Sequential: concurrent builds in the same target directory race under mbx.
 run = [
   { task = "cross-arm" },
@@ -117,5 +117,5 @@ description = "Build the keyword-spotting firmware for the Arduino Nano 33 BLE (
 dir = "{{config_root}}/examples/nano33ble"
 run = [
   "cargo build --release",
-  "arm-none-eabi-size target/thumbv7em-none-eabihf/release/nanonn-example-nano33ble",
+  "arm-none-eabi-size target/thumbv7em-none-eabihf/release/nanoglia-example-nano33ble",
 ]

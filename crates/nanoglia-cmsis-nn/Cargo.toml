@@ -1,0 +1,27 @@
+[package]
+name = "nanoglia-cmsis-nn"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CMSIS-NN kernel backend of nanoglia: TFLite-exact int8 convolutions, fully-connected layers, pooling, softmax and elementwise operators."
+documentation = "https://docs.rs/nanoglia-cmsis-nn"
+readme = "README.md"
+keywords = ["cmsis-nn", "neural-network", "no-std", "embedded", "tinyml"]
+categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
+
+[features]
+default = ["int16"]
+## int16 (16x8) kernels: convolution, fully-connected, add and mul.
+int16 = []
+## Single-rounding requantization (`TFLITE_SINGLE_ROUNDING`).
+single-rounding = ["nanoglia-cmsis-nn-sys/single-rounding", "nanoglia-core/single-rounding"]
+
+[dependencies]
+nanoglia-core = { workspace = true }
+nanoglia-cmsis-nn-sys = { version = "0.1.0", path = "../nanoglia-cmsis-nn-sys" }
+
+[lints]
+workspace = true

@@ -1,17 +1,17 @@
 [package]
-name = "nanonn-fuzz"
+name = "nanoglia-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2024"
-license = "MIT"
+license = "Apache-2.0"
 
 [package.metadata]
 cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-nanonn-core = { path = "../crates/nanonn-core" }
-nanonn-tflite = { path = "../crates/nanonn-tflite" }
+nanoglia-core = { path = "../crates/nanoglia-core" }
+nanoglia-tflite = { path = "../crates/nanoglia-tflite" }
 
 # Not part of the main workspace: fuzzing needs a nightly toolchain.
 [workspace]

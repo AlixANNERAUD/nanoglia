@@ -77,7 +77,7 @@ def _options_type(options) -> int:
 class ModelBuilder:
     """Accumulates tensors and operators of one subgraph, then serializes them."""
 
-    def __init__(self, description: str = "nanonn oracle"):
+    def __init__(self, description: str = "nanoglia oracle"):
         self.description = description
         self._tensors: list[schema.TensorT] = []
         self._buffers: list[schema.BufferT] = [_AlignedBufferT()]  # buffer 0: empty

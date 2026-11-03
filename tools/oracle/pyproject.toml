@@ -1,7 +1,7 @@
 [project]
-name = "nanonn-oracle"
+name = "nanoglia-oracle"
 version = "0.0.0"
-description = "Builds nanonn test models and computes golden outputs with the LiteRT reference kernels."
+description = "Builds nanoglia test models and computes golden outputs with the LiteRT reference kernels."
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "ai-edge-litert>=2.3,<2.4",

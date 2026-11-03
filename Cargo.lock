@@ -80,33 +80,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
-name = "nanonn"
+name = "nanoglia"
 version = "0.1.0"
 dependencies = [
- "nanonn-cmsis-nn",
- "nanonn-core",
- "nanonn-kernels",
- "nanonn-tflite",
+ "nanoglia-cmsis-nn",
+ "nanoglia-core",
+ "nanoglia-kernels",
+ "nanoglia-tflite",
  "serde_json",
 ]
 
 [[package]]
-name = "nanonn-cmsis-nn"
+name = "nanoglia-cmsis-nn"
 version = "0.1.0"
 dependencies = [
- "nanonn-cmsis-nn-sys",
- "nanonn-core",
+ "nanoglia-cmsis-nn-sys",
+ "nanoglia-core",
 ]
 
 [[package]]
-name = "nanonn-cmsis-nn-sys"
+name = "nanoglia-cmsis-nn-sys"
 version = "0.1.0"
 dependencies = [
  "cc",
 ]
 
 [[package]]
-name = "nanonn-core"
+name = "nanoglia-core"
 version = "0.1.0"
 dependencies = [
  "allocator-api2",
@@ -114,18 +114,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "nanonn-kernels"
+name = "nanoglia-kernels"
 version = "0.1.0"
 dependencies = [
  "libm",
- "nanonn-core",
+ "nanoglia-core",
 ]
 
 [[package]]
-name = "nanonn-tflite"
+name = "nanoglia-tflite"
 version = "0.1.0"
 dependencies = [
- "nanonn-core",
+ "nanoglia-core",
 ]
 
 [[package]]

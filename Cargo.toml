@@ -8,14 +8,14 @@ exclude = ["fuzz"]
 edition = "2024"
 rust-version = "1.89"
 authors = ["Alix ANNERAUD <alix@anneraud.fr>"]
-repository = "https://github.com/AlixANNERAUD/nanonn"
-license = "MIT"
+repository = "https://github.com/AlixANNERAUD/nanoglia"
+license = "Apache-2.0"
 
 [workspace.dependencies]
-nanonn-core = { version = "0.1.0", path = "crates/nanonn-core", default-features = false }
-nanonn-tflite = { version = "0.1.0", path = "crates/nanonn-tflite" }
-nanonn-cmsis-nn = { version = "0.1.0", path = "crates/nanonn-cmsis-nn", default-features = false }
-nanonn-kernels = { version = "0.1.0", path = "crates/nanonn-kernels", default-features = false }
+nanoglia-core = { version = "0.1.0", path = "crates/nanoglia-core", default-features = false }
+nanoglia-tflite = { version = "0.1.0", path = "crates/nanoglia-tflite" }
+nanoglia-cmsis-nn = { version = "0.1.0", path = "crates/nanoglia-cmsis-nn", default-features = false }
+nanoglia-kernels = { version = "0.1.0", path = "crates/nanoglia-kernels", default-features = false }
 allocator-api2 = { version = "0.4", default-features = false }
 defmt = "1"
 libm = "0.2"

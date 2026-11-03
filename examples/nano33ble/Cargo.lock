@@ -161,32 +161,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
-name = "nanonn"
+name = "nanoglia"
 version = "0.1.0"
 dependencies = [
- "nanonn-cmsis-nn",
- "nanonn-core",
- "nanonn-kernels",
- "nanonn-tflite",
+ "nanoglia-cmsis-nn",
+ "nanoglia-core",
+ "nanoglia-kernels",
+ "nanoglia-tflite",
 ]
 
 [[package]]
-name = "nanonn-cmsis-nn"
+name = "nanoglia-cmsis-nn"
 version = "0.1.0"
 dependencies = [
- "nanonn-cmsis-nn-sys",
- "nanonn-core",
+ "nanoglia-cmsis-nn-sys",
+ "nanoglia-core",
 ]
 
 [[package]]
-name = "nanonn-cmsis-nn-sys"
+name = "nanoglia-cmsis-nn-sys"
 version = "0.1.0"
 dependencies = [
  "cc",
 ]
 
 [[package]]
-name = "nanonn-core"
+name = "nanoglia-core"
 version = "0.1.0"
 dependencies = [
  "allocator-api2",
@@ -194,30 +194,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "nanonn-example-nano33ble"
+name = "nanoglia-example-nano33ble"
 version = "0.0.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "defmt",
  "defmt-rtt",
- "nanonn",
+ "nanoglia",
  "panic-probe",
 ]
 
 [[package]]
-name = "nanonn-kernels"
+name = "nanoglia-kernels"
 version = "0.1.0"
 dependencies = [
  "libm",
- "nanonn-core",
+ "nanoglia-core",
 ]
 
 [[package]]
-name = "nanonn-tflite"
+name = "nanoglia-tflite"
 version = "0.1.0"
 dependencies = [
- "nanonn-core",
+ "nanoglia-core",
 ]
 
 [[package]]

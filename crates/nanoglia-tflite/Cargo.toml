@@ -1,0 +1,19 @@
+[package]
+name = "nanoglia-tflite"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Zero-copy, allocation-free and panic-free TensorFlow Lite model verifier and reader for nanoglia."
+documentation = "https://docs.rs/nanoglia-tflite"
+readme = "README.md"
+keywords = ["tflite", "flatbuffers", "no-std", "embedded", "tinyml"]
+categories = ["parser-implementations", "embedded", "no-std", "no-std::no-alloc"]
+
+[dependencies]
+nanoglia-core = { workspace = true }
+
+[lints]
+workspace = true

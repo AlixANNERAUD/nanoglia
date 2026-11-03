@@ -1,4 +1,4 @@
-//! Keyword spotting on an Arduino Nano 33 BLE: loads the MLPerf Tiny DS-CNN model with nanonn,
+//! Keyword spotting on an Arduino Nano 33 BLE: loads the MLPerf Tiny DS-CNN model with nanoglia,
 //! runs it on a test input and prints the scores and the inference time over RTT.
 //!
 //! Nothing here uses a heap: the graph and its execution context live in a static [`Arena`].
@@ -9,7 +9,7 @@
 use cortex_m::peripheral::DWT;
 use cortex_m_rt::entry;
 use defmt_rtt as _;
-use nanonn::{Arena, Encoding, Graph, Target};
+use nanoglia::{Arena, Encoding, Graph, Target};
 use panic_probe as _;
 
 /// The nRF52840 runs from its 64 MHz internal oscillator after reset.

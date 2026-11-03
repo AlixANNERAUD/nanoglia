@@ -1,6 +1,6 @@
 # Test data
 
-Models and golden outputs for the bit-exact tests of nanonn. The golden outputs
+Models and golden outputs for the bit-exact tests of nanoglia. The golden outputs
 are computed by the LiteRT interpreter with its reference kernels
 (`OpResolverType.BUILTIN_REF`), which give the same results as TensorFlow Lite
 Micro.

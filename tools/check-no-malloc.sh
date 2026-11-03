@@ -1,6 +1,6 @@
 #!/bin/sh
 # Checks that the C libraries compiled for the embedded targets never reference the C heap
-# (malloc, calloc, realloc, free and their reentrant variants): nanonn takes every byte from the
+# (malloc, calloc, realloc, free and their reentrant variants): nanoglia takes every byte from the
 # allocator its caller passes.
 #
 # Usage: tools/check-no-malloc.sh [target-dir]   (run after `mise run cross-arm`/`cross-riscv32`)
@@ -31,7 +31,7 @@ nm_for() {
 checked=0
 failed=0
 # Static libraries built by the build scripts of the cross targets, e.g.
-# target/thumbv7em-none-eabihf/debug/build/nanonn-cmsis-nn-sys-<hash>/out/libcmsis_nn.a
+# target/thumbv7em-none-eabihf/debug/build/nanoglia-cmsis-nn-sys-<hash>/out/libcmsis_nn.a
 for lib in "$target_dir"/thumb*/*/build/*/out/*.a \
     "$target_dir"/riscv*/*/build/*/out/*.a \
     "$target_dir"/xtensa*/*/build/*/out/*.a; do

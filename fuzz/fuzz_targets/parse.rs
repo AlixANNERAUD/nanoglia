@@ -6,8 +6,8 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use nanonn_core::{Detail, Error};
-use nanonn_tflite::Model;
+use nanoglia_core::{Detail, Error};
+use nanoglia_tflite::Model;
 
 fn not_malformed(err: Error) {
     assert!(
