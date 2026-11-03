@@ -1,0 +1,78 @@
+[workspace]
+release_always = false
+semver_check = true
+dependencies_update = false
+pr_name = "{% if version %}chore: release v{{ version }}{% else %}chore: release{% endif %}"
+git_release_body = "{{ changelog }}"
+
+[changelog]
+header = """
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+"""
+protect_breaking_commits = true
+sort_commits = "oldest"
+commit_parsers = [
+  { message = "^Merge pull request", skip = true },
+  { message = "^chore: release", skip = true },
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Changed" },
+  { message = "^docs?", group = "Documentation" },
+  { message = "^deprecated", group = "Deprecated" },
+  { message = "^security", group = "Security" },
+  { message = "^revert", group = "Reverted" },
+  { message = "^(chore|ci|build|test|style)", group = "Miscellaneous" },
+  { message = "^.*", group = "Other" },
+]
+
+# The library: tagged vX.Y.Z with a GitHub release; its changelog also lists the changes of
+# the crates it is built from.
+[[package]]
+name = "nanoglia"
+changelog_path = "./CHANGELOG.md"
+changelog_include = ["nanoglia-core", "nanoglia-tflite", "nanoglia-cmsis-nn-sys", "nanoglia-cmsis-nn", "nanoglia-kernels"]
+git_tag_enable = true
+git_tag_name = "v{{ version }}"
+git_release_enable = true
+git_release_name = "v{{ version }}"
+
+[[package]]
+name = "nanoglia-core"
+changelog_path = "./crates/nanoglia-core/CHANGELOG.md"
+git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_enable = false
+
+[[package]]
+name = "nanoglia-tflite"
+changelog_path = "./crates/nanoglia-tflite/CHANGELOG.md"
+git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_enable = false
+
+[[package]]
+name = "nanoglia-cmsis-nn-sys"
+changelog_path = "./crates/nanoglia-cmsis-nn-sys/CHANGELOG.md"
+git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_enable = false
+
+[[package]]
+name = "nanoglia-cmsis-nn"
+changelog_path = "./crates/nanoglia-cmsis-nn/CHANGELOG.md"
+git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_enable = false
+
+[[package]]
+name = "nanoglia-kernels"
+changelog_path = "./crates/nanoglia-kernels/CHANGELOG.md"
+git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_enable = false
