@@ -129,7 +129,6 @@ const PENDING: &[(&str, &str)] = &[
         "LiteRT float requantization in FULLY_CONNECTED",
     ),
     ("ops/fully_connected_per_channel_int16", "int16 kernels"),
-    ("ops/softmax_2d_int16", "int16 kernels"),
 ];
 
 #[test]

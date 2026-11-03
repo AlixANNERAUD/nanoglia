@@ -70,7 +70,7 @@ impl RustKernels {
             BuiltinOp::DEPTHWISE_CONV_2D => kernels!(conv::DEPTHWISE_CONV_2D_F32),
             BuiltinOp::FULLY_CONNECTED => kernels!(fully_connected::FULLY_CONNECTED_F32),
             BuiltinOp::AVERAGE_POOL_2D | BuiltinOp::MAX_POOL_2D => kernels!(pool::POOL_F32),
-            BuiltinOp::SOFTMAX => kernels!(softmax::SOFTMAX_F32),
+            BuiltinOp::SOFTMAX => kernels!(softmax::SOFTMAX_F32, softmax::SOFTMAX_I16),
             _ => &[],
         }
     }

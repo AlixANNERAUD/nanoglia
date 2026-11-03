@@ -19,6 +19,7 @@ They cover what the optimized C libraries lack: shape and quantization operators
 | `MAXIMUM`, `MINIMUM` | `f32`, `i8`, `u8`, `i16`, `i32`, `i64` (broadcasting) |
 | `ADD`, `SUB`, `MUL` | `f32`, `i8`, `i16` (broadcasting; int16 `ADD`/`SUB` not with power-of-two scales) |
 | `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED` | `f32` |
-| `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX` | `f32` |
+| `AVERAGE_POOL_2D`, `MAX_POOL_2D` | `f32` |
+| `SOFTMAX` | `f32`, `i16` |
 
-Everything is computed when the operator is prepared; evaluation reads only the prepared parameters and the tensors, never allocates and never panics. `#![no_std]`, no allocation; the only dependency besides `nanonn-core` is [`libm`](https://crates.io/crates/libm) for `expf` and `tanhf`.
+Everything is computed when the operator is prepared; evaluation reads only the prepared parameters and the tensors, never allocates and never panics. `#![no_std]`, no allocation; the only dependency besides `nanonn-core` is [`libm`](https://crates.io/crates/libm) for `expf`, `tanhf` and the `exp` of the int16 softmax tables.

@@ -309,6 +309,54 @@ fn softmax_f32() {
 }
 
 #[test]
+fn softmax_i16_tables() {
+    use crate::softmax::{LUT_SIZE, lut_populate_i16};
+    let range = 65535.0;
+    let mut lut = [0i16; LUT_SIZE];
+    lut_populate_i16((10.0 / range, 32767), 2.0 / range, libm::exp, &mut lut);
+    assert_eq!(lut, SOFTMAX_EXP_LUT);
+    lut_populate_i16(
+        (1.0 / range, -32768),
+        2.0 / range,
+        |x| 1.0 / (1.0 + x),
+        &mut lut,
+    );
+    assert_eq!(lut, SOFTMAX_ONE_OVER_LUT);
+}
+
+#[test]
+fn softmax_i16() {
+    let rows16 = spread_i16();
+    let (rows8, single, one_hot) = (
+        &SOFTMAX_X_I16[..64],
+        &SOFTMAX_X_I16[64..65],
+        &SOFTMAX_X_I16[65..69],
+    );
+    for (shape, scale, beta, x, expected) in [
+        (
+            &[16, 16][..],
+            0.000_121_986_9,
+            1.0,
+            &rows16[..],
+            &SOFTMAX_I16_ROWS16[..],
+        ),
+        (&[8, 8], 0.000_7, 0.5, rows8, &SOFTMAX_I16_ROWS8),
+        // A row of one element: the result saturates to 32767.
+        (&[1, 1], 0.000_7, 1.0, single, &SOFTMAX_I16_SINGLE),
+        (&[1, 4], 0.000_7, 1.0, one_hot, &SOFTMAX_I16_ONE_HOT),
+    ] {
+        let op = op(
+            BuiltinOp::SOFTMAX,
+            OpOptions::Softmax { beta },
+            &[Some(q(t(0, DataType::I16, shape), scale, 0))],
+            &[q(t(1, DataType::I16, shape), 1.0 / 32768.0, 0)],
+        );
+        assert_eq!(select(&op).unwrap().name, "rust/softmax_i16");
+        assert_eq!(run1::<i16>(&op, &[buf(x)]), expected, "{shape:?}");
+    }
+}
+
+#[test]
 fn binary_f32_broadcast() {
     for (code, activation, expected) in [
         (BuiltinOp::ADD, Activation::None, &BIN_ADD_OUT),

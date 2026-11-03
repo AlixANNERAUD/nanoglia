@@ -824,6 +824,30 @@ fn softmax_reference_values() {
 }
 
 #[test]
+fn softmax_i16_conditions() {
+    let softmax = |input: TensorDesc<'static>, output: TensorDesc<'static>| {
+        op(
+            BuiltinOp::SOFTMAX,
+            OpOptions::Softmax { beta: 1.0 },
+            &[Some(input)],
+            &[output],
+        )
+    };
+    let x = |zero_point| q(t(0, DataType::I16, &[2, 5]), 0.001, zero_point);
+    let y = |scale, zero_point| q(t(1, DataType::I16, &[2, 5]), scale, zero_point);
+    let one = 1.0 / 32768.0;
+    // Equal inputs share the probability evenly: 32768 / 5, rounded by the tables.
+    let out = run1::<i16>(&softmax(x(0), y(one, 0)), &[buf(&[7i16; 10])]);
+    assert!(out.iter().all(|&v| (6552..=6555).contains(&v)), "{out:?}");
+    // The output must be quantized as [0, 1) in Q0.15, the input symmetric.
+    assert!(select(&softmax(x(0), y(one * 1.002, 0))).is_none());
+    assert!(select(&softmax(x(0), y(one, 1))).is_none());
+    assert!(select(&softmax(x(3), y(one, 0))).is_none());
+    let int8_output = q(t(1, DataType::I8, &[2, 5]), 1.0 / 256.0, -128);
+    assert!(select(&softmax(x(0), int8_output)).is_none());
+}
+
+#[test]
 fn eval_rejects_short_buffers() {
     let op1 = unary(
         BuiltinOp::RELU,
