@@ -17,6 +17,7 @@ It needs no RTOS, no HAL and no vendor SDK. Every byte it uses comes from the al
 | Crate | Role |
 |---|---|
 | [`nanonn-core`](crates/nanonn-core) | Tensor, operator and error types, kernel-backend interface, quantization math, arena allocator |
+| [`nanonn-tflite`](crates/nanonn-tflite) | Zero-copy, allocation-free, panic-free TFLite model verifier and reader |
 
 ## License
 
