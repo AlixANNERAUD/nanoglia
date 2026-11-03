@@ -18,6 +18,7 @@ It needs no RTOS, no HAL and no vendor SDK. Every byte it uses comes from the al
 |---|---|
 | [`nanonn-core`](crates/nanonn-core) | Tensor, operator and error types, kernel-backend interface, quantization math, arena allocator |
 | [`nanonn-tflite`](crates/nanonn-tflite) | Zero-copy, allocation-free, panic-free TFLite model verifier and reader |
+| [`nanonn-cmsis-nn-sys`](crates/nanonn-cmsis-nn-sys) | Vendored CMSIS-NN v8.0.0 (integer kernels) built with `cc`, raw FFI bindings |
 
 ## License
 
