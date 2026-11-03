@@ -23,5 +23,9 @@ single-rounding = ["nanoglia-cmsis-nn-sys/single-rounding", "nanoglia-core/singl
 nanoglia-core = { workspace = true }
 nanoglia-cmsis-nn-sys = { version = "0.1.0", path = "../nanoglia-cmsis-nn-sys" }
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lints]
 workspace = true

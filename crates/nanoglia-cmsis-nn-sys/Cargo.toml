@@ -23,5 +23,9 @@ single-rounding = []
 [build-dependencies]
 cc = "1.2"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lints]
 workspace = true

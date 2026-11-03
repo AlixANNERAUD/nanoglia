@@ -1,5 +1,13 @@
 # nanoglia
 
+[![crates.io](https://img.shields.io/crates/v/nanoglia.svg)](https://crates.io/crates/nanoglia)
+[![docs.rs](https://img.shields.io/docsrs/nanoglia)](https://docs.rs/nanoglia)
+[![CI](https://github.com/AlixANNERAUD/nanoglia/actions/workflows/ci.yml/badge.svg)](https://github.com/AlixANNERAUD/nanoglia/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/AlixANNERAUD/nanoglia/graph/badge.svg)](https://codecov.io/gh/AlixANNERAUD/nanoglia)
+[![no_std](https://img.shields.io/badge/no__std-no%20alloc-success)](crates/nanoglia/README.md)
+[![MSRV 1.89](https://img.shields.io/badge/MSRV-1.89-informational)](Cargo.toml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 **Run neural networks loaded at runtime on microcontrollers, with one `no_std` Rust API and the best kernels of each chip.**
 
 nanoglia reads TensorFlow Lite (`.tflite`) models straight from flash or RAM, without copying their weights, and runs them with:

@@ -25,5 +25,9 @@ single-rounding = ["nanoglia-core/single-rounding"]
 nanoglia-core = { workspace = true }
 libm = { workspace = true }
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lints]
 workspace = true

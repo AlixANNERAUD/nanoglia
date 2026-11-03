@@ -26,5 +26,9 @@ defmt = ["dep:defmt"]
 allocator-api2 = { workspace = true }
 defmt = { workspace = true, optional = true }
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lints]
 workspace = true
