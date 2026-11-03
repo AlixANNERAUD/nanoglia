@@ -74,10 +74,13 @@ depends = ["cross-arm"]
 run = "tools/check-no-malloc.sh"
 
 [tasks.fuzz]
-description = "Fuzz the model loader for a minute"
+description = "Fuzz the TFLite reader for a minute, seeded with the MLPerf Tiny models"
 tools = { rust = { version = "nightly" }, "cargo:cargo-fuzz" = "latest" }
 dir = "{{config_root}}/fuzz"
-run = "cargo fuzz run load -- -max_total_time=60"
+run = [
+  "mkdir -p corpus/parse",
+  "cargo fuzz run parse corpus/parse ../testdata/mlperf-tiny -- -max_total_time=60 -max_len=400000",
+]
 
 [tasks.msrv]
 description = "Check the workspace with the minimum Rust version"
