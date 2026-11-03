@@ -16,6 +16,12 @@ mod reduce;
 mod softmax;
 mod util;
 
+#[cfg(test)]
+mod tests;
+
+#[cfg(test)]
+extern crate std;
+
 use nanonn_core::backend::{Backend, BackendKind, Kernel};
 use nanonn_core::{BuiltinOp, OpDesc};
 
