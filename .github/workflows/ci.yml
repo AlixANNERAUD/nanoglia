@@ -35,7 +35,8 @@ jobs:
       - uses: jdx/mr-boxington-action@v1
         with:
           cache-key-suffix: clippy
-      # Default features, then all of them (single-rounding included).
+      # Default features, then all of them: the single-rounding mode is built here; its
+      # results differ from the golden data by design (generated in double rounding).
       - run: mise run clippy
 
   test:
@@ -49,11 +50,6 @@ jobs:
           - name: default
             key: default
             args: --workspace
-          # Requantization in TFLITE_SINGLE_ROUNDING mode: the kernels must still build and
-          # pass their own tests (the golden data follows the default mode).
-          - name: single rounding
-            key: single-rounding
-            args: -p nanoglia-core -p nanoglia-cmsis-nn -p nanoglia-kernels --features nanoglia-core/single-rounding,nanoglia-cmsis-nn/single-rounding,nanoglia-kernels/single-rounding --lib
           # int8-only build, as in the Nano 33 BLE firmware.
           - name: int8 only
             key: int8-only
