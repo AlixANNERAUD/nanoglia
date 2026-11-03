@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/conv2d_3x3_stride2_valid_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        1,
+        9,
+        9,
+        4
+      ],
+      "scale": 0.01566089130938053,
+      "zero_point": -64
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.05407855287194252,
+      "zero_point": -21
+    }
+  ],
+  "tolerance": 0
+}

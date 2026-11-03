@@ -1,0 +1,44 @@
+{
+  "model": "testdata/ops/sub_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.015496901236474514,
+      "zero_point": -66
+    },
+    {
+      "name": "input_1",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.013632291927933693,
+      "zero_point": 19
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.02496492490172386,
+      "zero_point": -52
+    }
+  ],
+  "tolerance": 0
+}

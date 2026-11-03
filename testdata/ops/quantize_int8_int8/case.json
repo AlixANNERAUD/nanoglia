@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/quantize_int8_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.015520067885518074,
+      "zero_point": -66
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.02549019642174244,
+      "zero_point": -30
+    }
+  ],
+  "tolerance": 0
+}

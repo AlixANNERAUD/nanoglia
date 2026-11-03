@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/conv2d_1x1_f32/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "float32",
+      "shape": [
+        1,
+        6,
+        6,
+        8
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "float32",
+      "shape": [
+        1,
+        6,
+        6,
+        16
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 1e-05
+}

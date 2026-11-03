@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/conv2d_3x3_dilation2_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        1,
+        9,
+        9,
+        3
+      ],
+      "scale": 0.015607763081789017,
+      "zero_point": -65
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        9,
+        9,
+        4
+      ],
+      "scale": 0.04843493923544884,
+      "zero_point": -10
+    }
+  ],
+  "tolerance": 0
+}

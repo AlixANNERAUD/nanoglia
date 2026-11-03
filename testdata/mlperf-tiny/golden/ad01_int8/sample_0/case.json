@@ -1,0 +1,28 @@
+{
+  "model": "testdata/mlperf-tiny/ad01_int8.tflite",
+  "inputs": [
+    {
+      "name": "input_1",
+      "dtype": "int8",
+      "shape": [
+        1,
+        640
+      ],
+      "scale": 0.3910152316093445,
+      "zero_point": 89
+    }
+  ],
+  "outputs": [
+    {
+      "name": "Identity",
+      "dtype": "int8",
+      "shape": [
+        1,
+        640
+      ],
+      "scale": 0.36449846625328064,
+      "zero_point": 96
+    }
+  ],
+  "tolerance": 0
+}

@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/max_pool2d_2x2_stride2_valid_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        8,
+        8,
+        4
+      ],
+      "scale": 0.01567070372402668,
+      "zero_point": -64
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        4
+      ],
+      "scale": 0.01567070372402668,
+      "zero_point": -64
+    }
+  ],
+  "tolerance": 0
+}

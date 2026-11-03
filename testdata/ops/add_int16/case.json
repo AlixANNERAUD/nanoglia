@@ -1,0 +1,44 @@
+{
+  "model": "testdata/ops/add_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int16",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 9.152864367933944e-05,
+      "zero_point": 0
+    },
+    {
+      "name": "input_1",
+      "dtype": "int16",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 5.986278483760543e-05,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int16",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.00012409695773385465,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

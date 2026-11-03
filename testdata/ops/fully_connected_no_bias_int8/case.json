@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/fully_connected_no_bias_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        2,
+        16
+      ],
+      "scale": 0.01490342989563942,
+      "zero_point": -66
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        2,
+        8
+      ],
+      "scale": 0.03291245177388191,
+      "zero_point": -23
+    }
+  ],
+  "tolerance": 0
+}

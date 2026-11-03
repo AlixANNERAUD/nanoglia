@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/fully_connected_per_channel_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        2,
+        16
+      ],
+      "scale": 0.01473743375390768,
+      "zero_point": -68
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        2,
+        8
+      ],
+      "scale": 0.02971312217414379,
+      "zero_point": 24
+    }
+  ],
+  "tolerance": 0
+}

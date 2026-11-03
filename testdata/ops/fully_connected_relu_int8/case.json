@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/fully_connected_relu_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        3,
+        12
+      ],
+      "scale": 0.01424150075763464,
+      "zero_point": -82
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        3,
+        6
+      ],
+      "scale": 0.011958117596805096,
+      "zero_point": -128
+    }
+  ],
+  "tolerance": 0
+}

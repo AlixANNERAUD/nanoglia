@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/max_pool2d_3x3_stride1_same_f32/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "float32",
+      "shape": [
+        1,
+        6,
+        6,
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "float32",
+      "shape": [
+        1,
+        6,
+        6,
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 1e-05
+}

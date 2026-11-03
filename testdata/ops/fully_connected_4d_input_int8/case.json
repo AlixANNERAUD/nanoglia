@@ -1,0 +1,30 @@
+{
+  "model": "testdata/ops/fully_connected_4d_input_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        1,
+        2,
+        2,
+        8
+      ],
+      "scale": 0.013736323453485966,
+      "zero_point": -79
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        10
+      ],
+      "scale": 0.028278175741434097,
+      "zero_point": -30
+    }
+  ],
+  "tolerance": 0
+}

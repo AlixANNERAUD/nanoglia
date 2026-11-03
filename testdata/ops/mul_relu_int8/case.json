@@ -1,0 +1,44 @@
+{
+  "model": "testdata/ops/mul_relu_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.015630915760993958,
+      "zero_point": -64
+    },
+    {
+      "name": "input_1",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.013422174379229546,
+      "zero_point": 16
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.015838682651519775,
+      "zero_point": -128
+    }
+  ],
+  "tolerance": 0
+}

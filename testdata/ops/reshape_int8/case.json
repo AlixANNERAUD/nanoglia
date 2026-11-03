@@ -1,0 +1,30 @@
+{
+  "model": "testdata/ops/reshape_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        2,
+        2,
+        8
+      ],
+      "scale": 0.014927809126675129,
+      "zero_point": -63
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        32
+      ],
+      "scale": 0.014927809126675129,
+      "zero_point": -63
+    }
+  ],
+  "tolerance": 0
+}

@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/mean_keep_dims_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.01565771922469139,
+      "zero_point": -65
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        1,
+        1,
+        8
+      ],
+      "scale": 0.01565771922469139,
+      "zero_point": -65
+    }
+  ],
+  "tolerance": 0
+}

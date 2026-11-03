@@ -1,0 +1,44 @@
+{
+  "model": "testdata/ops/add_broadcast_relu6_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        1,
+        4,
+        8
+      ],
+      "scale": 0.015611671842634678,
+      "zero_point": -65
+    },
+    {
+      "name": "input_1",
+      "dtype": "int8",
+      "shape": [
+        1,
+        3,
+        1,
+        8
+      ],
+      "scale": 0.01334944274276495,
+      "zero_point": 20
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        3,
+        4,
+        8
+      ],
+      "scale": 0.01648099720478058,
+      "zero_point": -128
+    }
+  ],
+  "tolerance": 0
+}

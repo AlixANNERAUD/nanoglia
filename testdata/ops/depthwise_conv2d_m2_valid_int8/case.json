@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/depthwise_conv2d_m2_valid_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        1,
+        7,
+        7,
+        4
+      ],
+      "scale": 0.015467041172087193,
+      "zero_point": -66
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        5,
+        5,
+        8
+      ],
+      "scale": 0.03585098311305046,
+      "zero_point": 14
+    }
+  ],
+  "tolerance": 0
+}

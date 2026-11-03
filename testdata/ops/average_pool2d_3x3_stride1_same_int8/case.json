@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/average_pool2d_3x3_stride1_same_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        6,
+        6,
+        4
+      ],
+      "scale": 0.01562688872218132,
+      "zero_point": -64
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        6,
+        6,
+        4
+      ],
+      "scale": 0.01562688872218132,
+      "zero_point": -64
+    }
+  ],
+  "tolerance": 0
+}

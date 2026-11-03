@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/fully_connected_per_tensor_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        2,
+        16
+      ],
+      "scale": 0.015106516890227795,
+      "zero_point": -70
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        2,
+        8
+      ],
+      "scale": 0.0485624335706234,
+      "zero_point": 26
+    }
+  ],
+  "tolerance": 0
+}

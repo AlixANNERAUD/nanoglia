@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/conv2d_3x3_same_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        1,
+        8,
+        8,
+        4
+      ],
+      "scale": 0.01557568833231926,
+      "zero_point": -65
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        8,
+        8,
+        8
+      ],
+      "scale": 0.05364882946014404,
+      "zero_point": 18
+    }
+  ],
+  "tolerance": 0
+}

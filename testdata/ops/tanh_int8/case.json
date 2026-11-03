@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/tanh_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.020843815058469772,
+      "zero_point": 9
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.0078125,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

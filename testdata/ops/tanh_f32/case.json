@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/tanh_f32/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "float32",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "float32",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 1e-05
+}

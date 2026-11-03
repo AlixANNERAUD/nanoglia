@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/pad_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        3
+      ],
+      "scale": 0.015276441350579262,
+      "zero_point": -67
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        7,
+        7,
+        3
+      ],
+      "scale": 0.015276441350579262,
+      "zero_point": -67
+    }
+  ],
+  "tolerance": 0
+}

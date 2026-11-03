@@ -1,0 +1,30 @@
+{
+  "model": "testdata/ops/mean_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.01543231587857008,
+      "zero_point": -65
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        8
+      ],
+      "scale": 0.005639355164021254,
+      "zero_point": -128
+    }
+  ],
+  "tolerance": 0
+}

@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/softmax_2d_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        2,
+        10
+      ],
+      "scale": 0.030065299943089485,
+      "zero_point": -6
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        2,
+        10
+      ],
+      "scale": 0.00390625,
+      "zero_point": -128
+    }
+  ],
+  "tolerance": 0
+}

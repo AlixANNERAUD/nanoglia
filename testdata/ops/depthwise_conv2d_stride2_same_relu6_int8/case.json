@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/depthwise_conv2d_stride2_same_relu6_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        1,
+        9,
+        9,
+        8
+      ],
+      "scale": 0.01565222069621086,
+      "zero_point": -64
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        5,
+        5,
+        8
+      ],
+      "scale": 0.02336692623794079,
+      "zero_point": -128
+    }
+  ],
+  "tolerance": 0
+}

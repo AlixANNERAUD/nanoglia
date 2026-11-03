@@ -1,0 +1,44 @@
+{
+  "model": "testdata/ops/maximum_broadcast_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.015598603524267673,
+      "zero_point": -65
+    },
+    {
+      "name": "input_1",
+      "dtype": "int8",
+      "shape": [
+        1,
+        1,
+        1,
+        8
+      ],
+      "scale": 0.015598603524267673,
+      "zero_point": -65
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        8
+      ],
+      "scale": 0.015598603524267673,
+      "zero_point": -65
+    }
+  ],
+  "tolerance": 0
+}

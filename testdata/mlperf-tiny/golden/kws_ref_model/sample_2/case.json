@@ -1,0 +1,30 @@
+{
+  "model": "testdata/mlperf-tiny/kws_ref_model.tflite",
+  "inputs": [
+    {
+      "name": "input_1",
+      "dtype": "int8",
+      "shape": [
+        1,
+        49,
+        10,
+        1
+      ],
+      "scale": 0.5847029089927673,
+      "zero_point": 83
+    }
+  ],
+  "outputs": [
+    {
+      "name": "Identity",
+      "dtype": "int8",
+      "shape": [
+        1,
+        12
+      ],
+      "scale": 0.00390625,
+      "zero_point": -128
+    }
+  ],
+  "tolerance": 0
+}
