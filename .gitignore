@@ -8,3 +8,4 @@ __pycache__/
 /fuzz/artifacts
 /.claude/worktrees
 /examples/*/target
+/coverage.lcov

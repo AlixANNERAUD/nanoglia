@@ -53,6 +53,26 @@ description = "Regenerate the test models and golden outputs of testdata/ with t
 dir = "{{config_root}}/tools/oracle"
 run = "uv run python -I generate.py"
 
+[tasks.package]
+description = "Package every crate as crates.io would, and build each one from its package"
+env.CARGO_TARGET_DIR = "target/package"
+run = [
+  "rm -rf {{config_root}}/target/package",
+  "cargo package --workspace",
+]
+
+[tasks.coverage]
+description = "Coverage of the Rust code of the workspace (tests and golden cases), written to coverage.lcov"
+# mbx's build-script wrapper is turned off: llvm-cov reads every binary of the target directory
+# and cannot parse it.
+env.MBX_BUILD_SCRIPT_EXECUTION = "false"
+run = "cargo llvm-cov --workspace --lcov --output-path coverage.lcov"
+
+[tasks.deny]
+description = "Check licenses, security advisories, bans and sources of the dependencies (cargo-deny)"
+tools = { "aqua:EmbarkStudios/cargo-deny" = "latest" }
+run = "cargo deny check"
+
 [tasks.cross-arm]
 description = "Build the libraries for Cortex-M0+ (thumbv6m), Cortex-M4F (thumbv7em, Arduino Nano 33 BLE) and Cortex-M33 (thumbv8m.main), without any global allocator"
 env.RUSTFLAGS = "-D warnings"

@@ -1,5 +1,5 @@
-//! A [`Backend`](crate::backend::Backend) looks at each operator of a graph and, if it can run it, hands back a
-//! [`Kernel`](crate::backend::Kernel): three plain function pointers (`plan`, `prepare`, `eval`) and no `dyn`, so the
+//! A `Backend` looks at each operator of a graph and, if it can run it, hands back a
+//! `Kernel`: three plain function pointers (`plan`, `prepare`, `eval`) and no `dyn`, so the
 //! interpreter stores the selection in its graph block without allocating.
 //!
 //! Lifecycle of a kernel, per operator:
