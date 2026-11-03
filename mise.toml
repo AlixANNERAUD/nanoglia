@@ -2,7 +2,7 @@
 # `targets` are the cross targets of the `cross-*` tasks. `mr_boxington` routes
 # Cargo through mbx, a shared build cache: the C objects of CMSIS-NN and ESP-NN
 # and the build-script outputs are restored instead of recompiled.
-rust = { version = "stable", components = "rustfmt,clippy,llvm-tools", targets = "thumbv6m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf,riscv32imc-unknown-none-elf", mr_boxington = true }
+rust = { version = "stable", components = "rustfmt,clippy,llvm-tools", targets = "thumbv6m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf,riscv32imc-unknown-none-elf,wasm32-unknown-unknown,wasm32-wasip1", mr_boxington = true }
 mr-boxington = "latest"
 uv = "latest"
 "aqua:taiki-e/cargo-llvm-cov" = "latest"
@@ -67,6 +67,30 @@ run = [
 description = "Build the libraries for riscv32imc-unknown-none-elf (ESP32-C3 class), without any global allocator"
 env.RUSTFLAGS = "-D warnings"
 run = "cargo build --workspace --lib --target riscv32imc-unknown-none-elf"
+
+[tasks.cross-wasm32]
+description = "Build the libraries for wasm32-unknown-unknown (browsers), without any global allocator"
+# CMSIS-NN only needs the declarations of a few C headers (stdint.h, string.h...): they come from
+# the wasi-sdk sysroot, nothing links its C library. Task-scoped: wasi-sdk's `bin` has its own
+# `clang` and `ar`, which must not shadow the host ones for other tasks.
+tools = { "github:WebAssembly/wasi-sdk" = "wasi-sdk-33" }
+env.RUSTFLAGS = "-D warnings"
+run = """
+sdk="$(dirname "$(command -v wasm32-wasip1-clang)")/.."
+export CC_wasm32_unknown_unknown=clang AR_wasm32_unknown_unknown=llvm-ar
+export CFLAGS_wasm32_unknown_unknown="-isystem $sdk/share/wasi-sysroot/include/wasm32-wasip1"
+cargo build --workspace --lib --target wasm32-unknown-unknown
+"""
+
+[tasks.test-wasip1]
+description = "Run the test suite compiled to wasm32-wasip1, under wasmtime"
+tools = { "github:WebAssembly/wasi-sdk" = "wasi-sdk-33", wasmtime = "50.0.0" }
+env.RUSTFLAGS = "-D warnings"
+env.CC_wasm32_wasip1 = "wasm32-wasip1-clang"
+env.AR_wasm32_wasip1 = "llvm-ar"
+# The golden tests read testdata/ through the repository path compiled into them.
+env.CARGO_TARGET_WASM32_WASIP1_RUNNER = "wasmtime --dir={{config_root}}::{{config_root}}"
+run = "cargo test --workspace --target wasm32-wasip1 --release"
 
 [tasks.no-malloc]
 description = "Check that no C library linked into nanoglia references malloc/calloc/realloc/free"

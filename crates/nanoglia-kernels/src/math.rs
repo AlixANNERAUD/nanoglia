@@ -192,6 +192,7 @@ pub(crate) fn mul_add(a: f32, b: f32, c: f32) -> f32 {
 mod tests {
     use super::*;
 
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
     unsafe extern "C" {
         #[link_name = "expf"]
         fn c_expf(x: f32) -> f32;
