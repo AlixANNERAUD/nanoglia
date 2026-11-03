@@ -1,0 +1,20 @@
+[package]
+name = "nanonn-kernels"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure-Rust kernels of nanonn, bit-exact with the TFLite reference kernels: shape and quantization operators, the int8 operators CMSIS-NN lacks, and float32 versions of the main operators."
+documentation = "https://docs.rs/nanonn-kernels"
+readme = "README.md"
+keywords = ["neural-network", "no-std", "embedded", "tinyml", "tflite"]
+categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
+
+[dependencies]
+nanonn-core = { workspace = true }
+libm = { workspace = true }
+
+[lints]
+workspace = true
