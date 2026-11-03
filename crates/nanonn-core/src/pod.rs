@@ -9,8 +9,8 @@ use core::mem::{align_of, size_of};
 /// # Safety
 ///
 /// Implementors must be `Copy`, have no padding bytes, accept any bit pattern, and have an
-/// alignment of at most [`crate::ALIGN`]. Kernel parameter structs written with [`write`] and read
-/// back with [`read`] only need to be `#[repr(C)]` and `Copy` with no padding.
+/// alignment of at most [`crate::ALIGN`]. Kernel parameter structs written with [`write()`] and read
+/// back with [`read()`] only need to be `#[repr(C)]` and `Copy` with no padding.
 pub unsafe trait Pod: Copy + 'static {}
 
 macro_rules! pod {
