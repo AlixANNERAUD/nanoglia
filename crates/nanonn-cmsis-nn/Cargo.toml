@@ -12,6 +12,10 @@ readme = "README.md"
 keywords = ["cmsis-nn", "neural-network", "no-std", "embedded", "tinyml"]
 categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
 
+[features]
+## Single-rounding requantization (`TFLITE_SINGLE_ROUNDING`).
+single-rounding = ["nanonn-cmsis-nn-sys/single-rounding", "nanonn-core/single-rounding"]
+
 [dependencies]
 nanonn-core = { workspace = true }
 nanonn-cmsis-nn-sys = { version = "0.1.0", path = "../nanonn-cmsis-nn-sys" }

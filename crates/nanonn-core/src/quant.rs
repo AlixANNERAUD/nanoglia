@@ -1,6 +1,12 @@
 //! These functions reproduce TensorFlow Lite's reference implementation bit for bit
-//! (`tensorflow/lite/kernels/internal/quantization_util.cc` and `common.h`, without
-//! `TFLITE_SINGLE_ROUNDING`), which is also what CMSIS-NN and ESP-NN implement.
+//! (`tensorflow/lite/kernels/internal/quantization_util.cc` and `common.h`).
+//!
+//! TFLite has two requantization modes: *double rounding* (gemmlowp's
+//! `SaturatingRoundingDoublingHighMul` then `RoundingDivideByPOT`), the default of TensorFlow
+//! Lite Micro, CMSIS-NN and the LiteRT reference kernels, and *single rounding*
+//! (`TFLITE_SINGLE_ROUNDING`, one rounding of the 64-bit product, slightly faster). They differ
+//! by one unit on rare ties. nanonn uses double rounding; the `single-rounding` feature switches
+//! every crate to the other mode.
 
 use crate::Activation;
 
@@ -112,9 +118,33 @@ pub fn rounding_divide_by_pot(x: i32, exponent: i32) -> i32 {
     (x >> exponent) + i32::from(remainder > threshold)
 }
 
-/// TFLite `MultiplyByQuantizedMultiplier` (double rounding).
+/// Whether requantization uses single rounding (feature `single-rounding`) rather than double
+/// rounding (the default).
+pub const SINGLE_ROUNDING: bool = cfg!(feature = "single-rounding");
+
+/// TFLite `MultiplyByQuantizedMultiplier`, in the mode selected by [`SINGLE_ROUNDING`].
 #[inline]
 pub fn multiply_by_quantized_multiplier(x: i32, m: Multiplier) -> i32 {
+    if SINGLE_ROUNDING {
+        multiply_by_quantized_multiplier_single(x, m)
+    } else {
+        multiply_by_quantized_multiplier_double(x, m)
+    }
+}
+
+/// TFLite `MultiplyByQuantizedMultiplier` with `TFLITE_SINGLE_ROUNDING`: one rounding of the
+/// 64-bit product.
+#[inline]
+pub fn multiply_by_quantized_multiplier_single(x: i32, m: Multiplier) -> i32 {
+    let total_shift = 31 - m.shift.clamp(-31, 30);
+    let round = 1i64 << (total_shift - 1);
+    ((x as i64 * m.multiplier as i64 + round) >> total_shift) as i32
+}
+
+/// TFLite `MultiplyByQuantizedMultiplier` without `TFLITE_SINGLE_ROUNDING` (gemmlowp double
+/// rounding), the TensorFlow Lite Micro and CMSIS-NN default.
+#[inline]
+pub fn multiply_by_quantized_multiplier_double(x: i32, m: Multiplier) -> i32 {
     let left_shift = m.shift.max(0);
     let right_shift = (-m.shift).max(0);
     rounding_divide_by_pot(
@@ -123,22 +153,21 @@ pub fn multiply_by_quantized_multiplier(x: i32, m: Multiplier) -> i32 {
     )
 }
 
-/// TFLite `QuantizeMultiplierSmallerThanOneExp`-style helper is not needed: use [`quantize_multiplier`].
-///
 /// Per-channel effective scale of convolutions, as computed by TFLite's
 /// `PopulateConvolutionQuantizationParams`: `double(input) * double(filter) / double(output)`.
 pub fn conv_effective_scale(input_scale: f32, filter_scale: f32, output_scale: f32) -> f64 {
     input_scale as f64 * filter_scale as f64 / output_scale as f64
 }
 
-/// Effective scale of fully-connected layers, as computed by TFLite's
-/// `GetQuantizedConvolutionMultipler`: the input and filter scales are multiplied in `f32` first.
+/// Effective scale of per-tensor fully-connected layers, as computed by TFLite's
+/// `GetQuantizedConvolutionMultipler`: `double(input) * double(filter) / double(output)`, the
+/// same formula as [`conv_effective_scale`].
 pub fn fully_connected_effective_scale(
     input_scale: f32,
     filter_scale: f32,
     output_scale: f32,
 ) -> f64 {
-    (input_scale * filter_scale) as f64 / output_scale as f64
+    conv_effective_scale(input_scale, filter_scale, output_scale)
 }
 
 /// Quantizes `value` with TFLite's rule: `zero_point + round(value / scale)` computed in `f32`.
@@ -234,11 +263,14 @@ mod tests {
     #[test]
     fn requantize() {
         let m = quantize_multiplier(0.5);
-        assert_eq!(multiply_by_quantized_multiplier(10, m), 5);
-        assert_eq!(multiply_by_quantized_multiplier(11, m), 6); // 5.5 rounds away from zero
-        assert_eq!(multiply_by_quantized_multiplier(-11, m), -5); // gemmlowp nudge then C++ truncation
+        assert_eq!(multiply_by_quantized_multiplier_double(10, m), 5);
+        assert_eq!(multiply_by_quantized_multiplier_double(11, m), 6); // 5.5 rounds away from zero
+        assert_eq!(multiply_by_quantized_multiplier_double(-11, m), -5); // gemmlowp nudge then C++ truncation
+        assert_eq!(multiply_by_quantized_multiplier_single(11, m), 6);
+        assert_eq!(multiply_by_quantized_multiplier_single(-11, m), -5); // rounds half up
         let m = quantize_multiplier(3.0);
-        assert_eq!(multiply_by_quantized_multiplier(7, m), 21);
+        assert_eq!(multiply_by_quantized_multiplier_double(7, m), 21);
+        assert_eq!(multiply_by_quantized_multiplier_single(7, m), 21);
         assert_eq!(rounding_divide_by_pot(-5, 1), -3);
         assert_eq!(rounding_divide_by_pot(5, 1), 3);
         assert_eq!(

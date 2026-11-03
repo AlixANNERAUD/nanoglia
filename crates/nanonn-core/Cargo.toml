@@ -16,6 +16,9 @@ categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
 default = []
 ## Enables `allocator_api2::alloc::Global` (the Rust global allocator).
 alloc = ["allocator-api2/alloc"]
+## Requantize with single rounding (`TFLITE_SINGLE_ROUNDING`) instead of the double rounding of
+## TensorFlow Lite Micro and CMSIS-NN.
+single-rounding = []
 ## Implements `defmt::Format` for the error types.
 defmt = ["dep:defmt"]
 

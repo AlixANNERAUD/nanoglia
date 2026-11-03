@@ -15,6 +15,10 @@ categories = ["external-ffi-bindings", "embedded", "no-std", "no-std::no-alloc"]
 links = "cmsis_nn"
 include = ["/src", "/cmsis-nn", "/build.rs", "/README.md"]
 
+[features]
+## Build CMSIS-NN with single-rounding requantization (`CMSIS_NN_USE_SINGLE_ROUNDING`).
+single-rounding = []
+
 [dependencies]
 
 [build-dependencies]

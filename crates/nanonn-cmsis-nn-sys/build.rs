@@ -26,6 +26,11 @@ fn main() {
         // Integer kernels only: the float API (and its libm dependency) stays out.
         .define("ARM_NN_ENABLE_F32", "0")
         .define("ARM_NN_ENABLE_F16", "0");
+    // Double rounding (CMSIS-NN's and TensorFlow Lite Micro's default) unless feature
+    // `single-rounding` asks for `TFLITE_SINGLE_ROUNDING` semantics.
+    if env::var_os("CARGO_FEATURE_SINGLE_ROUNDING").is_some() {
+        build.define("CMSIS_NN_USE_SINGLE_ROUNDING", None);
+    }
 
     // The kernels are far too slow unoptimized, even in debug builds (host tests). Keep the
     // size-oriented levels of release profiles.

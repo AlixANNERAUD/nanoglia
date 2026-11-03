@@ -12,6 +12,10 @@ readme = "README.md"
 keywords = ["neural-network", "no-std", "embedded", "tinyml", "tflite"]
 categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
 
+[features]
+## Single-rounding requantization (`TFLITE_SINGLE_ROUNDING`).
+single-rounding = ["nanonn-core/single-rounding"]
+
 [dependencies]
 nanonn-core = { workspace = true }
 libm = { workspace = true }
