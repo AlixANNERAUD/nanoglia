@@ -10,12 +10,13 @@ nanonn reads TensorFlow Lite (`.tflite`) models straight from flash or RAM, with
 
 It needs no RTOS, no HAL and no vendor SDK. Every byte it uses comes from the allocator you give it: the Rust global allocator, your own allocator, or a static buffer.
 
-> Status: early development.
+> Status: early development. The four MLPerf Tiny int8 reference models run bit-exact with the TFLite reference kernels (anomaly detection within one or two units, see `crates/nanonn/tests/golden.rs`).
 
 ## Crates
 
 | Crate | Role |
 |---|---|
+| [`nanonn`](crates/nanonn) | The library: load a model, create execution contexts, compute |
 | [`nanonn-core`](crates/nanonn-core) | Tensor, operator and error types, kernel-backend interface, quantization math, arena allocator |
 | [`nanonn-tflite`](crates/nanonn-tflite) | Zero-copy, allocation-free, panic-free TFLite model verifier and reader |
 | [`nanonn-cmsis-nn-sys`](crates/nanonn-cmsis-nn-sys) | Vendored CMSIS-NN v8.0.0 (integer kernels) built with `cc`, raw FFI bindings |

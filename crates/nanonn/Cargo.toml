@@ -1,0 +1,40 @@
+[package]
+name = "nanonn"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Run TensorFlow Lite models loaded at runtime on microcontrollers: one no_std API, CMSIS-NN / ESP-NN accelerated kernels, every byte from your allocator."
+documentation = "https://docs.rs/nanonn"
+readme = "README.md"
+keywords = ["neural-network", "no-std", "embedded", "tinyml", "tflite"]
+categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
+
+[features]
+default = ["cmsis-nn", "kernels"]
+## Use the Rust global allocator (`Graph::load`, `Graph::init_execution_context`).
+alloc = ["nanonn-core/alloc"]
+## CMSIS-NN kernels: Arm DSP/Helium on Cortex-M, portable C elsewhere.
+cmsis-nn = ["dep:nanonn-cmsis-nn"]
+## Pure Rust kernels for the operators CMSIS-NN lacks, and float32.
+kernels = ["dep:nanonn-kernels"]
+## Requantize with single rounding (`TFLITE_SINGLE_ROUNDING`, faster) instead of the double
+## rounding of TensorFlow Lite Micro, CMSIS-NN and the TFLite reference kernels.
+single-rounding = ["nanonn-core/single-rounding", "nanonn-cmsis-nn?/single-rounding", "nanonn-kernels?/single-rounding"]
+## `defmt::Format` for the error types.
+defmt = ["nanonn-core/defmt"]
+
+[dependencies]
+nanonn-core = { workspace = true }
+nanonn-tflite = { workspace = true }
+nanonn-cmsis-nn = { workspace = true, optional = true }
+nanonn-kernels = { workspace = true, optional = true }
+
+[dev-dependencies]
+nanonn-core = { workspace = true, features = ["alloc"] }
+serde_json = "1"
+
+[lints]
+workspace = true
