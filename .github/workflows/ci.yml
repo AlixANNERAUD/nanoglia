@@ -22,7 +22,7 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
       - run: mise run fmt
 
@@ -30,7 +30,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
       - uses: jdx/mr-boxington-action@v1
         with:
@@ -55,7 +55,7 @@ jobs:
             key: int8-only
             args: -p nanoglia --no-default-features --features cmsis-nn,kernels --lib --test memory
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
       - uses: jdx/mr-boxington-action@v1
         with:
@@ -84,7 +84,7 @@ jobs:
           - name: Nano 33 BLE firmware
             task: example-nano33ble
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
       # C toolchains declared in `[bootstrap.packages]` of mise.toml.
       - name: Install system packages
@@ -98,7 +98,7 @@ jobs:
     name: Dependencies (cargo-deny)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
       - run: mise run deny
 
@@ -106,7 +106,7 @@ jobs:
     name: MSRV
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
       - name: Install system packages
         run: sudo apt-get update && mise bootstrap packages apply --yes
@@ -120,7 +120,7 @@ jobs:
     name: Docs (docs.rs mode)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
       - uses: jdx/mr-boxington-action@v1
         with:
@@ -131,6 +131,6 @@ jobs:
     name: Fuzz the model reader (1 min)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
       - run: mise run fuzz
