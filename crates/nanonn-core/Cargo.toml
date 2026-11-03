@@ -1,0 +1,27 @@
+[package]
+name = "nanonn-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Tensor, operator, error and kernel-backend types shared by the nanonn crates, plus TFLite-exact quantization math and an arena allocator."
+documentation = "https://docs.rs/nanonn-core"
+readme = "README.md"
+keywords = ["neural-network", "no-std", "embedded", "tinyml", "inference"]
+categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
+
+[features]
+default = []
+## Enables `allocator_api2::alloc::Global` (the Rust global allocator).
+alloc = ["allocator-api2/alloc"]
+## Implements `defmt::Format` for the error types.
+defmt = ["dep:defmt"]
+
+[dependencies]
+allocator-api2 = { workspace = true }
+defmt = { workspace = true, optional = true }
+
+[lints]
+workspace = true

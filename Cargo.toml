@@ -1,0 +1,22 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.89"
+authors = ["Alix ANNERAUD <alix@anneraud.fr>"]
+repository = "https://github.com/AlixANNERAUD/nanonn"
+license = "MIT"
+
+[workspace.dependencies]
+nanonn-core = { version = "0.1.0", path = "crates/nanonn-core", default-features = false }
+allocator-api2 = { version = "0.4", default-features = false }
+defmt = "1"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)"] }
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"

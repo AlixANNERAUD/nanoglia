@@ -1,0 +1,8 @@
+/target
+lcov.info
+/tools/oracle/.venv
+__pycache__/
+*.pyc
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
