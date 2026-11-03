@@ -6,3 +6,4 @@ __pycache__/
 /fuzz/target
 /fuzz/corpus
 /fuzz/artifacts
+/.claude/worktrees
