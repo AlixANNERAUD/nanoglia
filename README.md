@@ -20,6 +20,7 @@ It needs no RTOS, no HAL and no vendor SDK. Every byte it uses comes from the al
 | [`nanonn-tflite`](crates/nanonn-tflite) | Zero-copy, allocation-free, panic-free TFLite model verifier and reader |
 | [`nanonn-cmsis-nn-sys`](crates/nanonn-cmsis-nn-sys) | Vendored CMSIS-NN v8.0.0 (integer kernels) built with `cc`, raw FFI bindings |
 | [`nanonn-cmsis-nn`](crates/nanonn-cmsis-nn) | CMSIS-NN kernel backend: int8 convolutions, fully-connected layers, pooling, softmax, add and mul, bit-exact with TFLite |
+| [`nanonn-kernels`](crates/nanonn-kernels) | Pure-Rust kernels bit-exact with TFLite's reference kernels: shape and quantization operators, int8 gaps of CMSIS-NN, float32 operators |
 
 ## License
 
