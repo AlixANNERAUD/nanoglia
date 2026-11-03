@@ -267,6 +267,66 @@ fn fully_connected_f32() {
     assert_bits(&run1::<f32>(&op, &[buf(&floats(&FC_IN))]), &floats(&FC_OUT));
 }
 
+/// A 16x8 `FULLY_CONNECTED` `[4, 24] x [6, 24]` with the weight scales `scales`.
+pub(crate) fn fully_connected_16x8_op(
+    scales: &[f32],
+    activation: Activation,
+    bias: Option<TensorDesc<'static>>,
+) -> OpDesc<'static, 'static> {
+    let options = OpOptions::FullyConnected(FullyConnectedOptions {
+        activation,
+        default_weights_format: true,
+        keep_num_dims: false,
+        asymmetric_quantize_inputs: false,
+    });
+    let zero_points = std::vec![0; scales.len()];
+    let w = konst(
+        qc(t(1, DataType::I8, &[6, 24]), scales, &zero_points, 0),
+        &FC16_W,
+    );
+    op(
+        BuiltinOp::FULLY_CONNECTED,
+        options,
+        &[
+            Some(q(t(0, DataType::I16, &[4, 24]), 0.0002, 0)),
+            Some(w),
+            bias,
+        ],
+        &[q(t(3, DataType::I16, &[4, 6]), 0.0003, 0)],
+    )
+}
+
+/// The 16x8 kernel requantizes like TensorFlow Lite Micro (`*_TFLM`: fixed point with a 16-bit
+/// multiplier, computed with the integer formula), not like LiteRT's reference kernel (floating
+/// point), which gives one more or one less on some outputs.
+#[test]
+fn fully_connected_16x8() {
+    let bias = || Some(konst(t(2, DataType::I64, &[6]), &FC16_BIAS));
+    let per_channel = [0.004, 0.006, 0.002, 0.01, 0.003, 0.008];
+    for (scales, activation, tflm, litert) in [
+        (
+            &per_channel[..],
+            Activation::Relu6,
+            &FC16_PER_CHANNEL_TFLM,
+            &FC16_PER_CHANNEL,
+        ),
+        (
+            &[0.005],
+            Activation::None,
+            &FC16_PER_TENSOR_TFLM,
+            &FC16_PER_TENSOR,
+        ),
+    ] {
+        let op = fully_connected_16x8_op(scales, activation, bias());
+        assert_eq!(select(&op).unwrap().name, "rust/fully_connected_16x8");
+        let out = run1::<i16>(&op, &[buf(&FC16_X)]);
+        assert_eq!(&out, tflm);
+        for (a, b) in out.iter().zip(litert) {
+            assert!((i32::from(*a) - i32::from(*b)).abs() <= 1);
+        }
+    }
+}
+
 #[test]
 fn pooling_f32() {
     let options = OpOptions::Pool2D(Pool2DOptions {

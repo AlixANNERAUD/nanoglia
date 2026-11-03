@@ -824,6 +824,40 @@ fn softmax_reference_values() {
 }
 
 #[test]
+fn fully_connected_16x8_conditions() {
+    use super::golden_tests::fully_connected_16x8_op;
+    let none = Activation::None;
+    // Without bias: the dot products of hand-made data.
+    let mut op1 = fully_connected_16x8_op(&[0.005], none, None);
+    assert!(select(&op1).is_some());
+    // An int32 bias, which LiteRT reads according to an undecoded option.
+    let int32_bias = konst(t(2, DataType::I32, &[6]), &[0i32; 6]);
+    assert!(select(&fully_connected_16x8_op(&[0.005], none, Some(int32_bias))).is_none());
+    // Per-channel scales along the wrong axis, weights with a zero point.
+    let mut weights = op1.inputs[1].unwrap();
+    weights = qc(weights, &[0.005; 24], &[0; 24], 1);
+    let mut inputs = op1.inputs.to_vec();
+    inputs[1] = Some(weights);
+    let wrong_axis = OpDesc {
+        inputs: Box::leak(inputs.into_boxed_slice()),
+        ..op1
+    };
+    assert!(select(&wrong_axis).is_none());
+    let mut inputs = op1.inputs.to_vec();
+    inputs[1] = Some(qc(op1.inputs[1].unwrap(), &[0.005], &[3], 0));
+    let shifted = OpDesc {
+        inputs: Box::leak(inputs.into_boxed_slice()),
+        ..op1
+    };
+    assert!(select(&shifted).is_none());
+    // An input zero point.
+    let mut inputs = op1.inputs.to_vec();
+    inputs[0] = Some(q(t(0, DataType::I16, &[4, 24]), 0.0002, 5));
+    op1.inputs = Box::leak(inputs.into_boxed_slice());
+    assert!(select(&op1).is_none());
+}
+
+#[test]
 fn softmax_i16_conditions() {
     let softmax = |input: TensorDesc<'static>, output: TensorDesc<'static>| {
         op(

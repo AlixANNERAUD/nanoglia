@@ -18,7 +18,8 @@ They cover what the optimized C libraries lack: shape and quantization operators
 | `CONCATENATION` | any (quantized inputs must share the output's parameters) |
 | `MAXIMUM`, `MINIMUM` | `f32`, `i8`, `u8`, `i16`, `i32`, `i64` (broadcasting) |
 | `ADD`, `SUB`, `MUL` | `f32`, `i8`, `i16` (broadcasting; int16 `ADD`/`SUB` not with power-of-two scales) |
-| `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED` | `f32` |
+| `CONV_2D`, `DEPTHWISE_CONV_2D` | `f32` |
+| `FULLY_CONNECTED` | `f32`; 16x8 (`i16` activations, `i8` weights per tensor or per channel, `i64` bias) |
 | `AVERAGE_POOL_2D`, `MAX_POOL_2D` | `f32` |
 | `SOFTMAX` | `f32`, `i16` |
 

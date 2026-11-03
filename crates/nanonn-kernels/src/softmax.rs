@@ -239,6 +239,9 @@ fn softmax_i16_eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
         .try_into()
         .map_err(|_| unsupported_lut())?;
     let (outer, depth) = (p.outer as usize, p.depth as usize);
+    if depth == 0 {
+        return Ok(());
+    }
     let input = in_slice::<i16>(ctx.inputs, 0, outer * depth)?;
     let output = out_slice::<i16>(ctx.outputs, 0, outer * depth)?;
     for (x, y) in input

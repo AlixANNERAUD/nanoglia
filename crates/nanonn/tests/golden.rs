@@ -116,6 +116,9 @@ fn run(case: &Case) -> Result<(), String> {
 const PENDING: &[(&str, &str)] = &[
     // LiteRT's reference FULLY_CONNECTED requantizes in floating point (`round(acc * scale)`),
     // while TFLite Micro and CMSIS-NN use fixed point: deep FC stacks drift by one unit or two.
+    // 16x8 layers follow TFLite Micro too (fixed point with a 16-bit multiplier):
+    // `ops/fully_connected_per_channel_int16` happens to match LiteRT on its 16 outputs, other
+    // data may differ by one.
     (
         "mlperf-tiny/golden/ad01_int8/sample_0",
         "LiteRT float requantization in FULLY_CONNECTED",
@@ -128,7 +131,6 @@ const PENDING: &[(&str, &str)] = &[
         "mlperf-tiny/golden/ad01_int8/sample_2",
         "LiteRT float requantization in FULLY_CONNECTED",
     ),
-    ("ops/fully_connected_per_channel_int16", "int16 kernels"),
 ];
 
 #[test]
