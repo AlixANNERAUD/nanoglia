@@ -1,0 +1,20 @@
+[package]
+name = "nanonn-cmsis-nn"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CMSIS-NN kernel backend of nanonn: TFLite-exact int8 convolutions, fully-connected layers, pooling, softmax and elementwise operators."
+documentation = "https://docs.rs/nanonn-cmsis-nn"
+readme = "README.md"
+keywords = ["cmsis-nn", "neural-network", "no-std", "embedded", "tinyml"]
+categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
+
+[dependencies]
+nanonn-core = { workspace = true }
+nanonn-cmsis-nn-sys = { version = "0.1.0", path = "../nanonn-cmsis-nn-sys" }
+
+[lints]
+workspace = true
