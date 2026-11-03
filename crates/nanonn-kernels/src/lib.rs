@@ -1,6 +1,9 @@
 #![no_std]
 #![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
+// Kernels left out by the `float` and `int16` features are still compiled, only not offered
+// by the backend, so the linker drops them.
+#![cfg_attr(not(all(feature = "float", feature = "int16")), allow(dead_code))]
 
 mod activation;
 mod concat;
@@ -37,8 +40,8 @@ pub static BACKEND: RustKernels = RustKernels;
 
 /// A static list of kernels.
 macro_rules! kernels {
-    ($($kernel:path),+) => {{
-        const KERNELS: &[&Kernel] = &[$(&$kernel),+];
+    ($($(#[$attr:meta])* $kernel:path),+ $(,)?) => {{
+        const KERNELS: &[&Kernel] = &[$($(#[$attr])* &$kernel),+];
         KERNELS
     }};
 }
@@ -53,12 +56,32 @@ impl RustKernels {
             BuiltinOp::QUANTIZE => kernels!(quantize::QUANTIZE, quantize::REQUANTIZE),
             BuiltinOp::DEQUANTIZE => kernels!(quantize::DEQUANTIZE),
             BuiltinOp::RELU | BuiltinOp::RELU6 | BuiltinOp::RELU_N1_TO_1 => {
-                kernels!(activation::RELU_F32, activation::RELU_Q)
+                kernels!(
+                    #[cfg(feature = "float")]
+                    activation::RELU_F32,
+                    activation::RELU_Q
+                )
             }
-            BuiltinOp::LEAKY_RELU => kernels!(activation::LEAKY_RELU_F32, activation::LEAKY_RELU_Q),
-            BuiltinOp::LOGISTIC => kernels!(activation::LOGISTIC_F32, activation::LUT_Q),
-            BuiltinOp::TANH => kernels!(activation::TANH_F32, activation::LUT_Q),
-            BuiltinOp::HARD_SWISH => kernels!(activation::HARD_SWISH_F32, activation::HARD_SWISH_Q),
+            BuiltinOp::LEAKY_RELU => kernels!(
+                #[cfg(feature = "float")]
+                activation::LEAKY_RELU_F32,
+                activation::LEAKY_RELU_Q
+            ),
+            BuiltinOp::LOGISTIC => kernels!(
+                #[cfg(feature = "float")]
+                activation::LOGISTIC_F32,
+                activation::LUT_Q
+            ),
+            BuiltinOp::TANH => kernels!(
+                #[cfg(feature = "float")]
+                activation::TANH_F32,
+                activation::LUT_Q
+            ),
+            BuiltinOp::HARD_SWISH => kernels!(
+                #[cfg(feature = "float")]
+                activation::HARD_SWISH_F32,
+                activation::HARD_SWISH_Q
+            ),
             BuiltinOp::MEAN => kernels!(reduce::MEAN),
             BuiltinOp::PAD | BuiltinOp::PADV2 => kernels!(pad::PAD),
             BuiltinOp::CONCATENATION => kernels!(concat::CONCATENATION),
@@ -66,14 +89,30 @@ impl RustKernels {
                 kernels!(elementwise::BINARY, elementwise::QUANTIZED_BINARY)
             }
             BuiltinOp::MAXIMUM | BuiltinOp::MINIMUM => kernels!(elementwise::BINARY),
-            BuiltinOp::CONV_2D => kernels!(conv::CONV_2D_F32),
-            BuiltinOp::DEPTHWISE_CONV_2D => kernels!(conv::DEPTHWISE_CONV_2D_F32),
+            BuiltinOp::CONV_2D => kernels!(
+                #[cfg(feature = "float")]
+                conv::CONV_2D_F32
+            ),
+            BuiltinOp::DEPTHWISE_CONV_2D => kernels!(
+                #[cfg(feature = "float")]
+                conv::DEPTHWISE_CONV_2D_F32
+            ),
             BuiltinOp::FULLY_CONNECTED => kernels!(
+                #[cfg(feature = "float")]
                 fully_connected::FULLY_CONNECTED_F32,
+                #[cfg(feature = "int16")]
                 fully_connected::FULLY_CONNECTED_16X8
             ),
-            BuiltinOp::AVERAGE_POOL_2D | BuiltinOp::MAX_POOL_2D => kernels!(pool::POOL_F32),
-            BuiltinOp::SOFTMAX => kernels!(softmax::SOFTMAX_F32, softmax::SOFTMAX_I16),
+            BuiltinOp::AVERAGE_POOL_2D | BuiltinOp::MAX_POOL_2D => kernels!(
+                #[cfg(feature = "float")]
+                pool::POOL_F32
+            ),
+            BuiltinOp::SOFTMAX => kernels!(
+                #[cfg(feature = "float")]
+                softmax::SOFTMAX_F32,
+                #[cfg(feature = "int16")]
+                softmax::SOFTMAX_I16
+            ),
             _ => &[],
         }
     }

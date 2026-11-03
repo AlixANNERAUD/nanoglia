@@ -16,6 +16,10 @@ mod pad;
 mod pooling;
 mod softmax;
 
+/// Whether the int16 (16x8) kernels are offered (feature `int16`). When they are not, the
+/// branches that select them are dead code and the linker drops the C kernels.
+pub(crate) const INT16: bool = cfg!(feature = "int16");
+
 /// The CMSIS-NN backend. Use [`BACKEND`].
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CmsisNn;

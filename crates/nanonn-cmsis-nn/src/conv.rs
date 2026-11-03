@@ -225,6 +225,9 @@ fn layout(p: &Params) -> ChannelLayout<Params> {
 pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static Kernel> {
     let a = analyze(op)?;
     Some(if a.input.dtype == DataType::I16 {
+        if !crate::INT16 {
+            return None;
+        }
         &KERNEL_S16
     } else {
         &KERNEL

@@ -150,6 +150,9 @@ fn analyze(op: &OpDesc<'_, '_>) -> Option<Params> {
 pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static Kernel> {
     analyze(op)?;
     let int16 = op.output(0)?.dtype == DataType::I16;
+    if int16 && !crate::INT16 {
+        return None;
+    }
     Some(match (op.builtin()?, int16) {
         (BuiltinOp::ADD, false) => &ADD,
         (BuiltinOp::ADD, true) => &ADD_S16,

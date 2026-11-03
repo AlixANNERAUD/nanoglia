@@ -13,13 +13,17 @@ keywords = ["neural-network", "no-std", "embedded", "tinyml", "tflite"]
 categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
 
 [features]
-default = ["cmsis-nn", "kernels"]
+default = ["cmsis-nn", "kernels", "float", "int16"]
 ## Use the Rust global allocator (`Graph::load`, `Graph::init_execution_context`).
 alloc = ["nanonn-core/alloc"]
 ## CMSIS-NN kernels: Arm DSP/Helium on Cortex-M, portable C elsewhere.
 cmsis-nn = ["dep:nanonn-cmsis-nn"]
 ## Pure Rust kernels for the operators CMSIS-NN lacks, and float32.
 kernels = ["dep:nanonn-kernels"]
+## float32 operators (needs `kernels`). Leave it out of int8-only firmware to save flash.
+float = ["nanonn-kernels?/float"]
+## int16 (16x8) operators. Leave it out of int8-only firmware to save flash.
+int16 = ["nanonn-cmsis-nn?/int16", "nanonn-kernels?/int16"]
 ## Requantize with single rounding (`TFLITE_SINGLE_ROUNDING`, faster) instead of the double
 ## rounding of TensorFlow Lite Micro, CMSIS-NN and the TFLite reference kernels.
 single-rounding = ["nanonn-core/single-rounding", "nanonn-cmsis-nn?/single-rounding", "nanonn-kernels?/single-rounding"]
@@ -29,8 +33,8 @@ defmt = ["nanonn-core/defmt"]
 [dependencies]
 nanonn-core = { workspace = true }
 nanonn-tflite = { workspace = true }
-nanonn-cmsis-nn = { workspace = true, optional = true }
-nanonn-kernels = { workspace = true, optional = true }
+nanonn-cmsis-nn = { workspace = true, optional = true, default-features = false }
+nanonn-kernels = { workspace = true, optional = true, default-features = false }
 
 [dev-dependencies]
 nanonn-core = { workspace = true, features = ["alloc"] }

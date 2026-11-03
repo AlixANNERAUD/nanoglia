@@ -13,6 +13,9 @@ keywords = ["cmsis-nn", "neural-network", "no-std", "embedded", "tinyml"]
 categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
 
 [features]
+default = ["int16"]
+## int16 (16x8) kernels: convolution, fully-connected, add and mul.
+int16 = []
 ## Single-rounding requantization (`TFLITE_SINGLE_ROUNDING`).
 single-rounding = ["nanonn-cmsis-nn-sys/single-rounding", "nanonn-core/single-rounding"]
 

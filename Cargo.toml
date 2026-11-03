@@ -14,8 +14,8 @@ license = "MIT"
 [workspace.dependencies]
 nanonn-core = { version = "0.1.0", path = "crates/nanonn-core", default-features = false }
 nanonn-tflite = { version = "0.1.0", path = "crates/nanonn-tflite" }
-nanonn-cmsis-nn = { version = "0.1.0", path = "crates/nanonn-cmsis-nn" }
-nanonn-kernels = { version = "0.1.0", path = "crates/nanonn-kernels" }
+nanonn-cmsis-nn = { version = "0.1.0", path = "crates/nanonn-cmsis-nn", default-features = false }
+nanonn-kernels = { version = "0.1.0", path = "crates/nanonn-kernels", default-features = false }
 allocator-api2 = { version = "0.4", default-features = false }
 defmt = "1"
 libm = "0.2"

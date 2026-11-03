@@ -6,7 +6,8 @@ publish = false
 description = "Runs the MLPerf Tiny keyword-spotting model with nanonn on an Arduino Nano 33 BLE (nRF52840) and reports the inference time."
 
 [dependencies]
-nanonn = { path = "../../crates/nanonn", features = ["defmt"] }
+# int8-only model: the float32 and int16 kernels are left out to save flash.
+nanonn = { path = "../../crates/nanonn", default-features = false, features = ["cmsis-nn", "kernels", "defmt"] }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 defmt = "1"
