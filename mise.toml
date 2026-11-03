@@ -1,0 +1,106 @@
+[tools]
+# `targets` are the cross targets of the `cross-*` tasks. `mr_boxington` routes
+# Cargo through mbx, a shared build cache: the C objects of CMSIS-NN and ESP-NN
+# and the build-script outputs are restored instead of recompiled.
+rust = { version = "stable", components = "rustfmt,clippy,llvm-tools", targets = "thumbv6m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf,riscv32imc-unknown-none-elf", mr_boxington = true }
+mr-boxington = "latest"
+uv = "latest"
+"aqua:taiki-e/cargo-llvm-cov" = "latest"
+
+# C toolchains for the embedded cross builds (`mise bootstrap packages apply`).
+[bootstrap.packages]
+"apt:gcc-arm-none-eabi" = { os = "linux" }
+"apt:libnewlib-arm-none-eabi" = { os = "linux" }
+"apt:gcc-riscv64-unknown-elf" = { os = "linux" }
+"apt:picolibc-riscv64-unknown-elf" = { os = "linux" }
+
+# How `cc` finds those toolchains (Debian/Ubuntu paths). Only the C headers are
+# used (stdint.h, string.h...): nothing links the C library.
+[env]
+CC_thumbv6m_none_eabi = "arm-none-eabi-gcc"
+AR_thumbv6m_none_eabi = "arm-none-eabi-ar"
+CFLAGS_thumbv6m_none_eabi = "-isystem /usr/include/newlib"
+CC_thumbv7em_none_eabihf = "arm-none-eabi-gcc"
+AR_thumbv7em_none_eabihf = "arm-none-eabi-ar"
+CFLAGS_thumbv7em_none_eabihf = "-isystem /usr/include/newlib"
+CC_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-gcc"
+AR_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-ar"
+CFLAGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
+# thumbv8m.main has a dot in its name: `CFLAGS_<target>` & co. would not survive
+# mbx's build-script wrapper (a POSIX sh script), so `cross-arm` passes these
+# through the generic TARGET_* variables.
+ARM_NEWLIB_FLAGS = "-isystem /usr/include/newlib"
+
+[tasks.fmt]
+description = "Check formatting"
+run = "cargo fmt --all --check"
+
+[tasks.clippy]
+description = "Run clippy on the workspace, with all and no features"
+env.RUSTFLAGS = "-D warnings"
+run = [
+  "cargo clippy --workspace --all-targets",
+  "cargo clippy --workspace --all-targets --all-features",
+]
+
+[tasks.test]
+description = "Run the host test suite"
+env.RUSTFLAGS = "-D warnings"
+run = "cargo test --workspace"
+
+[tasks.oracle]
+description = "Regenerate the test models and golden outputs of testdata/ with the LiteRT reference kernels"
+dir = "{{config_root}}/tools/oracle"
+run = "uv run python -I generate.py"
+
+[tasks.cross-arm]
+description = "Build the libraries for Cortex-M0+ (thumbv6m), Cortex-M4F (thumbv7em, Arduino Nano 33 BLE) and Cortex-M33 (thumbv8m.main), without any global allocator"
+env.RUSTFLAGS = "-D warnings"
+run = [
+  "cargo build --workspace --lib --target thumbv7em-none-eabihf",
+  "cargo build --workspace --lib --target thumbv6m-none-eabi",
+  # Generic TARGET_* variables: see ARM_NEWLIB_FLAGS.
+  "TARGET_CC=arm-none-eabi-gcc TARGET_AR=arm-none-eabi-ar TARGET_CFLAGS=\"$ARM_NEWLIB_FLAGS\" cargo build --workspace --lib --target thumbv8m.main-none-eabihf",
+]
+
+[tasks.cross-riscv32]
+description = "Build the libraries for riscv32imc-unknown-none-elf (ESP32-C3 class), without any global allocator"
+env.RUSTFLAGS = "-D warnings"
+run = "cargo build --workspace --lib --target riscv32imc-unknown-none-elf"
+
+[tasks.no-malloc]
+description = "Check that no C library linked into nanonn references malloc/calloc/realloc/free"
+depends = ["cross-arm"]
+run = "tools/check-no-malloc.sh"
+
+[tasks.fuzz]
+description = "Fuzz the model loader for a minute"
+tools = { rust = { version = "nightly" }, "cargo:cargo-fuzz" = "latest" }
+dir = "{{config_root}}/fuzz"
+run = "cargo fuzz run load -- -max_total_time=60"
+
+[tasks.msrv]
+description = "Check the workspace with the minimum Rust version"
+# Keep in sync with `rust-version` in the root Cargo.toml.
+tools = { rust = { version = "1.89", targets = "thumbv7em-none-eabihf" } }
+env.RUSTFLAGS = "-D warnings"
+env.CARGO_TARGET_DIR = "target/msrv"
+run = [
+  "cargo check --workspace --all-targets",
+  "cargo check --workspace --lib --target thumbv7em-none-eabihf",
+]
+
+[tasks.doc]
+description = "Build the documentation as docs.rs does"
+env = { DOCS_RS = "1", RUSTDOCFLAGS = "-D warnings" }
+run = "cargo doc --no-deps --workspace"
+
+[tasks.check]
+description = "Checks to run before pushing"
+# Sequential: concurrent builds in the same target directory race under mbx.
+run = [
+  { task = "fmt" },
+  { task = "clippy" },
+  { task = "test" },
+  { task = "cross-arm" },
+]
