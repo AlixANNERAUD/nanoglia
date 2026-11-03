@@ -423,6 +423,147 @@ fn maximum_minimum_broadcast() {
     assert_eq!(out, [-1, 0, 0, -5, -5, -5]);
 }
 
+/// A quantized `code` on `[2] x [2] -> [2]` tensors of type `dtype`, with the given (scale,
+/// zero point) of both inputs and of the output.
+fn quantized_binary_op(
+    code: BuiltinOp,
+    activation: Activation,
+    dtype: DataType,
+    quant: [(f32, i64); 3],
+) -> OpDesc<'static, 'static> {
+    op(
+        code,
+        OpOptions::Elementwise { activation },
+        &[
+            Some(q(t(0, dtype, &[2]), quant[0].0, quant[0].1)),
+            Some(q(t(1, dtype, &[2]), quant[1].0, quant[1].1)),
+        ],
+        &[q(t(2, dtype, &[2]), quant[2].0, quant[2].1)],
+    )
+}
+
+#[test]
+fn quantized_binary_hand_computed() {
+    let none = Activation::None;
+    // (0.5 * (x + 1)) + (0.25 * y) in steps of 0.5, zero point 3.
+    let add = quantized_binary_op(
+        BuiltinOp::ADD,
+        none,
+        DataType::I8,
+        [(0.5, -1), (0.25, 0), (0.5, 3)],
+    );
+    let out = run1::<i8>(&add, &[buf(&[1i8, 10]), buf(&[4i8, -8])]);
+    assert_eq!(out, [3 + 2 + 2, 3 + 11 - 4]);
+    let sub = quantized_binary_op(
+        BuiltinOp::SUB,
+        none,
+        DataType::I8,
+        [(0.5, -1), (0.25, 0), (0.5, 3)],
+    );
+    let out = run1::<i8>(&sub, &[buf(&[1i8, 127]), buf(&[4i8, -8])]);
+    assert_eq!(out, [3 + 2 - 2, 127]); // saturates
+    let mul = quantized_binary_op(
+        BuiltinOp::MUL,
+        Activation::Relu,
+        DataType::I16,
+        [(0.5, 0), (0.25, 0), (0.125, 0)],
+    );
+    let out = run1::<i16>(&mul, &[buf(&[3i16, -3]), buf(&[5i16, 5])]);
+    assert_eq!(out, [15, 0]);
+}
+
+#[test]
+fn quantized_binary_refusals() {
+    let none = Activation::None;
+    let ok = [(0.3, 0), (0.2, 0), (0.7, 0)];
+    for code in [BuiltinOp::ADD, BuiltinOp::SUB, BuiltinOp::MUL] {
+        for dtype in [DataType::I8, DataType::I16] {
+            assert!(select(&quantized_binary_op(code, none, dtype, ok)).is_some());
+            // Fused activations TFLite does not fuse.
+            let tanh = quantized_binary_op(code, Activation::Tanh, dtype, ok);
+            assert!(select(&tanh).is_none());
+        }
+        // int16 zero points must be 0, int8 ones in range.
+        let zp = quantized_binary_op(code, none, DataType::I16, [(0.3, 1), (0.2, 0), (0.7, 0)]);
+        assert!(select(&zp).is_none());
+        let zp = quantized_binary_op(code, none, DataType::I8, [(0.3, 0), (0.2, 128), (0.7, 0)]);
+        assert!(select(&zp).is_none());
+        // Mixed types.
+        let mut mixed = quantized_binary_op(code, none, DataType::I8, ok);
+        mixed.inputs = Box::leak(
+            vec![mixed.inputs[0], Some(q(t(1, DataType::I16, &[2]), 0.2, 0))].into_boxed_slice(),
+        );
+        assert!(select(&mixed).is_none());
+    }
+    // int16 ADD and SUB with power-of-two scales take TFLite's `pot_scale_int16` kernel.
+    let pot = [(0.5, 0), (0.25, 0), (1.0 / 1024.0, 0)];
+    assert!(
+        select(&quantized_binary_op(
+            BuiltinOp::ADD,
+            none,
+            DataType::I16,
+            pot
+        ))
+        .is_none()
+    );
+    assert!(
+        select(&quantized_binary_op(
+            BuiltinOp::SUB,
+            none,
+            DataType::I16,
+            pot
+        ))
+        .is_none()
+    );
+    assert!(
+        select(&quantized_binary_op(
+            BuiltinOp::MUL,
+            none,
+            DataType::I16,
+            pot
+        ))
+        .is_some()
+    );
+    assert!(
+        select(&quantized_binary_op(
+            BuiltinOp::ADD,
+            none,
+            DataType::I8,
+            pot
+        ))
+        .is_some()
+    );
+    // An output scale too small for the 20 bits of headroom of `ADD`.
+    let narrow = [(1.0, 0), (1.0, 0), (1e-8, 0)];
+    assert!(
+        select(&quantized_binary_op(
+            BuiltinOp::ADD,
+            none,
+            DataType::I8,
+            narrow
+        ))
+        .is_none()
+    );
+    let sub = select(&quantized_binary_op(
+        BuiltinOp::SUB,
+        none,
+        DataType::I8,
+        narrow,
+    ));
+    assert_eq!(sub.is_some(), nanonn_core::quant::SINGLE_ROUNDING);
+    // A product scale too large to requantize.
+    let huge = [(1e20, 0), (1e20, 0), (1e-20, 0)];
+    assert!(
+        select(&quantized_binary_op(
+            BuiltinOp::MUL,
+            none,
+            DataType::I8,
+            huge
+        ))
+        .is_none()
+    );
+}
+
 #[test]
 fn binary_shapes_and_types() {
     // A 6D broadcast: [2,1,1,1,1,3] + [1,1,1,1,2,1] -> [2,1,1,1,2,3].
@@ -461,7 +602,7 @@ fn binary_shapes_and_types() {
     let out = run1::<f32>(&op2, &[buf(&[1.0f32]), buf(&[-1.0f32, 0.5, 1.0, 3.0])]);
     assert_eq!(out, [2.0, 0.5, 0.0, 0.0]);
 
-    // Incompatible shapes, int8 ADD (CMSIS-NN's) and a fused tanh are refused.
+    // Incompatible shapes, uint8 ADD and a fused tanh are refused.
     let bad = op(
         BuiltinOp::MUL,
         OpOptions::Elementwise {
@@ -480,10 +621,10 @@ fn binary_shapes_and_types() {
             activation: Activation::None,
         },
         &[
-            Some(q(t(0, DataType::I8, &[2]), 0.1, 0)),
-            Some(q(t(1, DataType::I8, &[2]), 0.1, 0)),
+            Some(q(t(0, DataType::U8, &[2]), 0.1, 0)),
+            Some(q(t(1, DataType::U8, &[2]), 0.1, 0)),
         ],
-        &[q(t(2, DataType::I8, &[2]), 0.1, 0)],
+        &[q(t(2, DataType::U8, &[2]), 0.1, 0)],
     );
     assert!(select(&bad).is_none());
     let bad = op(

@@ -62,11 +62,10 @@ impl RustKernels {
             BuiltinOp::MEAN => kernels!(reduce::MEAN),
             BuiltinOp::PAD | BuiltinOp::PADV2 => kernels!(pad::PAD),
             BuiltinOp::CONCATENATION => kernels!(concat::CONCATENATION),
-            BuiltinOp::ADD
-            | BuiltinOp::SUB
-            | BuiltinOp::MUL
-            | BuiltinOp::MAXIMUM
-            | BuiltinOp::MINIMUM => kernels!(elementwise::BINARY),
+            BuiltinOp::ADD | BuiltinOp::SUB | BuiltinOp::MUL => {
+                kernels!(elementwise::BINARY, elementwise::QUANTIZED_BINARY)
+            }
+            BuiltinOp::MAXIMUM | BuiltinOp::MINIMUM => kernels!(elementwise::BINARY),
             BuiltinOp::CONV_2D => kernels!(conv::CONV_2D_F32),
             BuiltinOp::DEPTHWISE_CONV_2D => kernels!(conv::DEPTHWISE_CONV_2D_F32),
             BuiltinOp::FULLY_CONNECTED => kernels!(fully_connected::FULLY_CONNECTED_F32),

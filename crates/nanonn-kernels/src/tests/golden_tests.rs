@@ -346,3 +346,110 @@ fn unary_f32() {
         assert_bits(&run1::<f32>(&op, &[buf(&input)]), &floats(expected));
     }
 }
+
+/// 256 int16 values spread over the whole range: `-32768 + 257 * i`.
+fn spread_i16() -> Vec<i16> {
+    (0..256).map(|i| (i * 257 - 32768) as i16).collect()
+}
+
+/// The shape and the quantization of a tensor.
+type Quantized<'a> = (&'a [i32], (f32, i64));
+
+/// Runs a quantized binary operator of type `dtype` on `a` and `b`, checking that the Rust kernel
+/// runs it.
+fn quantized_binary<T: Pod>(
+    code: BuiltinOp,
+    activation: Activation,
+    dtype: DataType,
+    [qa, qb, qo]: [Quantized<'_>; 3],
+    a: &[T],
+    b: &[T],
+) -> Vec<T> {
+    let op = op(
+        code,
+        OpOptions::Elementwise { activation },
+        &[
+            Some(q(t(0, dtype, qa.0), qa.1.0, qa.1.1)),
+            Some(q(t(1, dtype, qb.0), qb.1.0, qb.1.1)),
+        ],
+        &[q(t(2, dtype, qo.0), qo.1.0, qo.1.1)],
+    );
+    assert_eq!(select(&op).unwrap().name, "rust/binary_q");
+    run1(&op, &[buf(a), buf(b)])
+}
+
+#[test]
+fn quantized_binary_i8_broadcast() {
+    let (qa, qb, qo) = (
+        (0.015_610_263, -64),
+        (0.012_902_341, 13),
+        (0.025_976_034, -21),
+    );
+    let (a, b) = (all_i8(), BINARY_B_I8.to_vec());
+    let (none, i8) = (Activation::None, DataType::I8);
+    let (full, row): (&[i32], &[i32]) = (&[16, 16], &[16]);
+    let add = quantized_binary(
+        BuiltinOp::ADD,
+        none,
+        i8,
+        [(full, qa), (row, qb), (full, qo)],
+        &a,
+        &b,
+    );
+    assert_eq!(add, ADD_I8);
+    let relu6 = (full, (0.03, -128));
+    let add = quantized_binary(
+        BuiltinOp::ADD,
+        Activation::Relu6,
+        i8,
+        [(full, qa), (row, qb), relu6],
+        &a,
+        &b,
+    );
+    assert_eq!(add, ADD_RELU6_I8);
+    // [16, 1, 16] - [16] -> [16, 1, 16].
+    let cube: &[i32] = &[16, 1, 16];
+    let sub = quantized_binary(
+        BuiltinOp::SUB,
+        none,
+        i8,
+        [(cube, qa), (row, qb), (cube, qo)],
+        &a,
+        &b,
+    );
+    assert_eq!(sub, SUB_I8);
+    // The first input broadcasts.
+    let sub = quantized_binary(
+        BuiltinOp::SUB,
+        none,
+        i8,
+        [(row, qb), (full, qa), (full, qo)],
+        &b,
+        &a,
+    );
+    assert_eq!(sub, SUB_FIRST_BROADCAST_I8);
+    let column: &[i32] = &[1, 16];
+    for (act, expected) in [(none, &MUL_I8), (Activation::Relu, &MUL_RELU_I8)] {
+        let shapes = [(full, qa), (column, qb), (full, (0.02, 5))];
+        assert_eq!(
+            &quantized_binary(BuiltinOp::MUL, act, i8, shapes, &a, &b),
+            expected
+        );
+    }
+}
+
+#[test]
+fn quantized_binary_i16_broadcast() {
+    let (qa, qb) = ((9.112_61e-5, 0), (5.554_919e-5, 0));
+    let (a, b) = (spread_i16(), BINARY_B_I16.to_vec());
+    let (full, row): (&[i32], &[i32]) = (&[16, 16], &[16]);
+    for (code, qo, expected) in [
+        (BuiltinOp::ADD, 0.000_117_512_53, &ADD_I16),
+        (BuiltinOp::SUB, 0.000_15, &SUB_I16),
+        (BuiltinOp::MUL, 0.000_2, &MUL_I16),
+    ] {
+        let shapes = [(full, qa), (row, qb), (full, (qo, 0))];
+        let out = quantized_binary(code, Activation::None, DataType::I16, shapes, &a, &b);
+        assert_eq!(&out, expected, "{code:?}");
+    }
+}

@@ -227,6 +227,34 @@ pub(crate) fn float_activation(op: &OpDesc<'_, '_>, activation: Activation) -> R
     }
 }
 
+/// TFLite `CalculateActivationRangeQuantized`: the clamping range of a fused activation for an
+/// `output` of integer type, quantized with `(scale, zero_point)`. Fails like TFLite when a bound
+/// does not fit an `i32`, and for activations TFLite does not fuse into quantized kernels.
+pub(crate) fn quantized_activation(
+    op: &OpDesc<'_, '_>,
+    activation: Activation,
+    output: &TensorDesc<'_>,
+    (scale, zero_point): (f32, i32),
+) -> Result<(i32, i32)> {
+    let bounds: &[f32] = match activation {
+        Activation::None => &[],
+        Activation::Relu => &[0.0],
+        Activation::Relu6 => &[0.0, 6.0],
+        Activation::ReluN1To1 => &[-1.0, 1.0],
+        _ => return Err(unsupported(op)),
+    };
+    for &bound in bounds {
+        let q = nanonn_core::quant::round_f32(bound / scale);
+        if !(q >= i32::MIN as f32 && q <= i32::MAX as f32) {
+            return Err(unsupported(op));
+        }
+    }
+    let (qmin, qmax) = int_range(output.dtype).ok_or_else(|| unsupported_type(output))?;
+    Ok(nanonn_core::quant::activation_range_quantized(
+        activation, scale, zero_point, qmin, qmax,
+    ))
+}
+
 /// `std::max(a, b)` of C++: `a < b ? b : a`.
 #[inline(always)]
 pub(crate) fn cmax(a: f32, b: f32) -> f32 {
