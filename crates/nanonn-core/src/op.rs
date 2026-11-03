@@ -61,9 +61,11 @@ impl BuiltinOp {
     pub const SHAPE: Self = Self(77);
     pub const POW: Self = Self(78);
     pub const ARG_MIN: Self = Self(79);
+    pub const REDUCE_PROD: Self = Self(81);
     pub const REDUCE_MAX: Self = Self(82);
     pub const PACK: Self = Self(83);
     pub const UNPACK: Self = Self(88);
+    pub const REDUCE_MIN: Self = Self(89);
     pub const SQUARE: Self = Self(92);
     pub const LEAKY_RELU: Self = Self(98);
     pub const SQUARED_DIFFERENCE: Self = Self(99);
