@@ -94,9 +94,9 @@ fn analyze(op: &OpDesc<'_, '_>) -> Option<Params> {
         let real_input2 = f64::from(scale2) / twice_max_input_scale;
         let real_output =
             twice_max_input_scale / (f64::from(1i32 << ADD_LEFT_SHIFT) * f64::from(output_scale));
-        let m1 = common::quantize_multiplier_smaller_than_one(real_input1)?;
-        let m2 = common::quantize_multiplier_smaller_than_one(real_input2)?;
-        let mo = common::quantize_multiplier_smaller_than_one(real_output)?;
+        let m1 = quant::quantize_multiplier_smaller_than_one(real_input1)?;
+        let m2 = quant::quantize_multiplier_smaller_than_one(real_input2)?;
+        let mo = quant::quantize_multiplier_smaller_than_one(real_output)?;
         p.left_shift = ADD_LEFT_SHIFT;
         (p.input1_multiplier, p.input1_shift) = (m1.multiplier, m1.shift);
         (p.input2_multiplier, p.input2_shift) = (m2.multiplier, m2.shift);

@@ -93,6 +93,41 @@ pub fn quantize_multiplier(real: f64) -> Multiplier {
     }
 }
 
+/// TFLite `QuantizeMultiplierSmallerThanOneExp`: `real` must be in `(0, 1)`, else `None` (where
+/// TFLite aborts).
+pub fn quantize_multiplier_smaller_than_one(real: f64) -> Option<Multiplier> {
+    if !(real > 0.0 && real < 1.0) {
+        return None;
+    }
+    let m = quantize_multiplier(real);
+    (m.shift <= 0).then_some(m)
+}
+
+/// TFLite `QuantizeMultiplierGreaterThanOne`: `real` must be a finite number greater than 1,
+/// else `None` (where TFLite aborts).
+pub fn quantize_multiplier_greater_than_one(real: f64) -> Option<Multiplier> {
+    if !(real > 1.0 && real.is_finite()) {
+        return None;
+    }
+    let m = quantize_multiplier(real);
+    (m.shift >= 0).then_some(m)
+}
+
+/// Whether `scale` is a power of two for TFLite's `CheckedLog2`, or close to one.
+///
+/// `CheckedLog2` accepts scales whose base-2 logarithm, computed in `f32`, is within `1e-3` of an
+/// integer. This check accepts a margin of `2e-3` so that it never answers `false` where
+/// `CheckedLog2` would answer `true`, whatever the rounding of the C library's `log`: kernels use
+/// it to refuse the power-of-two special cases of TFLite they do not implement.
+pub fn is_near_power_of_two(scale: f32) -> bool {
+    // 2^-0.002 and 2^-0.998: bounds of the mantissas in [0.5, 1) whose log2 is within 0.002 of
+    // an integer.
+    const UPPER: f64 = 0.998_614_666_101_028_9;
+    const LOWER: f64 = 0.500_693_627_855_667_3;
+    let (mantissa, _) = frexp(f64::from(scale).abs());
+    scale != 0.0 && scale.is_finite() && (mantissa >= UPPER || mantissa <= LOWER)
+}
+
 /// TFLite `SaturatingRoundingDoublingHighMul` (gemmlowp).
 #[inline]
 pub fn saturating_rounding_doubling_high_mul(a: i32, b: i32) -> i32 {
@@ -151,6 +186,25 @@ pub fn multiply_by_quantized_multiplier_double(x: i32, m: Multiplier) -> i32 {
         saturating_rounding_doubling_high_mul(x.wrapping_mul(1i32 << left_shift), m.multiplier),
         right_shift,
     )
+}
+
+/// TFLite `MultiplyByQuantizedMultiplier` for 64-bit accumulators (16x8 convolutions and
+/// fully-connected layers), the same in both rounding modes: the multiplier is first reduced to
+/// 16 bits, then the product is rounded once (half up). CMSIS-NN's `arm_nn_requantize_s64`
+/// computes the same value.
+///
+/// TFLite expects `shift` in `-31..8` and `x` in `-2^47..2^47`; out of these ranges this function
+/// wraps around instead of panicking.
+#[inline]
+pub fn multiply_by_quantized_multiplier_i64(x: i64, m: Multiplier) -> i32 {
+    let reduced = if m.multiplier < 0x7fff_0000 {
+        (m.multiplier.wrapping_add(1 << 15)) >> 16
+    } else {
+        0x7fff
+    };
+    let total_shift = (15 - m.shift.clamp(-47, 14)) as u32;
+    let round = 1i64 << (total_shift - 1);
+    (x.wrapping_mul(i64::from(reduced)).wrapping_add(round) >> total_shift) as i32
 }
 
 /// Per-channel effective scale of convolutions, as computed by TFLite's
@@ -277,6 +331,55 @@ mod tests {
             saturating_rounding_doubling_high_mul(i32::MIN, i32::MIN),
             i32::MAX
         );
+    }
+
+    #[test]
+    fn constrained_multipliers() {
+        assert_eq!(
+            quantize_multiplier_smaller_than_one(0.25),
+            Some(quantize_multiplier(0.25))
+        );
+        assert_eq!(quantize_multiplier_smaller_than_one(1.0), None);
+        assert_eq!(quantize_multiplier_smaller_than_one(0.0), None);
+        assert_eq!(
+            quantize_multiplier_greater_than_one(3.0),
+            Some(quantize_multiplier(3.0))
+        );
+        assert_eq!(quantize_multiplier_greater_than_one(1.0), None);
+        assert_eq!(quantize_multiplier_greater_than_one(f64::INFINITY), None);
+    }
+
+    #[test]
+    fn powers_of_two() {
+        for scale in [1.0, 0.5, 2.0, 1.0 / 32768.0, 0.125 * 1.0005, 4.0 * 0.9995] {
+            assert!(is_near_power_of_two(scale), "{scale}");
+        }
+        for scale in [0.75, 0.3, 9.112_61e-5, 0.125 * 1.003, 0.0, f32::NAN] {
+            assert!(!is_near_power_of_two(scale), "{scale}");
+        }
+    }
+
+    #[test]
+    fn requantize_i64() {
+        // Reference: tflite::MultiplyByQuantizedMultiplier(int64_t, int32_t, int).
+        let m = quantize_multiplier(0.5);
+        assert_eq!(multiply_by_quantized_multiplier_i64(11, m), 6);
+        assert_eq!(multiply_by_quantized_multiplier_i64(-11, m), -5); // rounds half up
+        let small = quantize_multiplier(1.0 / (1u64 << 20) as f64);
+        assert_eq!(
+            multiply_by_quantized_multiplier_i64(1 << 46, small),
+            1 << 26
+        );
+        let m = Multiplier {
+            multiplier: 0x7fff_8000,
+            shift: -1,
+        };
+        // The reduced multiplier saturates at 0x7fff.
+        assert_eq!(multiply_by_quantized_multiplier_i64(1 << 16, m), 0x7fff);
+        let m = quantize_multiplier(3.0);
+        assert_eq!(multiply_by_quantized_multiplier_i64(7, m), 21);
+        // Out-of-range values wrap around without panicking.
+        let _ = multiply_by_quantized_multiplier_i64(i64::MAX, quantize_multiplier(1e30));
     }
 
     #[test]

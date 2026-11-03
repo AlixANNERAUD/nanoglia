@@ -9,6 +9,7 @@
 use nanonn_cmsis_nn_sys as sys;
 use nanonn_core::backend::{EvalCtx, Kernel, KernelPlan};
 use nanonn_core::pod::Pod;
+use nanonn_core::quant;
 use nanonn_core::{BuiltinOp, DataType, OpDesc, OpOptions, Result};
 
 use crate::common;
@@ -48,7 +49,7 @@ fn preprocess_softmax_scaling(
     let max_real_multiplier = ((1i64 << 31) - 1) as f64;
     let real =
         (beta * input_scale * (1i64 << (31 - input_integer_bits)) as f64).min(max_real_multiplier);
-    let m = common::quantize_multiplier_greater_than_one(real)?;
+    let m = quant::quantize_multiplier_greater_than_one(real)?;
     Some((m.multiplier, m.shift))
 }
 

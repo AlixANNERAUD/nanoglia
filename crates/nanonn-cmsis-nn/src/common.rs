@@ -4,7 +4,7 @@
 use core::ffi::c_void;
 
 use nanonn_cmsis_nn_sys as sys;
-use nanonn_core::quant::{self, Multiplier};
+use nanonn_core::quant;
 use nanonn_core::{Activation, DataType, Detail, Dims, Error, OpDesc, Padding, Result, TensorDesc};
 
 /// The backend name used in error details.
@@ -166,24 +166,6 @@ pub(crate) fn output_size_and_padding(
     }
     let total = ((out - 1) * stride + effective_filter - in_size).max(0);
     Some((i32::try_from(out).ok()?, i32::try_from(total / 2).ok()?))
-}
-
-/// TFLite `QuantizeMultiplierSmallerThanOneExp`: `real` must be in `(0, 1)`.
-pub(crate) fn quantize_multiplier_smaller_than_one(real: f64) -> Option<Multiplier> {
-    if !(real > 0.0 && real < 1.0) {
-        return None;
-    }
-    let m = quant::quantize_multiplier(real);
-    (m.shift <= 0).then_some(m)
-}
-
-/// TFLite `QuantizeMultiplierGreaterThanOne`: `real` must be greater than 1.
-pub(crate) fn quantize_multiplier_greater_than_one(real: f64) -> Option<Multiplier> {
-    if !(real > 1.0 && real.is_finite()) {
-        return None;
-    }
-    let m = quant::quantize_multiplier(real);
-    (m.shift >= 0).then_some(m)
 }
 
 /// Converts a CMSIS-NN buffer size to bytes (negative sizes are refused).
