@@ -163,3 +163,20 @@ run = [
   "cargo build --release",
   "arm-none-eabi-size target/thumbv7em-none-eabihf/release/nanoglia-example-nano33ble",
 ]
+
+[tasks.bench]
+description = "Time one inference of each MLPerf Tiny model on the host"
+run = "cargo run -q --release -p nanoglia --example bench"
+
+[tasks.bench-wasm]
+description = "Time one inference of each MLPerf Tiny model compiled to wasm32-wasip1 under wasmtime, without and with SIMD128"
+tools = { "github:WebAssembly/wasi-sdk" = "wasi-sdk-33", wasmtime = "50.0.0" }
+env.CC_wasm32_wasip1 = "wasm32-wasip1-clang"
+env.AR_wasm32_wasip1 = "llvm-ar"
+env.CARGO_TARGET_WASM32_WASIP1_RUNNER = "wasmtime --dir={{config_root}}::{{config_root}}"
+run = [
+  "echo '### wasm32 (scalar)'",
+  "CARGO_TARGET_DIR=target/bench-wasm-scalar cargo run -q --release -p nanoglia --example bench --target wasm32-wasip1",
+  "echo '### wasm32 + simd128'",
+  "CFLAGS_wasm32_wasip1=-msimd128 RUSTFLAGS='-C target-feature=+simd128' CARGO_TARGET_DIR=target/bench-wasm-simd cargo run -q --release -p nanoglia --example bench --target wasm32-wasip1",
+]
