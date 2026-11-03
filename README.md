@@ -10,7 +10,7 @@ nanonn reads TensorFlow Lite (`.tflite`) models straight from flash or RAM, with
 
 It needs no RTOS, no HAL and no vendor SDK. Every byte it uses comes from the allocator you give it: the Rust global allocator, your own allocator, or a static buffer.
 
-> Status: early development. The four MLPerf Tiny int8 reference models run bit-exact with the TFLite reference kernels (anomaly detection within one or two units, see `crates/nanonn/tests/golden.rs`).
+> Status: early development. 123 of the 126 golden cases (per-operator int8, int16 and float32 cases, and the four MLPerf Tiny int8 models) run bit-exact with the TFLite reference kernels; the anomaly-detection model is within one or two units, because LiteRT's reference fully-connected kernel requantizes in floating point (see `crates/nanonn/tests/golden.rs`).
 
 ## Crates
 
