@@ -1,0 +1,30 @@
+version: 2
+updates:
+  # The library workspace, the fuzzer and the firmware example each have their own lockfile.
+  - package-ecosystem: cargo
+    directories: ["/", "/fuzz", "/examples/nano33ble"]
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      cargo-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  # The test oracle (LiteRT, flatbuffers, numpy).
+  - package-ecosystem: uv
+    directory: "/tools/oracle"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      oracle:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
