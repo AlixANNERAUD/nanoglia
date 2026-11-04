@@ -24,6 +24,7 @@ mod softmax;
 mod split;
 mod strided;
 mod transpose;
+mod transpose_conv;
 mod util;
 
 #[cfg(test)]
@@ -111,6 +112,11 @@ impl RustKernels {
             BuiltinOp::CONV_2D => kernels!(
                 #[cfg(feature = "float")]
                 conv::CONV_2D_F32
+            ),
+            BuiltinOp::TRANSPOSE_CONV => kernels!(
+                #[cfg(feature = "float")]
+                transpose_conv::TRANSPOSE_CONV_F32,
+                transpose_conv::TRANSPOSE_CONV_S8
             ),
             BuiltinOp::DEPTHWISE_CONV_2D => kernels!(
                 #[cfg(feature = "float")]

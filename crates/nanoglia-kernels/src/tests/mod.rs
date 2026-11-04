@@ -21,6 +21,7 @@ mod hand_tests;
 mod resize_tests;
 mod slice_tests;
 mod split_tests;
+mod transpose_conv_tests;
 
 /// Sixteen bytes aligned like the interpreter's arena.
 #[derive(Clone, Copy)]
