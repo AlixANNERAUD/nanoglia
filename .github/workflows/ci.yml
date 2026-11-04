@@ -70,6 +70,27 @@ jobs:
           cache-key-suffix: test-${{ matrix.key }}
       - run: mise exec -- cargo test ${{ matrix.args }}
 
+  c:
+    name: C API (${{ matrix.compiler }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    env:
+      CC: ${{ matrix.compiler }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: c-${{ matrix.compiler }}
+      # Checks the header against cbindgen, builds the library with CMake, runs the C tests and
+      # the example with CTest, then builds the example against the installed package.
+      - run: mise run test-c
+
   cross:
     name: Cross (${{ matrix.name }})
     runs-on: ubuntu-latest
@@ -86,11 +107,15 @@ jobs:
             task: cross-wasm32
           - name: wasm32-wasip1 tests under wasmtime
             task: test-wasip1
-          # Builds the Arm and riscv32 libraries, then checks none references the C heap.
+          # Builds the Arm and riscv32 libraries and the C API archive, then checks none
+          # references the C heap.
           - name: no C heap
             task: no-malloc
           - name: Nano 33 BLE firmware
             task: example-nano33ble
+          # The C API's static library for Cortex-M4F, linked without any C library.
+          - name: C library for Cortex-M4F
+            task: cross-c
     steps:
       - uses: actions/checkout@v7
         with:
