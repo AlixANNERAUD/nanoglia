@@ -36,7 +36,7 @@ commit_parsers = [
 [[package]]
 name = "nanoglia"
 changelog_path = "./CHANGELOG.md"
-changelog_include = ["nanoglia-core", "nanoglia-tflite", "nanoglia-cmsis-nn-sys", "nanoglia-cmsis-nn", "nanoglia-kernels"]
+changelog_include = ["nanoglia-core", "nanoglia-tflite", "nanoglia-cmsis-nn-sys", "nanoglia-cmsis-nn", "nanoglia-esp-nn-sys", "nanoglia-esp-nn", "nanoglia-kernels"]
 git_tag_enable = true
 git_tag_name = "v{{ version }}"
 git_release_enable = true
@@ -73,6 +73,20 @@ git_release_enable = false
 [[package]]
 name = "nanoglia-kernels"
 changelog_path = "./crates/nanoglia-kernels/CHANGELOG.md"
+git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_enable = false
+
+[[package]]
+name = "nanoglia-esp-nn-sys"
+changelog_path = "./crates/nanoglia-esp-nn-sys/CHANGELOG.md"
+git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_enable = false
+
+[[package]]
+name = "nanoglia-esp-nn"
+changelog_path = "./crates/nanoglia-esp-nn/CHANGELOG.md"
 git_tag_enable = true
 git_tag_name = "{{ package }}-v{{ version }}"
 git_release_enable = false
