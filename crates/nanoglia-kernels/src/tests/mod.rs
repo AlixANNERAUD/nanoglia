@@ -13,6 +13,7 @@ use std::boxed::Box;
 use std::vec;
 use std::vec::Vec;
 
+mod gather_tests;
 mod golden;
 mod golden_tests;
 mod hand_tests;

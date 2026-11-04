@@ -137,6 +137,14 @@ pub(crate) fn elements(tensor: &TensorDesc<'_>) -> Result<usize> {
     }
 }
 
+/// The product of `dims` as a `u32`, or a shape error for `tensor` if it does not fit (a tensor
+/// with a zero dimension may have huge other ones).
+pub(crate) fn dims_product(dims: &[i32], tensor: &TensorDesc<'_>) -> Result<u32> {
+    dims.iter()
+        .try_fold(1u32, |acc, &d| acc.checked_mul(u32::try_from(d).ok()?))
+        .ok_or_else(|| shape_mismatch(tensor))
+}
+
 /// Fails unless `a` and `b` have the same number of elements; returns it.
 pub(crate) fn same_elements(a: &TensorDesc<'_>, b: &TensorDesc<'_>) -> Result<usize> {
     let n = elements(a)?;

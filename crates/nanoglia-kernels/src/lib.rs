@@ -11,6 +11,7 @@ mod conv;
 mod copy;
 mod elementwise;
 mod fully_connected;
+mod gather;
 mod math;
 mod pad;
 mod pool;
@@ -91,6 +92,7 @@ impl RustKernels {
             BuiltinOp::TRANSPOSE => kernels!(transpose::TRANSPOSE),
             BuiltinOp::SLICE => kernels!(slice::SLICE),
             BuiltinOp::STRIDED_SLICE => kernels!(slice::STRIDED_SLICE),
+            BuiltinOp::GATHER => kernels!(gather::GATHER),
             BuiltinOp::ADD | BuiltinOp::SUB | BuiltinOp::MUL => {
                 kernels!(elementwise::BINARY, elementwise::QUANTIZED_BINARY)
             }
