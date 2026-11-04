@@ -58,9 +58,13 @@ jobs:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
     steps:
+      # No submodules here yet: to write the changelog, release-plz checks out older commits,
+      # and the history goes back to when CMSIS-NN and ESP-NN were vendored files, which git
+      # refuses to restore over checked-out submodules. Before the first release nothing needs
+      # them (cargo-semver-checks has no published baseline). Add `submodules: recursive` back
+      # once v0.1.0 is tagged: release-plz then only walks the commits after that tag.
       - uses: actions/checkout@v7
         with:
-          submodules: recursive
           fetch-depth: 0
           persist-credentials: false
       - uses: jdx/mise-action@v4
