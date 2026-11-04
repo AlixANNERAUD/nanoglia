@@ -14,7 +14,7 @@ use crate::common::{self, nhwc};
 use crate::layout::{read_params, write_params};
 
 /// The `AVERAGE_POOL_2D` kernel.
-pub(crate) static AVERAGE: Kernel = Kernel {
+pub static AVERAGE: Kernel = Kernel {
     name: "cmsis-nn/average_pool2d_s8",
     plan,
     prepare,
@@ -22,7 +22,7 @@ pub(crate) static AVERAGE: Kernel = Kernel {
 };
 
 /// The `MAX_POOL_2D` kernel.
-pub(crate) static MAX: Kernel = Kernel {
+pub static MAX: Kernel = Kernel {
     name: "cmsis-nn/max_pool2d_s8",
     plan,
     prepare,

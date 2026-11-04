@@ -17,7 +17,7 @@ use crate::common;
 use crate::layout::{read_params, write_params};
 
 /// The `ADD` kernel.
-pub(crate) static ADD: Kernel = Kernel {
+pub static ADD: Kernel = Kernel {
     name: "cmsis-nn/add_s8",
     plan,
     prepare,
@@ -25,7 +25,7 @@ pub(crate) static ADD: Kernel = Kernel {
 };
 
 /// The `MUL` kernel.
-pub(crate) static MUL: Kernel = Kernel {
+pub static MUL: Kernel = Kernel {
     name: "cmsis-nn/mul_s8",
     plan,
     prepare,

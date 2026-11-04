@@ -29,7 +29,7 @@ use crate::common::{self, nhwc};
 use crate::layout::{ChannelLayout, read_params};
 
 /// The `CONV_2D` kernel.
-pub(crate) static KERNEL: Kernel = Kernel {
+pub static KERNEL: Kernel = Kernel {
     name: "cmsis-nn/conv2d_s8",
     plan,
     prepare,

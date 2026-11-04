@@ -16,7 +16,7 @@ use crate::common;
 use crate::layout::{read_params, write_params};
 
 /// The `SOFTMAX` kernel.
-pub(crate) static KERNEL: Kernel = Kernel {
+pub static KERNEL: Kernel = Kernel {
     name: "cmsis-nn/softmax_s8",
     plan,
     prepare,

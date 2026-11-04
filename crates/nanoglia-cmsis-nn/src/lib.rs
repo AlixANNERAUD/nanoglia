@@ -27,6 +27,28 @@ pub struct CmsisNn;
 /// The CMSIS-NN backend, to register with the interpreter.
 pub static BACKEND: CmsisNn = CmsisNn;
 
+/// The int8 kernels [`BACKEND`] selects, for backends that run CMSIS-NN in their place (the
+/// ESP-NN backend does when another context is using ESP-NN). Compare the result of
+/// [`Backend::select`] with these to know which kernel an operator gets.
+pub mod kernels {
+    /// `CONV_2D`, int8.
+    pub use crate::conv::KERNEL as CONV_2D_S8;
+    /// `DEPTHWISE_CONV_2D`, int8.
+    pub use crate::depthwise::KERNEL as DEPTHWISE_CONV_2D_S8;
+    /// `ADD`, int8.
+    pub use crate::elementwise::ADD as ADD_S8;
+    /// `MUL`, int8.
+    pub use crate::elementwise::MUL as MUL_S8;
+    /// `FULLY_CONNECTED`, int8.
+    pub use crate::fully_connected::KERNEL as FULLY_CONNECTED_S8;
+    /// `AVERAGE_POOL_2D`, int8.
+    pub use crate::pooling::AVERAGE as AVERAGE_POOL_2D_S8;
+    /// `MAX_POOL_2D`, int8.
+    pub use crate::pooling::MAX as MAX_POOL_2D_S8;
+    /// `SOFTMAX`, int8.
+    pub use crate::softmax::KERNEL as SOFTMAX_S8;
+}
+
 impl Backend for CmsisNn {
     fn name(&self) -> &'static str {
         common::NAME
