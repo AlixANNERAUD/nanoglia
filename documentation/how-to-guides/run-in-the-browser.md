@@ -59,11 +59,13 @@ bytes received from JavaScript into a buffer aligned that way.
 ## 3. Turn on SIMD128
 
 WebAssembly's 128-bit SIMD instructions speed up both the Rust kernels
-and CMSIS-NN's C code. Enable them for both compilers:
+and the C code of CMSIS-NN (and ESP-NN). Enable them for Rust; the build
+scripts of `nanoglia-cmsis-nn-sys` and `nanoglia-esp-nn-sys` see the
+`simd128` target feature and add `-msimd128` to the C compiler
+themselves:
 
 ```sh
 export RUSTFLAGS="-C target-feature=+simd128"
-export CFLAGS_wasm32_unknown_unknown="-isystem $WASI_SDK/share/wasi-sysroot/include/wasm32-wasip1 -msimd128"
 cargo build --release --target wasm32-unknown-unknown
 ```
 
@@ -86,8 +88,8 @@ cargo run --release --target wasm32-wasip1
 ```
 
 `--dir=.` lets the program read the current directory, for example a
-model file. For SIMD128, add `-C target-feature=+simd128` to `RUSTFLAGS`
-and set `CFLAGS_wasm32_wasip1=-msimd128`.
+model file. For SIMD128, add `-C target-feature=+simd128` to `RUSTFLAGS`;
+the C code follows.
 
 In nanoglia's repository:
 

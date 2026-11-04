@@ -89,6 +89,11 @@ fn main() {
         _ => "2",
     };
     build.opt_level_str(opt_level);
+    // WebAssembly: vectorize the ANSI C kernels with SIMD128 when the Rust code uses it.
+    let features = env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or_default();
+    if target.starts_with("wasm") && features.split(',').any(|f| f == "simd128") {
+        build.flag("-msimd128");
+    }
     build.compile("esp_nn");
 
     // Lets the Rust code know which kernels the dispatch functions call.

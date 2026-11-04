@@ -21,7 +21,7 @@ seconds (at least 5 runs) and prints the median time of `compute`.
 `mise run bench-wasm` builds the same program for `wasm32-wasip1` twice,
 in two target directories: scalar, and with SIMD128 for both the Rust
 code (`RUSTFLAGS='-C target-feature=+simd128'`) and the CMSIS-NN C code
-(`CFLAGS_wasm32_wasip1=-msimd128`). It runs both under wasmtime.
+(the build scripts add `-msimd128` to the C code when the `simd128` target feature is on). It runs both under wasmtime.
 
 ## Machine
 

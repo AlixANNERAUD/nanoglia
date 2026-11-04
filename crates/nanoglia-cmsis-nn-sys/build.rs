@@ -57,6 +57,11 @@ fn main() {
     for flag in arm_cpu_flags(&target, &features) {
         build.flag(flag);
     }
+    // WebAssembly: let clang vectorize the portable C code with SIMD128 whenever the Rust code is
+    // built with it (`-C target-feature=+simd128`), so the two never disagree.
+    if target.starts_with("wasm") && features.split(',').any(|f| f == "simd128") {
+        build.flag("-msimd128");
+    }
 
     build.compile("cmsis_nn");
 

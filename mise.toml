@@ -136,6 +136,8 @@ sdk="$(dirname "$(command -v wasm32-wasip1-clang)")/.."
 export CC_wasm32_unknown_unknown=clang AR_wasm32_unknown_unknown=llvm-ar
 export CFLAGS_wasm32_unknown_unknown="-isystem $sdk/share/wasi-sysroot/include/wasm32-wasip1"
 cargo build --workspace --lib --target wasm32-unknown-unknown
+# With SIMD128: the build scripts add -msimd128 to the C code by themselves.
+RUSTFLAGS="$RUSTFLAGS -C target-feature=+simd128" CARGO_TARGET_DIR=target/wasm32-simd128 cargo build --workspace --lib --target wasm32-unknown-unknown
 """
 
 [tasks.test-wasip1]
@@ -146,7 +148,11 @@ env.CC_wasm32_wasip1 = "wasm32-wasip1-clang"
 env.AR_wasm32_wasip1 = "llvm-ar"
 # The golden tests read testdata/ through the repository path compiled into them.
 env.CARGO_TARGET_WASM32_WASIP1_RUNNER = "wasmtime --dir={{config_root}}::{{config_root}}"
-run = "cargo test --workspace --target wasm32-wasip1 --release"
+run = [
+  "cargo test --workspace --target wasm32-wasip1 --release",
+  # SIMD128 (Rust, and the C code through the build scripts) must give the same bytes.
+  "RUSTFLAGS=\"$RUSTFLAGS -C target-feature=+simd128\" CARGO_TARGET_DIR=target/wasip1-simd128 cargo test -p nanoglia --target wasm32-wasip1 --release --test golden --test memory",
+]
 
 [tasks.no-malloc]
 description = "Check that no C library linked into nanoglia references malloc/calloc/realloc/free"
@@ -214,5 +220,5 @@ run = [
   "echo '### wasm32 (scalar)'",
   "CARGO_TARGET_DIR=target/bench-wasm-scalar cargo run -q --release -p nanoglia --example bench --target wasm32-wasip1",
   "echo '### wasm32 + simd128'",
-  "CFLAGS_wasm32_wasip1=-msimd128 RUSTFLAGS='-C target-feature=+simd128' CARGO_TARGET_DIR=target/bench-wasm-simd cargo run -q --release -p nanoglia --example bench --target wasm32-wasip1",
+  "RUSTFLAGS='-C target-feature=+simd128' CARGO_TARGET_DIR=target/bench-wasm-simd cargo run -q --release -p nanoglia --example bench --target wasm32-wasip1",
 ]
