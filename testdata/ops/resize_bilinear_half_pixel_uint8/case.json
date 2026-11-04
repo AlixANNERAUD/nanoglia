@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/resize_bilinear_half_pixel_uint8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "uint8",
+      "shape": [
+        1,
+        5,
+        4,
+        3
+      ],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "uint8",
+      "shape": [
+        1,
+        9,
+        10,
+        3
+      ],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    }
+  ],
+  "tolerance": 0
+}

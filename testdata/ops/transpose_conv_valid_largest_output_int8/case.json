@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/transpose_conv_valid_largest_output_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        3
+      ],
+      "scale": 0.015299380756914616,
+      "zero_point": -69
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        10,
+        10,
+        4
+      ],
+      "scale": 0.025264544412493706,
+      "zero_point": 25
+    }
+  ],
+  "tolerance": 0
+}

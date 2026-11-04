@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/resize_nearest_half_pixel_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int16",
+      "shape": [
+        1,
+        4,
+        5,
+        3
+      ],
+      "scale": 0.00024399999529123306,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int16",
+      "shape": [
+        1,
+        9,
+        7,
+        3
+      ],
+      "scale": 0.00024399999529123306,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

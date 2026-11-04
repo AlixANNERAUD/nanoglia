@@ -30,7 +30,7 @@ import numpy as np
 from ai_edge_litert.interpreter import Interpreter, OpResolverType
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from tflite_builder import ModelBuilder, schema  # noqa: E402
+from tflite_builder import ModelBuilder, schema, tensor_type  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 OPS_DIR = REPO / "testdata" / "ops"
@@ -834,6 +834,276 @@ def movement_cases():
             index_type=np.int64)
 
 
+# --------------------------------------------------------------------------
+# Vision cases: ARG_MAX, ARG_MIN, RESIZE_NEAREST_NEIGHBOR, RESIZE_BILINEAR,
+# TRANSPOSE_CONV
+# --------------------------------------------------------------------------
+
+# LiteRT 2.3 has no int16 ARG_MAX / ARG_MIN, and registers versions 1 and 2
+# only in its reference resolver (bool inputs would be version 3).
+ARG_SPECS = {t: MOVE_SPECS[t] for t in ("f32", "int8", "uint8", "int32")}
+
+
+def arg_min_max(name, op, t, shape, axis, axis_type=np.int32, out_type=np.int32):
+    """ARG_MAX / ARG_MIN over values drawn from a few levels, so that ties
+    are frequent and the first-index rule is exercised."""
+    spec = ARG_SPECS[t]
+    rng = rng_for(name)
+    x = rng.integers(-4, 5, size=shape).astype(np.dtype(spec.dtype))
+    if spec.dtype == "uint8":
+        x = (x.astype(np.int16) + 128).astype(np.uint8)
+    out_shape = list(np.delete(np.array(shape), axis))
+    b = ModelBuilder()
+    xi = add_act(b, "input", spec, shape)
+    ai = b.add_tensor("axis", axis_type, [1], data=np.array([axis], dtype=axis_type))
+    y = b.add_tensor("output", out_type, out_shape)
+    opts = (schema.ArgMaxOptionsT() if op == Op.ARG_MAX else schema.ArgMinOptionsT())
+    opts.outputType = tensor_type(out_type)
+    b.add_operator(op, [xi, ai], [y], opts, version=2 if spec.dtype == I8 else 1)
+    model = b.build([xi], [y])
+    got = run(model, [x])[0]
+    want = (np.argmax if op == Op.ARG_MAX else np.argmin)(x, axis=axis).astype(out_type)
+    if got.dtype != want.dtype or not np.array_equal(got, want):
+        raise AssertionError(f"{name}: LiteRT and NumPy disagree")
+    save_op_case(name, model, [x], tolerance=0)
+
+
+def f32_round(x):
+    """C's `round` (half away from zero) of a non-negative float32."""
+    return int(np.floor(np.float64(x) + 0.5))
+
+
+def nearest_index(v, in_size, out_size, align, half):
+    """TFLite `GetNearestNeighbor`, in float32."""
+    f = np.float32
+    if align and out_size > 1:
+        scale = f(in_size - 1) / f(out_size - 1)
+    else:
+        scale = f(in_size) / f(out_size)
+    x = (f(v) + (f(0.5) if half else f(0.0))) * scale
+    i = min(f32_round(x) if align else int(np.floor(x)), in_size - 1)
+    return max(0, i) if half else i
+
+
+def resize_nearest_ref(x, size, align, half):
+    ys = [nearest_index(v, x.shape[1], size[0], align, half) for v in range(size[0])]
+    xs = [nearest_index(v, x.shape[2], size[1], align, half) for v in range(size[1])]
+    return x[:, ys][:, :, xs]
+
+
+def resize_bilinear_ref(x, size, align, half):
+    """TFLite `ResizeBilinearInteger` for integers (exact), `ResizeBilinear`
+    without fused multiply-adds for float32 (checked with a tolerance)."""
+    n, h, w, c = x.shape
+    oh, ow = size
+    out = np.zeros((n, oh, ow, c), dtype=np.float64 if x.dtype == np.float32 else np.int64)
+    if x.dtype in (np.int8, np.int16):
+        def scale(i, o):
+            if align and o > 1:
+                return ((1 << 10) * (i - 1) + (o - 1) // 2) // (o - 1)
+            return ((1 << 10) * i + o // 2) // o
+
+        def interp(v, s, size_in):
+            scaled = v * s + s // 2 - (1 << 9) if half else v * s
+            lo = max(int(np.trunc(scaled / 1024)), 0)
+            hi = min(int(np.trunc((scaled + 1023) / 1024)), size_in - 1)
+            return scaled, lo, hi
+
+        sh, sw = scale(h, oh), scale(w, ow)
+        xi = x.astype(np.int64)
+        for yy in range(oh):
+            iy, y0, y1 = interp(yy, sh, h)
+            for xx in range(ow):
+                ix, x0, x1 = interp(xx, sw, w)
+                dy, dx = iy - 1024 * y0, ix - 1024 * x0
+                acc = (xi[:, y0, x0] * (1024 - dy) * (1024 - dx) + xi[:, y1, x0] * dy * (1024 - dx)
+                       + xi[:, y0, x1] * (1024 - dy) * dx + xi[:, y1, x1] * dy * dx)
+                rnd = np.where(acc > 0, 1 << 19, -(1 << 19))
+                out[:, yy, xx] = np.trunc((acc + rnd) / (1 << 20))
+        return out.astype(x.dtype)
+    f = np.float32
+    hs = f(h - 1) / f(oh - 1) if align and oh > 1 else f(h) / f(oh)
+    ws = f(w - 1) / f(ow - 1) if align and ow > 1 else f(w) / f(ow)
+
+    def interp_f(v, s, size_in):
+        scaled = (f(v) + f(0.5)) * s - f(0.5) if half else f(v) * s
+        return scaled, max(int(np.floor(scaled)), 0), min(int(np.ceil(scaled)), size_in - 1)
+
+    xf = x.astype(np.float64)
+    for yy in range(oh):
+        iy, y0, y1 = interp_f(yy, hs, h)
+        for xx in range(ow):
+            ix, x0, x1 = interp_f(xx, ws, w)
+            dy, dx = float(iy) - y0, float(ix) - x0
+            out[:, yy, xx] = (xf[:, y0, x0] * (1 - dy) * (1 - dx) + xf[:, y1, x0] * dy * (1 - dx)
+                              + xf[:, y0, x1] * (1 - dy) * dx + xf[:, y1, x1] * dy * dx)
+    return out
+
+
+def resize(name, op, t, shape, size, align=False, half=False):
+    """RESIZE_NEAREST_NEIGHBOR / RESIZE_BILINEAR with a constant size; the
+    output keeps the input quantization, as converters write it."""
+    spec = MOVE_SPECS[t]
+    rng = rng_for(name)
+    x = move_data(rng, spec, shape)
+    out_shape = [shape[0], size[0], size[1], shape[3]]
+    b = ModelBuilder()
+    xi = add_act(b, "input", spec, shape)
+    si = b.add_tensor("size", np.int32, [2], data=np.array(size, dtype=np.int32))
+    y = add_act(b, "output", spec, out_shape)
+    if op == Op.RESIZE_NEAREST_NEIGHBOR:
+        opts = schema.ResizeNearestNeighborOptionsT(alignCorners=align, halfPixelCenters=half)
+        if spec.dtype == I16:
+            ver = 4
+        elif half or align:
+            ver = 3
+        else:
+            ver = 2 if spec.dtype == I8 else 1
+    else:
+        opts = schema.ResizeBilinearOptionsT(alignCorners=align, halfPixelCenters=half)
+        if spec.dtype == I16:
+            ver = 4
+        elif half:
+            ver = 3
+        else:
+            ver = 2 if spec.dtype == I8 else 1
+    b.add_operator(op, [xi, si], [y], opts, version=ver)
+    model = b.build([xi], [y])
+    got = run(model, [x])[0]
+    if op == Op.RESIZE_NEAREST_NEIGHBOR:
+        ok = np.array_equal(got, resize_nearest_ref(x, size, align, half))
+    else:
+        want = resize_bilinear_ref(x, size, align, half)
+        if spec.dtype in (I8, I16):
+            ok = np.array_equal(got, want)
+        elif spec.dtype == "uint8":
+            # The reference rounds `value + 0.5` down: allow the float
+            # rounding of a value close to a half.
+            ok = np.abs(got.astype(np.float64) - (want + 0.5)).max() <= 1.0
+        else:
+            ok = np.allclose(got, want, rtol=1e-5, atol=1e-5)
+    if not ok:
+        raise AssertionError(f"{name}: LiteRT and NumPy disagree")
+    # Nearest neighbor copies values: exact for floats too.
+    save_op_case(name, model, [x], tolerance=0 if op == Op.RESIZE_NEAREST_NEIGHBOR else None)
+
+
+def transpose_conv_size(out, k, stride, padding):
+    """The input size TFLite expects for an output of size `out`
+    (`ComputeOutSize` of the forward convolution)."""
+    if padding == Pad.SAME:
+        return (out + stride - 1) // stride
+    return (out + stride - k) // stride
+
+
+def transpose_conv(name, mode, in_shape, out_ch, k, stride, padding, out_hw, *, bias=True,
+                   omitted_bias=False, act=Act.NONE, per_channel=True):
+    rng = rng_for(name)
+    n, h, w_, c = in_shape
+    if transpose_conv_size(out_hw[0], k, stride, padding) != h or \
+            transpose_conv_size(out_hw[1], k, stride, padding) != w_:
+        raise ValueError(f"{name}: output {out_hw} does not match input {in_shape}")
+    x = uniform(rng, in_shape)
+    w = weights(rng, (out_ch, k, k, c), k * k * c, 0)
+    b_ = rng.normal(0.0, 0.2, size=out_ch).astype(np.float32) if bias else None
+    out_shape = [n, out_hw[0], out_hw[1], out_ch]
+    opts = schema.TransposeConvOptionsT(padding=padding, strideW=stride, strideH=stride,
+                                        fusedActivationFunction=act)
+
+    def build(ins, out):
+        b = ModelBuilder()
+        si = b.add_tensor("output_shape", np.int32, [4], data=np.array(out_shape, np.int32))
+        wi, ws = add_weights(b, "filter", w, ins[0], axis=0, per_channel=per_channel)
+        xi = add_act(b, "input", ins[0], in_shape)
+        bi = add_bias(b, "bias", b_, ins[0], ws)
+        y = add_act(b, "output", out, out_shape)
+        inputs = [si, wi, xi]
+        if bias or omitted_bias:
+            inputs.append(bi)
+        if act != Act.NONE:
+            ver = 4
+        elif bias:
+            ver = 3
+        else:
+            ver = 2 if ins[0].dtype == I8 else 1
+        b.add_operator(Op.TRANSPOSE_CONV, inputs, [y], opts, version=ver)
+        return b.build([xi], [y])
+
+    calibrated_case(name, mode, [x], build)
+
+
+def vision_cases():
+    S = MOVE_SPECS
+    NN, BL = Op.RESIZE_NEAREST_NEIGHBOR, Op.RESIZE_BILINEAR
+    # ARG_MAX / ARG_MIN
+    arg_min_max("arg_max_last_axis_f32", Op.ARG_MAX, "f32", [2, 3, 7], -1)
+    arg_min_max("arg_max_channels_int8", Op.ARG_MAX, "int8", [1, 4, 4, 6], 3)
+    arg_min_max("arg_max_axis0_int64_axis_int32", Op.ARG_MAX, "int32", [5, 6], 0,
+                axis_type=np.int64)
+    arg_min_max("arg_max_1d_uint8", Op.ARG_MAX, "uint8", [10], 0)
+    arg_min_max("arg_min_axis1_int64_out_uint8", Op.ARG_MIN, "uint8", [3, 5, 4], 1,
+                out_type=np.int64)
+    arg_min_max("arg_min_negative_axis_int8", Op.ARG_MIN, "int8", [2, 3, 5], -2)
+    arg_min_max("arg_min_last_axis_int64_f32", Op.ARG_MIN, "f32", [4, 9], 1,
+                axis_type=np.int64, out_type=np.int64)
+
+    # RESIZE_NEAREST_NEIGHBOR
+    for t in ("f32", "int8"):
+        resize(f"resize_nearest_up_{t}", NN, t, [1, 3, 4, 2], [6, 8])
+    resize("resize_nearest_down_odd_int8", NN, "int8", [1, 7, 9, 3], [3, 4])
+    resize("resize_nearest_align_corners_uint8", NN, "uint8", [2, 5, 4, 2], [7, 9], align=True)
+    resize("resize_nearest_half_pixel_int16", NN, "int16", [1, 4, 5, 3], [9, 7], half=True)
+    resize("resize_nearest_half_pixel_down_int8", NN, "int8", [1, 9, 6, 2], [4, 4], half=True)
+    resize("resize_nearest_align_half_f32", NN, "f32", [1, 5, 4, 1], [3, 10], align=True,
+           half=True)
+    resize("resize_nearest_int32", NN, "int32", [1, 2, 3, 2], [5, 3])
+
+    # RESIZE_BILINEAR
+    for t in ("f32", "int8", "int16", "uint8"):
+        resize(f"resize_bilinear_up_{t}", BL, t, [1, 3, 4, 2], [7, 9])
+        resize(f"resize_bilinear_half_pixel_{t}", BL, t, [1, 5, 4, 3], [9, 10], half=True)
+    for t in ("f32", "int8", "uint8"):
+        resize(f"resize_bilinear_align_corners_{t}", BL, t, [2, 4, 5, 2], [7, 6], align=True)
+    for t in ("f32", "int8"):
+        resize(f"resize_bilinear_down_odd_{t}", BL, t, [1, 9, 7, 3], [4, 3])
+    resize("resize_bilinear_half_pixel_down_int16", BL, "int16", [1, 8, 8, 2], [3, 5],
+           half=True)
+    resize("resize_bilinear_half_pixel_large_uint8", BL, "uint8", [1, 8, 8, 4], [23, 29],
+           half=True)
+
+    # TRANSPOSE_CONV
+    for mode in (I8, F32):
+        s = "_" + {I8: "int8", F32: "f32"}[mode]
+        transpose_conv("transpose_conv_3x3_stride2_same" + s, mode, [1, 4, 4, 8], 6, 3, 2,
+                       Pad.SAME, (8, 8))
+        transpose_conv("transpose_conv_3x3_stride1_valid_no_bias" + s, mode, [1, 5, 5, 4], 8, 3,
+                       1, Pad.VALID, (7, 7), bias=False)
+        transpose_conv("transpose_conv_2x2_stride2_valid" + s, mode, [1, 3, 4, 6], 4, 2, 2,
+                       Pad.VALID, (6, 8))
+        transpose_conv("transpose_conv_3x3_stride2_same_odd" + s, mode, [1, 4, 5, 3], 5, 3, 2,
+                       Pad.SAME, (7, 9))
+        transpose_conv("transpose_conv_stride2_same_relu6" + s, mode, [1, 4, 4, 4], 4, 3, 2,
+                       Pad.SAME, (8, 8), act=Act.RELU6)
+        transpose_conv("transpose_conv_deep_stride2_same" + s, mode, [1, 3, 3, 24], 8, 3, 2,
+                       Pad.SAME, (6, 6))
+    transpose_conv("transpose_conv_deep_stride1_same_int8", I8, [1, 4, 4, 20], 6, 3, 1,
+                   Pad.SAME, (4, 4))
+    transpose_conv("transpose_conv_deep_stride2_valid_int8", I8, [1, 3, 4, 17], 5, 4, 2,
+                   Pad.VALID, (8, 10))
+    transpose_conv("transpose_conv_stride3_valid_int8", I8, [1, 3, 3, 4], 4, 2, 3, Pad.VALID,
+                   (8, 8))
+    transpose_conv("transpose_conv_valid_largest_output_int8", I8, [1, 4, 4, 3], 4, 3, 2,
+                   Pad.VALID, (10, 10))
+    transpose_conv("transpose_conv_2x2_stride2_same_odd_int8", I8, [1, 4, 4, 4], 4, 2, 2,
+                   Pad.SAME, (7, 7))
+    transpose_conv("transpose_conv_batch2_omitted_bias_int8", I8, [2, 3, 3, 4], 3, 3, 2,
+                   Pad.SAME, (6, 6), bias=False, omitted_bias=True)
+    transpose_conv("transpose_conv_per_tensor_int8", I8, [1, 3, 3, 5], 4, 3, 2, Pad.SAME,
+                   (6, 6), per_channel=False)
+    transpose_conv("transpose_conv_relu_f32", F32, [1, 3, 3, 2], 3, 4, 2, Pad.SAME, (5, 6),
+                   act=Act.RELU)
+
+
 def op_cases():
     for mode in (I8, F32):
         s = "_" + {I8: "int8", F32: "f32"}[mode]
@@ -951,6 +1221,7 @@ def main():
             shutil.rmtree(d)
     op_cases()
     movement_cases()
+    vision_cases()
     mlperf_cases()
     print(f"{len(CASES)} op cases in {OPS_DIR.relative_to(REPO)}")
     print(f"{len(MLPERF_MODELS)} x {MLPERF_SAMPLES} MLPerf Tiny cases in "

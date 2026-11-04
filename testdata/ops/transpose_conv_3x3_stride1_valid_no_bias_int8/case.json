@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/transpose_conv_3x3_stride1_valid_no_bias_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        1,
+        5,
+        5,
+        4
+      ],
+      "scale": 0.01565246656537056,
+      "zero_point": -64
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        7,
+        7,
+        8
+      ],
+      "scale": 0.04378437623381615,
+      "zero_point": 51
+    }
+  ],
+  "tolerance": 0
+}

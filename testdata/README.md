@@ -42,7 +42,7 @@ Every case directory holds:
 
   - `model`: path of the model, relative to the repository root;
   - `dtype`: one of `int8`, `int16`, `uint8`, `int32`, `int64` (indices fed
-    to `GATHER`), `float32`;
+    to `GATHER`, indices computed by `ARG_MAX` / `ARG_MIN`), `float32`;
   - `scale`, `zero_point`: per-tensor quantization of the tensor; `0.0` and `0`
     for a tensor that is not quantized (float);
   - `tolerance`: how far an output may be from the golden one. For quantized
@@ -80,11 +80,30 @@ resolver registers `STRIDED_SLICE` versions 1 to 4 only, all with the same
 kernel: the ellipsis, new-axis and offset cases declare version 4 instead of
 the 6 or 8 a converter would write.
 
+The vision operators:
+
+- `ARG_MAX` / `ARG_MIN` (`_f32`, `_int8`, `_uint8`, `_int32` inputs; LiteRT
+  2.3 has no int16 version) draw their values from nine levels so that ties
+  are frequent, over several ranks and axes (negative, int64), with int32 or
+  int64 indices; the oracle checks them against NumPy's `argmax` / `argmin`.
+- `RESIZE_NEAREST_NEIGHBOR` and `RESIZE_BILINEAR` (`_f32`, `_int8`,
+  `_uint8`, `_int16`; `_int32` for nearest neighbor) upscale and downscale odd
+  sizes with every combination of `align_corners` and `half_pixel_centers`
+  that LiteRT accepts; input and output share one quantization. The oracle
+  checks nearest neighbor and the fixed-point bilinear path (int8, int16)
+  exactly against NumPy, the float bilinear path (f32, uint8) within a
+  rounding.
+- `TRANSPOSE_CONV` (`_int8` per-channel or per-tensor, `_f32`) covers strides
+  1 to 3, `SAME` and `VALID`, odd output sizes, the largest `VALID` output,
+  more and fewer than 16 input channels (the two CMSIS-NN paths), two batches,
+  fused activations (version 4), with, without and with an omitted bias.
+
 Operators covered: `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`,
 `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`, `SUB`, `MUL`, `MAXIMUM`,
 `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `LOGISTIC`, `TANH`, `RELU`, `RELU6`,
 `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`, `TRANSPOSE`, `SLICE`, `STRIDED_SLICE`,
-`GATHER`, `SPLIT`, `SPLIT_V`.
+`GATHER`, `SPLIT`, `SPLIT_V`, `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`,
+`RESIZE_BILINEAR`, `TRANSPOSE_CONV`.
 
 Not covered: int8 `CONCATENATION` with different input and output
 quantization, which the reference kernel rejects (as TensorFlow Lite Micro does).

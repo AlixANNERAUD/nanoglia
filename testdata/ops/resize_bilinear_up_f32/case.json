@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/resize_bilinear_up_f32/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "float32",
+      "shape": [
+        1,
+        3,
+        4,
+        2
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "float32",
+      "shape": [
+        1,
+        7,
+        9,
+        2
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 1e-05
+}

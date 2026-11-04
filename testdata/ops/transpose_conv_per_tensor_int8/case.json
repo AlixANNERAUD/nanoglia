@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/transpose_conv_per_tensor_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        1,
+        3,
+        3,
+        5
+      ],
+      "scale": 0.015460526570677757,
+      "zero_point": -64
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        6,
+        6,
+        4
+      ],
+      "scale": 0.030132250860333443,
+      "zero_point": 4
+    }
+  ],
+  "tolerance": 0
+}

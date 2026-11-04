@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/transpose_conv_deep_stride1_same_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        20
+      ],
+      "scale": 0.015440323390066624,
+      "zero_point": -65
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        6
+      ],
+      "scale": 0.05135110393166542,
+      "zero_point": -22
+    }
+  ],
+  "tolerance": 0
+}

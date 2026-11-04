@@ -1,0 +1,27 @@
+{
+  "model": "testdata/ops/arg_max_axis0_int64_axis_int32/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int32",
+      "shape": [
+        5,
+        6
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int32",
+      "shape": [
+        6
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}
