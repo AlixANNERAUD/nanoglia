@@ -57,6 +57,7 @@ with a `_` arm.
 | `IndexOutOfRange { index }` | `InvalidArgument` | An input, output, tensor, operator or subgraph index is out of range. |
 | `OutOfMemory { requested }` | `TooLarge` | The allocator refused an allocation of `requested` bytes (`usize::MAX` when a size computation overflowed). |
 | `TensorNotFound` | `NotFound` | No input or output has the requested name. |
+| `Interrupted { op_index }` | `Timeout` | An `Observer` returned `ControlFlow::Break` before operator `op_index`, which did not run. |
 | `Backend { backend, status }` | `RuntimeError` | A C kernel library returned a failure status (`backend` is `"cmsis-nn"`). |
 
 ## Which function returns what
@@ -111,6 +112,8 @@ fail with `Unknown` / `None`; `select` and `plan` must be deterministic.
 | `compute`, `compute_with` | `RuntimeError` / `Backend` | CMSIS-NN returned a failure status. |
 | `compute`, `compute_with` | `InvalidArgument` / `SizeMismatch`, `Misaligned` | A kernel found buffers that do not match its prepared parameters. This does not happen with buffers laid out by `Graph`. |
 | `compute`, `compute_with` | any | A kernel of your own failed. `compute_with` passes the error to `Observer::after`, then returns it. |
+| `compute_with`, `step_with`, `compute_async_with` | `Timeout` / `Interrupted` | The observer stopped the computation ([Run long inferences](../how-to-guides/run-long-inferences.md)). |
+| `step`, `step_with`, `compute_async*` | as `compute` | The same errors as `compute`, for the operator that ran; the inference is then abandoned. |
 
 ### Observed operators: `OpInfo`
 

@@ -30,6 +30,7 @@ are in [`AGENTS.md`](../AGENTS.md).
 | [Convert a PyTorch model](how-to-guides/convert-a-pytorch-model.md) | Produce a full-integer `.tflite` file with litert-torch (or onnx2tf from ONNX) and check it against LiteRT |
 | [Run on a microcontroller](how-to-guides/run-on-a-microcontroller.md) | Run the Nano 33 BLE example, then use nanoglia without a heap in your own Cortex-M or ESP32-S3 firmware |
 | [Run in the browser](how-to-guides/run-in-the-browser.md) | Build for `wasm32-unknown-unknown` with CMSIS-NN, enable SIMD128, run under wasmtime |
+| [Run long inferences](how-to-guides/run-long-inferences.md) | Run an inference one operator at a time with `step`, as a future with `compute_async`, or stop it at a deadline from an observer |
 | [Write a backend](how-to-guides/write-a-backend.md) | Add a backend whose kernels use a driver it borrows, register it with `Graph::load_with`, time each operator with `compute_with` |
 
 ## Explanation

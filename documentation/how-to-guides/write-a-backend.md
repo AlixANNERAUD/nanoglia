@@ -214,6 +214,7 @@ cycles of each operator to a table, read from a clock you pass (on a
 Cortex-M, the DWT cycle counter):
 
 ```rust
+use core::ops::ControlFlow;
 use nanoglia::{Observer, OpInfo};
 
 /// Cycles spent in each operator, summed over the inferences.
@@ -224,8 +225,9 @@ struct Profiler<F: FnMut() -> u32> {
 }
 
 impl<F: FnMut() -> u32> Observer for Profiler<F> {
-    fn before(&mut self, _op: &OpInfo<'_>) {
+    fn before(&mut self, _op: &OpInfo<'_>) -> ControlFlow<()> {
         self.start = (self.clock)();
+        ControlFlow::Continue(())
     }
 
     fn after(&mut self, op: &OpInfo<'_>, _result: &Result<()>) {

@@ -41,7 +41,9 @@ let scores = ctx.output(0)?.as_slice::<i8>()?;
 - **Extensible:** a [`Registry`](https://docs.rs/nanoglia/latest/nanoglia/struct.Registry.html)
   of your own puts your backends first; their kernels may borrow your drivers. An
   [`Observer`](https://docs.rs/nanoglia/latest/nanoglia/trait.Observer.html) passed to
-  `compute_with` sees each operator, to time it or read its output.
+  `compute_with` sees each operator, to time it, read its output or stop at a deadline.
+- **Non-blocking:** `step()` runs one operator at a time, `compute_async()` yields to any async
+  executor between operators.
 - **Safe on untrusted models:** the flatbuffer is fully verified before use; errors carry a
   wasi-nn [`ErrorCode`](https://docs.rs/nanoglia/latest/nanoglia/enum.ErrorCode.html) and a
   precise [`Detail`](https://docs.rs/nanoglia/latest/nanoglia/enum.Detail.html), never a panic.

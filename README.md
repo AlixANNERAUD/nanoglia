@@ -151,7 +151,7 @@ The [documentation](documentation/README.md) follows the [Diátaxis](https://dia
 | | |
 | --- | --- |
 | **Tutorial** | [Run your first inference](documentation/tutorials/first-inference.md) |
-| **How-to guides** | [Size the memory](documentation/how-to-guides/size-memory.md), [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [run in the browser](documentation/how-to-guides/run-in-the-browser.md), [write a backend](documentation/how-to-guides/write-a-backend.md) |
+| **How-to guides** | [Size the memory](documentation/how-to-guides/size-memory.md), [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [run in the browser](documentation/how-to-guides/run-in-the-browser.md), [run long inferences without blocking](documentation/how-to-guides/run-long-inferences.md), [write a backend](documentation/how-to-guides/write-a-backend.md) |
 | **Explanation** | [Architecture](documentation/explanation/architecture.md), [bit-exactness with TensorFlow Lite](documentation/explanation/bit-exactness.md) |
 | **Reference** | [Supported operators](documentation/reference/supported-operators.md), [Cargo features](documentation/reference/features.md), [errors](documentation/reference/errors.md), [memory](documentation/reference/memory.md), [performance](documentation/reference/performance.md), [development tasks](documentation/reference/development-tasks.md) |
 
@@ -198,6 +198,11 @@ example firmware is 181 KB of flash, 54 KB of which is the model.
 copying, and its int8 arithmetic is defined precisely enough to be reproduced bit for bit; the
 whole microcontroller ecosystem (MLPerf Tiny, Edge Impulse, vendor tools) uses it. See
 [bit-exactness](documentation/explanation/bit-exactness.md).
+
+**Does a long inference block my firmware?** No need: `step()` runs one operator at a time
+from any main loop, `compute_async()` yields to an async executor (embassy, RTIC...) between
+operators, and an observer can stop it at a deadline. See
+[run long inferences](documentation/how-to-guides/run-long-inferences.md).
 
 **Does it run in a web browser?** Yes, as WebAssembly, with SIMD128 for speed: see
 [run in the browser](documentation/how-to-guides/run-in-the-browser.md).
