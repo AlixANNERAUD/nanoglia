@@ -29,8 +29,8 @@ let scores = ctx.output(0)?.as_slice::<i8>()?;
 | --- | --- |
 | Models | TensorFlow Lite / LiteRT `.tflite`, **loaded at run time**: update a model over the air without reflashing the firmware |
 | Accuracy | **Bit-exact with TensorFlow Lite**: 123 of 126 golden cases identical byte for byte, including the [MLPerf Tiny](https://github.com/mlcommons/tiny) keyword-spotting, visual-wake-words and image-classification models ([why the other 3 differ](documentation/explanation/bit-exactness.md)) |
-| Memory | **One allocation per model, one per inference context, none per inference**, all from the allocator you pass: the global allocator, your own, or a static buffer. Keyword spotting needs **23.3 KiB** of RAM in total ([measured](documentation/reference/memory.md)) |
-| Speed | CMSIS-NN (Cortex-M DSP and Helium), ESP-NN (ESP32-S3 SIMD); in WebAssembly, SIMD128 makes the models **2 to 3.3 times faster** ([measured](documentation/reference/performance.md)) |
+| Memory | **One allocation per model, one per inference context, none per inference**, all from the allocator you pass: the global allocator, your own, or a static buffer. Keyword spotting needs **23.3 KiB** for the model ([measured](documentation/reference/memory.md)), 28.3 KiB with the stack in a Cortex-M4 firmware ([measured](documentation/reference/performance.md#keyword-spotting-firmware)) |
+| Speed | CMSIS-NN (Cortex-M DSP and Helium), ESP-NN (ESP32-S3 SIMD); in WebAssembly, SIMD128 makes the models **2 to 3.3 times faster** ([measured](documentation/reference/performance.md)). On a laptop CPU (Linux virtual machine), the fastest of the five Rust engines compared on the four MLPerf Tiny models ([compared](documentation/reference/performance.md#compared-with-other-rust-engines)) |
 | Types | int8 (the TinyML standard), int16 (16x8) and float32, 27 operators ([list](documentation/reference/supported-operators.md)) |
 | Safety | Untrusted models are fully verified before use: errors, never panics. The model reader is `#![forbid(unsafe_code)]` and fuzzed in CI |
 | Targets | Cortex-M0+, M4F, M33, ESP32-S3 (Xtensa), RISC-V, WebAssembly and desktops, each built in CI ([see below](#supported-platforms)) |
@@ -134,15 +134,31 @@ As of November 2026:
 | --- | --- | --- | --- | --- | --- |
 | **nanoglia** | ✅ `.tflite` | ✅ | CMSIS-NN, ESP-NN | ✅ | Bit-exact with TensorFlow Lite |
 | [TensorFlow Lite Micro](https://github.com/tensorflow/tflite-micro) | ✅ `.tflite` | ❌ C++ | CMSIS-NN, Ethos-U, ESP-NN (through ESP-IDF) | ✅ (C++) | The reference C++ runtime |
-| [tfmicro](https://crates.io/crates/tfmicro) | ✅ `.tflite` | ✅ bindings | CMSIS-NN (Arm) | ✅ | Rust bindings to a 2020 TensorFlow Lite Micro |
+| [tfmicro](https://crates.io/crates/tfmicro) | ✅ `.tflite` | ✅ bindings | CMSIS-NN (Arm) | ✅ | Rust bindings to a 2020 TensorFlow Lite Micro; does not build with current toolchains (bindgen 0.53 and libclang 22) |
 | [MicroFlow](https://crates.io/crates/microflow) | ❌ compiled in at build time | ✅ | ❌ | ✅ | Pure Rust, model turned into code by a macro |
 | [embedded-nn](https://crates.io/crates/embedded-nn) | ❌ compiled ahead of time | ✅ | ❌ | ✅ | Pure Rust kernels and toolchain |
+| [ember-rs](https://crates.io/crates/ember-infer-core) | ❌ compiled in at build time | ✅ | ESP-NN (separate `ember-esp` backend) | ❌ the reference backend allocates | Fork of MicroFlow with a backend trait |
 | [tract](https://crates.io/crates/tract-tflite) | ✅ ONNX, TFLite... | ✅ | ❌ | ❌ needs `std` | Desktop and server inference |
 
+Measured on the MLPerf Tiny keyword-spotting model, with the same inputs, profiles and machine for
+every engine ([method, versions and all four models](documentation/reference/performance.md#compared-with-other-rust-engines)):
+
+| | Outputs vs TensorFlow Lite (3 classifier models) | Host time | Cortex-M4 firmware: flash | Firmware: RAM |
+| --- | --- | ---: | ---: | ---: |
+| **nanoglia** | Identical on all three | 249 µs | 160.8 KiB | 28.3 KiB |
+| tract (`tract-tflite` 0.23.9) | Wrong; ResNet does not load | 1392 µs | — (needs `std`) | — |
+| MicroFlow 0.1.3 | Off by up to 6; ResNet not supported (ADD) | 2355 µs | 44.2 KiB | 88.6 KiB |
+| embedded-nn 0.2.3 | Wrong scores (SOFTMAX parameters) | 1962 µs | 35.7 KiB | 17.1 KiB |
+| ember-rs 0.1.2 | Off by up to 25 | 4749 µs | 41.6 KiB | 79.2 KiB |
+
+Host times come from a Linux aarch64 virtual machine, not from a microcontroller; the firmware
+(flash includes the model, RAM is static data plus peak stack) ran under a Cortex-M4 emulator.
+
 Pick `nanoglia` when the model must stay a file (updates, several models, user-provided models),
-the firmware must stay a plain Rust binary without a vendor SDK, and memory use must be known
-ahead of time. Pick an ahead-of-time engine when the model never changes and the last few
-kilobytes of flash matter more than hardware acceleration.
+the firmware must stay a plain Rust binary without a vendor SDK, outputs must match TensorFlow
+Lite, and memory use must be known ahead of time. Pick an ahead-of-time engine when the model
+never changes and flash is tight: their keyword-spotting firmware is 3.6 to 4.5 times smaller,
+since nanoglia carries every int8 kernel to run models it only sees at run time.
 
 ## Documentation
 

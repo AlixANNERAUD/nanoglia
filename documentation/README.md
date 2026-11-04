@@ -48,5 +48,5 @@ are in [`AGENTS.md`](../AGENTS.md).
 | [Cargo features](reference/features.md) | Every feature of every crate and what it adds or removes |
 | [Errors](reference/errors.md) | `Error`, `ErrorCode`, every `Detail` variant and the functions that return them |
 | [Memory](reference/memory.md) | The allocation contract, alignment, what the blocks hold, the footprints of the MLPerf Tiny models |
-| [Performance](reference/performance.md) | Host and wasmtime timings of the MLPerf Tiny models, with the machine they come from |
+| [Performance](reference/performance.md) | Host and wasmtime timings of the MLPerf Tiny models, with the machine they come from; comparison with the other Rust engines (outputs, host time, firmware size and RAM) |
 | [Development tasks](reference/development-tasks.md) | The mise tasks and the CI workflows that run them |
