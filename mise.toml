@@ -31,6 +31,10 @@ CFLAGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown
 # through the generic TARGET_* variables.
 ARM_NEWLIB_FLAGS = "-isystem /usr/include/newlib"
 
+[tasks.submodules]
+description = "Check out the CMSIS-NN and ESP-NN submodules (run it after cloning)"
+run = "git submodule update --init --recursive"
+
 [tasks.fmt]
 description = "Check formatting"
 run = "cargo fmt --all --check"

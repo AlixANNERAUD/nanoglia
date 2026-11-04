@@ -46,9 +46,9 @@ the table. `nanoglia` keeps the model a file and the firmware a plain Rust binar
 - **Models loaded at run time.** Store models in flash, receive them over BLE, Wi-Fi or a serial
   link, pick one at boot: `Graph::load_in` verifies the bytes and runs them. Weights stay where
   they are (zero copy), even in memory-mapped flash.
-- **The best kernels of each chip, no SDK.** CMSIS-NN and ESP-NN are vendored and compiled by Cargo
-  with `cc`: no ESP-IDF, no STM32Cube, no CMake. Each operator runs on the fastest backend that
-  supports it exactly, and falls back to portable code otherwise.
+- **The best kernels of each chip, no SDK.** CMSIS-NN and ESP-NN ship with the crates and are
+  compiled by Cargo with `cc`: no ESP-IDF, no STM32Cube, no CMake. Each operator runs on the fastest
+  backend that supports it exactly, and falls back to portable code otherwise.
 - **Your memory, and only yours.** `#![no_std]`, no global allocator needed. A graph takes one block,
   an execution context one more, and `compute` none. Use an `Arena` over a `static` buffer, sized
   ahead of time with `MemoryRequirements`: no fragmentation, no surprises at run time.
@@ -201,11 +201,12 @@ whole microcontroller ecosystem (MLPerf Tiny, Edge Impulse, vendor tools) uses i
 ## Contributing
 
 Issues and pull requests are welcome. The repository uses [mise](https://mise.jdx.dev) for its
-toolchain and tasks: `mise install`, then `mise run check` before pushing. [`AGENTS.md`](AGENTS.md)
+toolchain and tasks: `mise install`, `mise run submodules` (CMSIS-NN and ESP-NN are git
+submodules), then `mise run check` before pushing. [`AGENTS.md`](AGENTS.md)
 describes the invariants (memory contract, bit-exactness, no panics) and the tests, and
 [development tasks](documentation/reference/development-tasks.md) lists every task. Pull request
 titles follow [Conventional Commits](https://www.conventionalcommits.org).
 
 ## License
 
-Apache-2.0, see [`LICENSE`](LICENSE). The vendored CMSIS-NN and ESP-NN sources are Apache-2.0 as well.
+Apache-2.0, see [`LICENSE`](LICENSE). The CMSIS-NN and ESP-NN sources (git submodules of the `-sys` crates) are Apache-2.0 as well.

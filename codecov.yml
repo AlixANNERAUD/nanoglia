@@ -9,6 +9,7 @@ coverage:
         target: auto
         threshold: 1%
 ignore:
-  # Vendored CMSIS-NN sources (C, not instrumented) and the test oracle.
+  # The CMSIS-NN and ESP-NN submodules (C, not instrumented) and the test oracle.
   - "crates/nanoglia-cmsis-nn-sys/cmsis-nn"
+  - "crates/nanoglia-esp-nn-sys/esp-nn"
   - "tools"

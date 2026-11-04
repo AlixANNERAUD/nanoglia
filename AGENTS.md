@@ -46,7 +46,11 @@ cases, see `testdata/README.md`).
 ## Testing
 
 With [mise](https://mise.jdx.dev): `mise install`, then `mise run check` (fmt, clippy, tests,
-Arm cross builds) before pushing. Cargo goes through mbx (mr-boxington, a shared build cache);
+Arm cross builds) before pushing. CMSIS-NN and ESP-NN are git submodules: run `mise run
+submodules` (`git submodule update --init --recursive`) after cloning and after a pinned commit
+changes. Never edit their files; to bump one, follow the `-sys` crate's README (compare the
+compiled files and the package list, run the golden suite), and keep the `include` list of its
+`Cargo.toml` in sync with its build script (`mise run package`). Cargo goes through mbx (mr-boxington, a shared build cache);
 do not run several builds in the same target directory at once.
 
 - `crates/nanoglia/tests/golden.rs` runs every case of `testdata/` end to end. `PENDING` lists

@@ -2,7 +2,8 @@
 
 The [mise](https://mise.jdx.dev) tasks of `mise.toml` and the GitHub
 workflows that run them. `mise install` installs the tools; `mise run
-<task>` runs a task; `mise tasks` lists them. Cargo goes through mbx
+<task>` runs a task; `mise tasks` lists them. CMSIS-NN and ESP-NN are git
+submodules: run `mise run submodules` after cloning. Cargo goes through mbx
 ([mr-boxington](https://github.com/jdx/mr-boxington)), a shared build
 cache that restores the compiled C objects of CMSIS-NN and the build
 script outputs. Do not run several builds in the same target directory
@@ -39,6 +40,7 @@ variable would not survive in mbx's build-script wrapper, so
 
 | Task | Runs | CI |
 | --- | --- | --- |
+| `submodules` | `git submodule update --init --recursive`: checks out CMSIS-NN (`crates/nanoglia-cmsis-nn-sys/cmsis-nn`) and ESP-NN (`crates/nanoglia-esp-nn-sys/esp-nn`) at their pinned tags. Run it after cloning and after a change of a pinned commit; without it the build scripts of the `-sys` crates stop with this command in their message. | every workflow that builds checks out with `submodules: recursive` |
 | `check` | `fmt`, `clippy`, `test`, `cross-arm`, one after the other. Run it before pushing. | — |
 | `fmt` | `cargo fmt --all --check`. | `ci.yml` Format |
 | `clippy` | `cargo clippy --workspace --all-targets`, then the same with `--all-features` (which builds the `single-rounding` mode), with `RUSTFLAGS=-D warnings`. | `ci.yml` Clippy |
@@ -77,3 +79,13 @@ the configuration of the Nano 33 BLE firmware) and "ESP-NN"
 | `coverage.yml` | push to `main`, pull requests | `mise run coverage`, uploaded to Codecov. |
 | `pr-title.yml` | pull requests | Checks that the title follows Conventional Commits (`feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `ci`, `build`, `conf`, `chore`, `style`, `revert`, optional scope, optional `!`). release-plz builds the changelogs from these titles. |
 | `release.yml` | push to `main` | validate (`mise run test`, `mise run package`), then release-plz: opens or updates a release pull request with versions and changelogs (`release-plz.toml`), and publishes to crates.io when it is merged. |
+
+Every job that compiles the CMSIS-NN or ESP-NN sources, and the release
+jobs (which package and publish the `-sys` crates), checks out with
+`submodules: recursive`; Format, Dependencies and Fuzz do not need them.
+Dependabot (`.github/dependabot.yml`) opens weekly pull requests for the
+Cargo, uv and GitHub Actions dependencies and for the two submodules. It
+proposes the head of the upstream default branch: pin the new release tag
+instead, following the bump procedure of the crate's README
+([`nanoglia-cmsis-nn-sys`](../../crates/nanoglia-cmsis-nn-sys/README.md),
+[`nanoglia-esp-nn-sys`](../../crates/nanoglia-esp-nn-sys/README.md)).
