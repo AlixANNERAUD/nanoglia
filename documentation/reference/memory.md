@@ -1,0 +1,154 @@
+# Memory
+
+What nanoglia allocates, when, from where, and how much the MLPerf Tiny
+models need. To size a buffer for your own model, follow
+[Size the memory](../how-to-guides/size-memory.md).
+
+## The contract
+
+nanoglia has no allocator of its own. Every byte of dynamic memory comes
+from the allocator your application passes, and the number of
+allocations is fixed:
+
+| Call | Allocations | Size |
+| --- | --- | --- |
+| `Graph::load_in` (and `load`, `load_with`) | 1, kept until the graph is dropped | `graph_bytes()` |
+| `Graph::init_execution_context_in` (and `init_execution_context`) | 1 per context, kept until the context is dropped | `context_bytes()` |
+| `ExecutionContext::compute` | none | — |
+| `ExecutionContext::set_input`, `input_mut`, `output`, `output_by_name` | none | — |
+| `MemoryRequirements::compute_in` (and `compute`, `compute_with`) | 1, freed before returning | the planner's working memory: 20 bytes per tensor of the model |
+
+The CMSIS-NN C code calls no `malloc`: `mise run no-malloc` checks that
+the C libraries built for the Arm and RISC-V targets reference no C heap
+function. `crates/nanoglia/tests/memory.rs` counts the allocations of a
+graph, a context and two `compute` calls.
+
+### Allocators
+
+Any type implementing `allocator_api2::alloc::Allocator` (re-exported as
+`nanoglia::Allocator`) works, and so does a shared reference to one:
+
+- `Global`, the Rust global allocator, with feature `alloc`
+  (`Graph::load`, `init_execution_context` and
+  `MemoryRequirements::compute` use it);
+- your own allocator, for example over a memory pool of an embedded OS;
+- `Arena`, a bump allocator over a buffer you own, usually a `static`.
+  Pass `&arena` to every call.
+
+`Arena::new(&mut buffer)` (or `Arena::new_uninit` for a
+`[MaybeUninit<u8>]`) hands out blocks from the start of the buffer.
+Freeing the most recent block gives its memory back (stack order);
+other frees are ignored until `Arena::reset`, which needs `&mut` access,
+so nothing allocated from the arena can still be alive.
+`Arena::used()` reports the bytes handed out so far, alignment padding
+included, and `Arena::capacity()` the buffer size.
+
+### Alignment
+
+Every block nanoglia allocates is aligned on `nanoglia::core::ALIGN` = 16
+bytes, enough for every scalar type and for the vector loads of CMSIS-NN
+(Helium). Every activation tensor and the scratch area inside a context
+start on a 16-byte boundary too. `graph_bytes` and `context_bytes` are
+multiples of 16.
+
+With an `Arena`, the first block may lose up to 15 bytes to reach a
+16-byte boundary. `MemoryRequirements::arena_bytes(n)` counts them:
+
+```text
+arena_bytes(n) = 15 + graph_bytes + n × context_bytes
+```
+
+so a buffer of that size is enough whatever its own alignment.
+
+### Model bytes
+
+The graph borrows the model (`Graph<'m, A>`): weights and other constant
+tensors are read where they are, in flash or RAM, and never copied. The
+model bytes must outlive the graph, and each execution context borrows
+its graph.
+
+Constant buffers are read as typed arrays, so each must be aligned for
+its element type (4 bytes for int32 biases, 8 for int64 ones); loading
+fails with `Detail::Misaligned` otherwise. Their alignment in memory
+depends on where the first byte of the model is: place it on a 16-byte
+boundary, as the tests and examples do:
+
+```rust
+#[repr(C, align(16))]
+struct Aligned<T: ?Sized>(T);
+
+static MODEL: &Aligned<[u8]> = &Aligned(*include_bytes!("model.tflite"));
+// Pass `&MODEL.0` to Graph::load_in.
+```
+
+A `Vec<u8>` filled from a file has no such guarantee.
+
+### Inputs are rewritten before each compute
+
+The memory plan places activations whose lifetimes do not overlap at the
+same offsets. Once an operator has consumed a model input, later
+operators may write their outputs over it. Write every input
+(`set_input` or `input_mut`) before each `compute`, even when it has not
+changed. Outputs stay valid until the next call that borrows the context
+mutably (`input_mut`, `set_input`, `compute`).
+
+### Several contexts
+
+A graph is immutable after loading. Create one execution context per
+inference that may run at the same time: each has its own
+activations and scratch memory, and they share the graph block.
+
+## What the blocks hold
+
+The graph block, in this order (`crates/nanoglia/src/graph.rs`):
+
+1. the operator table: for each operator, its kernel (a reference to a
+   static table of three function pointers), the place of its parameters
+   and of its inputs and outputs;
+2. the location of each tensor: constant (offset in the model bytes),
+   activation (offset in the context) or unused;
+3. the tensor indices of every operator's inputs and outputs;
+4. the memory planner's working memory, 20 bytes per tensor: a lifetime
+   interval (16 bytes) and an ordering slot (4 bytes);
+5. the prepared parameters of each operator (multipliers, shifts,
+   shapes, lookup tables), each rounded up to 16 bytes.
+
+The size of items 1 to 3 depends on the pointer width, so a 32-bit
+target needs a little less than a 64-bit host.
+
+The context block holds the activation tensors, placed by a greedy
+planner (largest tensors first, each at the lowest offset that does not
+overlap a tensor alive at the same time, the strategy of TensorFlow Lite
+Micro's `GreedyMemoryPlanner`), then the scratch area shared by all
+operators: the largest scratch any kernel asks for.
+
+## MLPerf Tiny footprints
+
+The four int8 reference models of `testdata/mlperf-tiny/`. Graph and
+context sizes measured with `Graph::graph_bytes()` and
+`context_bytes()` at commit `26f1b25` (2026-11-04), default features:
+
+- 64-bit: Linux aarch64 host, printed by the test
+  `requirements_match_the_loaded_graph` of
+  `crates/nanoglia/tests/memory.rs`
+  (`cargo test -p nanoglia --test memory -- --nocapture`);
+- 32-bit: the same models built for `wasm32-wasip1` and run under
+  wasmtime 50.0.0 with an `Arena`.
+
+| Model | File | Operators | Graph, 64-bit | Context, 64-bit | `arena_bytes(1)`, 64-bit | Graph, 32-bit | Context, 32-bit | `arena_bytes(1)`, 32-bit |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `kws_ref_model` (keyword spotting, DS-CNN) | 53936 B | 13 | 7616 B | 16160 B | 23791 B | 7552 B | 16160 B | 23727 B |
+| `vww_96_int8` (visual wake words, MobileNetV1) | 333288 B | 31 | 29280 B | 64624 B | 93919 B | 29152 B | 64624 B | 93791 B |
+| `pretrainedResnet_quant` (image classification, ResNet-8) | 98496 B | 16 | 6064 B | 51456 B | 57535 B | 6000 B | 51456 B | 57471 B |
+| `ad01_int8` (anomaly detection, FC autoencoder) | 276976 B | 10 | 16208 B | 768 B | 16991 B | 16176 B | 768 B | 16959 B |
+
+The 32-bit `arena_bytes(1)` column is computed with the formula above.
+With an `Arena` whose buffer starts on a 16-byte boundary, `Arena::used()`
+after loading and creating one context is `graph_bytes + context_bytes`
+(23712 B for keyword spotting on 32-bit).
+
+These sizes come from the portable C code of CMSIS-NN. On Arm targets
+with the DSP or Helium extension, CMSIS-NN may ask for different scratch
+sizes, so `context_bytes` can differ: compute the requirements for your
+target ([Size the memory](../how-to-guides/size-memory.md)), or read
+them on the device (the Nano 33 BLE example prints them).
