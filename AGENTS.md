@@ -14,7 +14,7 @@ workspace:
 | `crates/nanoglia` | The library: `Graph` (load, select kernels, plan memory), `ExecutionContext` (arena, `compute`), `Registry`. |
 | `crates/nanoglia-core` | Shared types (`TensorDesc`, `OpDesc`, `Error`/`ErrorCode`/`Detail`), the `Backend`/`Kernel` interface, TFLite-exact quantization math (`quant`), `Arena`, `Block`. |
 | `crates/nanoglia-tflite` | Zero-copy, allocation-free, panic-free `.tflite` verifier and reader (own flatbuffer code, `#![forbid(unsafe_code)]`). |
-| `crates/nanoglia-cmsis-nn-sys` | Vendored CMSIS-NN v8.0.0 integer kernels (`cmsis-nn/`, do not edit; see `VENDORED.md`), built with `cc`, hand-written FFI. |
+| `crates/nanoglia-cmsis-nn-sys` | CMSIS-NN v8.0.0 as a git submodule (`cmsis-nn/`, do not edit; pin and bump procedure in the crate's README): integer kernels only, built with `cc`, hand-written FFI. |
 | `crates/nanoglia-cmsis-nn` | CMSIS-NN backend: int8/int16 conv, depthwise, FC, pooling, softmax, add, mul, pad, min/max. |
 | `crates/nanoglia-esp-nn-sys` | Vendored ESP-NN v1.4.2 (`esp-nn/`, do not edit; see `VENDORED.md`): ANSI C kernels everywhere, ESP32-S3 optimized ones on `xtensa-esp32s3`; hand-written FFI and the ESP-NN scratch try-lock. |
 | `crates/nanoglia-esp-nn` | ESP-NN backend (facade feature `esp-nn`, tried first): int8 conv, depthwise, FC, pooling, softmax, add, mul; runs the CMSIS-NN kernel when another context holds the ESP-NN lock. |

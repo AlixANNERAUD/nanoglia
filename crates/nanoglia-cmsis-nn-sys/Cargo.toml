@@ -6,13 +6,26 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Vendored CMSIS-NN v8.0.0 (integer kernels) built with `cc`, and hand-written `no_std` FFI bindings."
+description = "CMSIS-NN v8.0.0 (integer kernels) built with `cc`, and hand-written `no_std` FFI bindings."
 documentation = "https://docs.rs/nanoglia-cmsis-nn-sys"
 readme = "README.md"
 keywords = ["cmsis-nn", "neural-network", "no-std", "embedded", "ffi"]
 categories = ["external-ffi-bindings", "embedded", "no-std", "no-std::no-alloc"]
 links = "cmsis_nn"
-include = ["/src", "/cmsis-nn", "/build.rs", "/README.md"]
+# Only what the build script reads: the headers and the integer C sources of the `cmsis-nn`
+# submodule (not its float sources, Python bindings, tests or documentation) and its license.
+# The float exclusions match `is_integer_source` in build.rs.
+include = [
+  "/build.rs",
+  "/src",
+  "/README.md",
+  "/cmsis-nn/LICENSE",
+  "/cmsis-nn/Include/**/*.h",
+  "/cmsis-nn/Source/**/*.c",
+  "!/cmsis-nn/Source/**/*_f16.c",
+  "!/cmsis-nn/Source/**/*_f32.c",
+  "!/cmsis-nn/Source/**/*_flt.c",
+]
 
 [features]
 ## Build CMSIS-NN with single-rounding requantization (`CMSIS_NN_USE_SINGLE_ROUNDING`).
