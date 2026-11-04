@@ -31,3 +31,13 @@ updates:
       interval: weekly
     commit-message:
       prefix: "ci"
+
+  # CMSIS-NN and ESP-NN (crates/*-sys). Dependabot proposes the head of the upstream default
+  # branch, not a tag: take its PR as a signal, pin the new release tag instead and follow the
+  # bump procedure of the crate's README (compiled files, package list, golden suite).
+  - package-ecosystem: gitsubmodule
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps)"
