@@ -1,6 +1,6 @@
 [package]
 name = "nanoglia-cmsis-nn"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -21,7 +21,7 @@ single-rounding = ["nanoglia-cmsis-nn-sys/single-rounding", "nanoglia-core/singl
 
 [dependencies]
 nanoglia-core = { workspace = true }
-nanoglia-cmsis-nn-sys = { version = "0.1.0", path = "../nanoglia-cmsis-nn-sys" }
+nanoglia-cmsis-nn-sys = { version = "0.1.1", path = "../nanoglia-cmsis-nn-sys" }
 
 [package.metadata.docs.rs]
 all-features = true

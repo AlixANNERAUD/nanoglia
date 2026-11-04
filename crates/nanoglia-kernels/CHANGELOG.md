@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1](https://github.com/AlixANNERAUD/nanoglia/compare/nanoglia-kernels-v0.1.0...nanoglia-kernels-v0.1.1) - 2026-11-04
+
+### Added
+
+- add ARG_MAX and ARG_MIN to the Rust backend
+- add RESIZE_NEAREST_NEIGHBOR and RESIZE_BILINEAR to the Rust backend
+- add TRANSPOSE_CONV to the Rust backend
+
+### Documentation
+
+- document ARG_MAX, ARG_MIN, RESIZE_* and TRANSPOSE_CONV
+
 ## [0.1.0](https://github.com/AlixANNERAUD/nanoglia/releases/tag/nanoglia-kernels-v0.1.0) - 2026-11-04
 
 ### Added
