@@ -1,5 +1,5 @@
 use crate::planner::{self, Interval};
-use crate::{Encoding, ExecutionContext, Registry, Target};
+use crate::{Encoding, ExecutionContext, Registry, Target, TensorRef};
 use core::alloc::Layout;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
@@ -7,7 +7,7 @@ use nanoglia_core::backend::{BackendKind, Kernel};
 use nanoglia_core::le::LeSlice;
 use nanoglia_core::{
     ALIGN, Allocator, Block, DataType, Detail, Dims, Error, ErrorCode, MAX_OP_INPUTS,
-    MAX_OP_OUTPUTS, OpDesc, Quantization, Result, TensorDesc, align_up,
+    MAX_OP_OUTPUTS, OpCode, OpDesc, Quantization, Result, TensorDesc, align_up,
 };
 use nanoglia_tflite::{Model, SubGraph};
 
@@ -494,6 +494,14 @@ impl<'m, A: Allocator> Graph<'m, A> {
         self.model
     }
 
+    pub(crate) fn tensors(&self) -> GraphTensors<'_> {
+        GraphTensors {
+            subgraph: &self.subgraph,
+            locations: self.locations.get(self.block.as_slice()),
+            model: self.model,
+        }
+    }
+
     pub(crate) fn scratch(&self) -> (usize, usize) {
         (self.scratch_offset, self.scratch_size)
     }
@@ -547,6 +555,38 @@ impl<'m> Graph<'m, nanoglia_core::allocator_api2::alloc::Global> {
         >,
     > {
         self.init_execution_context_in(nanoglia_core::allocator_api2::alloc::Global)
+    }
+}
+
+/// The operators and tensors of a graph, without its allocator type: what an
+/// [`OpInfo`](crate::OpInfo) reads.
+#[derive(Clone, Copy)]
+pub(crate) struct GraphTensors<'a> {
+    subgraph: &'a SubGraph<'a>,
+    locations: &'a [Location],
+    model: &'a [u8],
+}
+
+impl<'a> GraphTensors<'a> {
+    /// The code of operator `index`.
+    pub(crate) fn opcode(&self, index: usize) -> Result<OpCode<'a>> {
+        Ok(self.subgraph.operator(index)?.code)
+    }
+
+    /// A view of tensor `raw` (an index of the model, `-1` for an omitted optional input), its
+    /// activations read from `arena`.
+    pub(crate) fn view(&self, raw: i32, arena: &'a [u8]) -> Result<TensorRef<'a>> {
+        let t = tensor_index(raw, self.locations.len())?
+            .ok_or_else(|| Error::new(ErrorCode::NotFound, Detail::TensorNotFound))?;
+        let desc = self.subgraph.tensor(t)?;
+        let range =
+            |offset: u32, len: u32| offset as usize..(offset as usize).saturating_add(len as usize);
+        let data = match self.locations.get(t).copied().unwrap_or(Location::Unused) {
+            Location::Unused => Some(&[][..]),
+            Location::Const { offset, len } => self.model.get(range(offset, len)),
+            Location::Arena { offset, len } => arena.get(range(offset, len)),
+        };
+        Ok(TensorRef::new(desc, data.ok_or_else(malformed)?))
     }
 }
 
