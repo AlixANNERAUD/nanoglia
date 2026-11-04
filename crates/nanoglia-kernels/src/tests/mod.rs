@@ -18,6 +18,7 @@ mod golden;
 mod golden_tests;
 mod hand_tests;
 mod slice_tests;
+mod split_tests;
 
 /// Sixteen bytes aligned like the interpreter's arena.
 #[derive(Clone, Copy)]

@@ -19,6 +19,7 @@ mod quantize;
 mod reduce;
 mod slice;
 mod softmax;
+mod split;
 mod strided;
 mod transpose;
 mod util;
@@ -93,6 +94,7 @@ impl RustKernels {
             BuiltinOp::SLICE => kernels!(slice::SLICE),
             BuiltinOp::STRIDED_SLICE => kernels!(slice::STRIDED_SLICE),
             BuiltinOp::GATHER => kernels!(gather::GATHER),
+            BuiltinOp::SPLIT | BuiltinOp::SPLIT_V => kernels!(split::SPLIT),
             BuiltinOp::ADD | BuiltinOp::SUB | BuiltinOp::MUL => {
                 kernels!(elementwise::BINARY, elementwise::QUANTIZED_BINARY)
             }
