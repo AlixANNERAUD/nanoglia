@@ -33,7 +33,7 @@ kernel with other types:
 
 The full matrix is in [Supported operators](supported-operators.md).
 
-For an int8-only model, such as the four MLPerf Tiny models, use:
+For an int8-only model, such as the MLPerf Tiny models, use:
 
 ```toml
 nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features = false, features = ["cmsis-nn", "kernels"] }

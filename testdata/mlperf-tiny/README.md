@@ -9,3 +9,4 @@ The int8 reference models of the [MLPerf Tiny](https://github.com/mlcommons/tiny
 | `vww_96_int8.tflite` | Visual wake words (MobileNetV1 0.25) | same |
 | `pretrainedResnet_quant.tflite` | Image classification (ResNet-8) | CONV_2D, ADD, AVERAGE_POOL_2D, RESHAPE, FULLY_CONNECTED, SOFTMAX |
 | `ad01_int8.tflite` | Anomaly detection (FC autoencoder) | FULLY_CONNECTED |
+| `str_ww_ref_model.tflite` | Streaming wakeword (the application slides a window over the audio features; the model has no state) | CONV_2D, DEPTHWISE_CONV_2D, RESHAPE, FULLY_CONNECTED, SOFTMAX |

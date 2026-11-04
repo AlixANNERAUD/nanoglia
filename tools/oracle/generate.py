@@ -40,6 +40,7 @@ GOLDEN_DIR = MLPERF_DIR / "golden"
 MLPERF_MODELS = [
     "ad01_int8",
     "kws_ref_model",
+    "str_ww_ref_model",
     "pretrainedResnet_quant",
     "vww_96_int8",
 ]

@@ -60,15 +60,15 @@ The reference kernels are the plain C++ implementations TFLite
 specifies its operators with, and they compute the same results as
 TensorFlow Lite Micro.
 
-There are 126 cases:
+There are 172 cases:
 
-- 114 single-operator models written by the generator, in int8, 16x8
+- 157 single-operator models written by the generator, in int8, 16x8
   and float32 versions, with weights and output ranges calibrated as a
   converter would;
-- 3 random inputs for each of the 4 MLPerf Tiny models.
+- 3 random inputs for each of the 5 MLPerf Tiny models.
 
 `crates/nanoglia/tests/golden.rs` runs every case end to end and
-requires quantized outputs to match exactly. 123 cases pass; the 3
+requires quantized outputs to match exactly. 169 cases pass; the 3
 `ad01_int8` samples are listed in its `PENDING` table (see below). The
 test fails if a pending case starts to pass, so the list stays current.
 The same tests run compiled to WebAssembly under wasmtime (`mise run

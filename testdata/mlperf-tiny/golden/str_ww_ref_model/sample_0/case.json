@@ -1,0 +1,30 @@
+{
+  "model": "testdata/mlperf-tiny/str_ww_ref_model.tflite",
+  "inputs": [
+    {
+      "name": "serving_default_input_1:0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        30,
+        1,
+        40
+      ],
+      "scale": 0.003701042616739869,
+      "zero_point": -128
+    }
+  ],
+  "outputs": [
+    {
+      "name": "StatefulPartitionedCall:0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        3
+      ],
+      "scale": 0.00390625,
+      "zero_point": -128
+    }
+  ],
+  "tolerance": 0
+}
