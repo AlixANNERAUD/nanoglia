@@ -116,9 +116,10 @@ still suffice. After loading,
 `Graph::load_in` or `init_execution_context_in` fails with
 `ErrorCode::TooLarge` and `Detail::OutOfMemory { requested }`, where
 `requested` is the size of the block that did not fit
-([Errors](../reference/errors.md)). `MemoryRequirements` itself does not
-check the alignment of the model's constant buffers, which only
-`Graph::load_in` does.
+([Errors](../reference/errors.md)). `MemoryRequirements` checks the model
+like `Graph::load_in` does (verification, kernel selection, alignment of the
+constant buffers) but does not run the kernels' `prepare`, so a kernel that
+rejects its parameters is only reported by `Graph::load_in`.
 
 ## See also
 

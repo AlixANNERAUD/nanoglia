@@ -470,6 +470,17 @@ impl MemoryRequirements {
     ) -> Result<Self> {
         let (_, subgraph) = open(builders, encoding)?;
         let sizing = Sizing::compute(registry, target, &subgraph)?;
+        // Reject the models loading would reject for their constants, too.
+        for t in 0..subgraph.tensor_count() {
+            let desc = subgraph.tensor(t)?;
+            if let Some(data) = desc.data
+                && data.as_ptr().align_offset(desc.dtype.size().unwrap_or(1)) != 0
+            {
+                return Err(Error::invalid_argument(Detail::Misaligned {
+                    tensor: t as u32,
+                }));
+            }
+        }
 
         // Only the planner's working memory: the intervals and the order, laid out as in the
         // graph block.

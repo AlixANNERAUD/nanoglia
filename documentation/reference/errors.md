@@ -73,12 +73,13 @@ The precise reason, with the indices that locate it in the model.
 | `UnsupportedOperation` / `UnsupportedOp` | No backend claims operator `op_index`: operator, types, shapes or options outside [Supported operators](supported-operators.md), or a feature that would provide it is off ([Cargo features](features.md)). Option values the reader does not know give the same error. | Check the matrix; enable the feature; change the model. |
 | `UnsupportedOperation` / `ShapeMismatch` | An activation tensor has a dynamic (negative) dimension. | Export with static shapes. |
 | `UnsupportedOperation` / `None` | `Target::Npu` and no operator runs on an NPU backend. | Use `Target::Auto` or `Target::Cpu`. |
-| `InvalidArgument` / `Misaligned` | A constant buffer of the model is not aligned for its type. Only `load*` checks this. | Place the model bytes on a 16-byte boundary ([Memory](memory.md#model-bytes)). |
+| `InvalidArgument` / `Misaligned` | A constant buffer of the model is not aligned for its type. | Place the model bytes on a 16-byte boundary ([Memory](memory.md#model-bytes)). |
 | `TooLarge` / `OutOfMemory` | The allocator refused the graph block (`load*`) or the planner's working memory (`compute*`). | Give a larger arena ([Size the memory](../how-to-guides/size-memory.md)). |
 
 A kernel's `prepare` can also fail while loading (for example
 `InvalidArgument` / `SizeMismatch` when a bias buffer is shorter than its
-shape says).
+shape says). `MemoryRequirements::compute*` does not run `prepare`, so only
+`load*` reports these.
 
 ### Creating a context: `Graph::init_execution_context`, `init_execution_context_in`
 
