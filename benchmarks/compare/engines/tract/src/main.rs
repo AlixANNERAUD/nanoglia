@@ -12,8 +12,8 @@ fn main() {
                 // The full chain quotes whole flatbuffer tables: keep the operator and the cause.
                 let chain = format!("{e:#}");
                 let operator = chain
-                    .split("builtin_code: ")
-                    .nth(1)
+                    .rsplit("builtin_code: ")
+                    .next()
                     .and_then(|rest| rest.split([',', ' ']).next())
                     .unwrap_or("?");
                 let reason = format!("load fails on {operator}: {}", e.root_cause());

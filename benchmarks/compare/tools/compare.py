@@ -75,7 +75,8 @@ def environment() -> list[tuple[str, str]]:
             line.split(":", 1) for line in sh("lscpu", env={**os.environ, "LC_ALL": "C"}).splitlines()
             if ":" in line
         )
-        cpu = f"{info.get('Vendor ID', '?').strip()} {info.get('Model name', '').strip()}".strip()
+        model = info.get("Model name", "").strip().strip("-")
+        cpu = f"{info.get('Vendor ID', '?').strip()} {model}".strip()
     except (OSError, subprocess.CalledProcessError):
         pass
     gcc = sh("arm-none-eabi-gcc", "--version").splitlines()[0]
