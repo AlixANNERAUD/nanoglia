@@ -200,6 +200,27 @@ pub struct Pool2DOptions {
     pub activation: Activation,
 }
 
+/// Options of `STRIDED_SLICE`.
+///
+/// Bit `i` of a mask refers to element `i` of the `begin`, `end` and `strides` inputs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub struct StridedSliceOptions {
+    /// Axes whose `begin` is ignored: the slice starts at the first element (the last one for a
+    /// negative stride).
+    pub begin_mask: i32,
+    /// Axes whose `end` is ignored: the slice runs to the last element (the first one for a
+    /// negative stride).
+    pub end_mask: i32,
+    /// The axis standing for as many full axes as needed to cover the input (`...`).
+    pub ellipsis_mask: i32,
+    /// Axes inserted with size 1 (`tf.newaxis`).
+    pub new_axis_mask: i32,
+    /// Axes taken at index `begin` and removed from the output.
+    pub shrink_axis_mask: i32,
+    /// Whether `end` holds sizes relative to `begin` instead of indices.
+    pub offset: bool,
+}
+
 /// Options decoded from the model for the operators nanoglia knows.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 #[non_exhaustive]
@@ -246,6 +267,21 @@ pub enum OpOptions<'a> {
     Squeeze {
         /// The axes to squeeze; empty means all dimensions of size 1.
         dims: crate::le::LeSlice<'a, i32>,
+    },
+    /// `STRIDED_SLICE`.
+    StridedSlice(StridedSliceOptions),
+    /// `GATHER`.
+    Gather {
+        /// The axis of the input the indices select along (may be negative).
+        axis: i32,
+        /// The number of leading batch dimensions shared by the input and the indices (may be
+        /// negative).
+        batch_dims: i32,
+    },
+    /// `SPLIT`, `SPLIT_V`.
+    Split {
+        /// The number of outputs.
+        num_splits: i32,
     },
     /// Raw options of a custom operator.
     Custom(&'a [u8]),

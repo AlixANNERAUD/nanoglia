@@ -458,6 +458,53 @@ fn decodes_options() {
         .with_options(9, vec![(0, Field::F32(2.0))]);
     assert_eq!(decode(softmax), "Softmax { beta: 2.0 }");
 
+    let strided_slice = Spec::default().with_opcode(45).with_options(
+        32,
+        vec![
+            (0, Field::I32(1)),
+            (1, Field::I32(2)),
+            (2, Field::I32(4)),
+            (3, Field::I32(8)),
+            (4, Field::I32(16)),
+            (5, Field::U8(1)),
+        ],
+    );
+    assert_eq!(
+        decode(strided_slice),
+        "StridedSlice(StridedSliceOptions { begin_mask: 1, end_mask: 2, ellipsis_mask: 4, \
+         new_axis_mask: 8, shrink_axis_mask: 16, offset: true })"
+    );
+    assert_eq!(
+        decode(Spec::default().with_opcode(45)),
+        "StridedSlice(StridedSliceOptions { begin_mask: 0, end_mask: 0, ellipsis_mask: 0, \
+         new_axis_mask: 0, shrink_axis_mask: 0, offset: false })"
+    );
+
+    let gather = Spec::default()
+        .with_opcode(36)
+        .with_options(23, vec![(0, Field::I32(-1)), (1, Field::I32(1))]);
+    assert_eq!(decode(gather), "Gather { axis: -1, batch_dims: 1 }");
+    assert_eq!(
+        decode(Spec::default().with_opcode(36)),
+        "Gather { axis: 0, batch_dims: 0 }"
+    );
+
+    let split = Spec::default()
+        .with_opcode(49)
+        .with_options(35, vec![(0, Field::I32(3))]);
+    assert_eq!(decode(split), "Split { num_splits: 3 }");
+    let split_v = Spec::default()
+        .with_opcode(102)
+        .with_options(79, vec![(0, Field::I32(2))]);
+    assert_eq!(decode(split_v), "Split { num_splits: 2 }");
+    // SPLIT carrying `SplitVOptions` is malformed.
+    malformed(
+        &Spec::default()
+            .with_opcode(49)
+            .with_options(79, vec![])
+            .bytes(),
+    );
+
     // Operators whose options nanoglia does not decode.
     let reshape = Spec::default()
         .with_opcode(22)

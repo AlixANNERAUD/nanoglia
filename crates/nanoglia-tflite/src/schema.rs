@@ -158,11 +158,15 @@ pub(crate) mod builtin_options {
     pub(crate) const CONCATENATION: u8 = 10;
     pub(crate) const ADD: u8 = 11;
     pub(crate) const MUL: u8 = 21;
+    pub(crate) const GATHER: u8 = 23;
     pub(crate) const REDUCER: u8 = 27;
     pub(crate) const SUB: u8 = 28;
     pub(crate) const DIV: u8 = 29;
     pub(crate) const SQUEEZE: u8 = 30;
+    pub(crate) const STRIDED_SLICE: u8 = 32;
+    pub(crate) const SPLIT: u8 = 35;
     pub(crate) const LEAKY_RELU: u8 = 75;
+    pub(crate) const SPLIT_V: u8 = 79;
 }
 
 /// `table Conv2DOptions`.
@@ -237,4 +241,25 @@ pub(crate) mod squeeze {
 /// `table LeakyReluOptions`.
 pub(crate) mod leaky_relu {
     pub(crate) const ALPHA: u16 = 0;
+}
+
+/// `table GatherOptions`.
+pub(crate) mod gather {
+    pub(crate) const AXIS: u16 = 0;
+    pub(crate) const BATCH_DIMS: u16 = 1;
+}
+
+/// `table StridedSliceOptions`.
+pub(crate) mod strided_slice {
+    pub(crate) const BEGIN_MASK: u16 = 0;
+    pub(crate) const END_MASK: u16 = 1;
+    pub(crate) const ELLIPSIS_MASK: u16 = 2;
+    pub(crate) const NEW_AXIS_MASK: u16 = 3;
+    pub(crate) const SHRINK_AXIS_MASK: u16 = 4;
+    pub(crate) const OFFSET: u16 = 5;
+}
+
+/// `table SplitOptions`, `table SplitVOptions`.
+pub(crate) mod split {
+    pub(crate) const NUM_SPLITS: u16 = 0;
 }

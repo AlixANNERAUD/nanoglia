@@ -3,13 +3,13 @@
 use nanoglia_core::le::LeScalar;
 use nanoglia_core::{
     Activation, BuiltinOp, Conv2DOptions, DepthwiseConv2DOptions, Detail, Error,
-    FullyConnectedOptions, OpOptions, Padding, Pool2DOptions, Result,
+    FullyConnectedOptions, OpOptions, Padding, Pool2DOptions, Result, StridedSliceOptions,
 };
 
 use crate::fb::Table;
 use crate::schema::{
     builtin_options as ty, concatenation, conv_2d, depthwise_conv_2d, elementwise, fully_connected,
-    leaky_relu, operator, pool_2d, reducer, softmax, squeeze,
+    gather, leaky_relu, operator, pool_2d, reducer, softmax, split, squeeze, strided_slice,
 };
 
 /// The `BuiltinOptions` union type carried by `op`, for the operators whose options are decoded.
@@ -32,6 +32,10 @@ pub(crate) fn expected_type(op: BuiltinOp) -> Option<u8> {
         | BuiltinOp::REDUCE_PROD => ty::REDUCER,
         BuiltinOp::LEAKY_RELU => ty::LEAKY_RELU,
         BuiltinOp::SQUEEZE => ty::SQUEEZE,
+        BuiltinOp::STRIDED_SLICE => ty::STRIDED_SLICE,
+        BuiltinOp::GATHER => ty::GATHER,
+        BuiltinOp::SPLIT => ty::SPLIT,
+        BuiltinOp::SPLIT_V => ty::SPLIT_V,
         _ => return None,
     })
 }
@@ -88,6 +92,16 @@ pub(crate) fn verify(ty: u8, table: &Table<'_>) -> Result<()> {
         ty::MUL | ty::DIV => &[(elementwise::FUSED_ACTIVATION_FUNCTION, BYTE)],
         ty::REDUCER => &[(reducer::KEEP_DIMS, BYTE)],
         ty::LEAKY_RELU => &[(leaky_relu::ALPHA, INT)],
+        ty::STRIDED_SLICE => &[
+            (strided_slice::BEGIN_MASK, INT),
+            (strided_slice::END_MASK, INT),
+            (strided_slice::ELLIPSIS_MASK, INT),
+            (strided_slice::NEW_AXIS_MASK, INT),
+            (strided_slice::SHRINK_AXIS_MASK, INT),
+            (strided_slice::OFFSET, BYTE),
+        ],
+        ty::GATHER => &[(gather::AXIS, INT), (gather::BATCH_DIMS, INT)],
+        ty::SPLIT | ty::SPLIT_V => &[(split::NUM_SPLITS, INT)],
         _ => &[],
     };
     for &(id, size) in scalars {
@@ -229,6 +243,21 @@ pub(crate) fn decode<'m>(
                 Some(table) => table.slice(squeeze::SQUEEZE_DIMS)?,
                 None => nanoglia_core::le::LeSlice::EMPTY,
             },
+        },
+        ty::STRIDED_SLICE => OpOptions::StridedSlice(StridedSliceOptions {
+            begin_mask: f.scalar(strided_slice::BEGIN_MASK, 0)?,
+            end_mask: f.scalar(strided_slice::END_MASK, 0)?,
+            ellipsis_mask: f.scalar(strided_slice::ELLIPSIS_MASK, 0)?,
+            new_axis_mask: f.scalar(strided_slice::NEW_AXIS_MASK, 0)?,
+            shrink_axis_mask: f.scalar(strided_slice::SHRINK_AXIS_MASK, 0)?,
+            offset: f.flag(strided_slice::OFFSET)?,
+        }),
+        ty::GATHER => OpOptions::Gather {
+            axis: f.scalar(gather::AXIS, 0)?,
+            batch_dims: f.scalar(gather::BATCH_DIMS, 0)?,
+        },
+        ty::SPLIT | ty::SPLIT_V => OpOptions::Split {
+            num_splits: f.scalar(split::NUM_SPLITS, 0)?,
         },
         _ => OpOptions::None,
     })
