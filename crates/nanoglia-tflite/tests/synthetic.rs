@@ -505,6 +505,85 @@ fn decodes_options() {
             .bytes(),
     );
 
+    let arg_max = Spec::default()
+        .with_opcode(56)
+        .with_options(40, vec![(0, Field::I8(4))]);
+    assert_eq!(decode(arg_max), "ArgMinMax { output_type: I64 }");
+    let arg_min = Spec::default()
+        .with_opcode(79)
+        .with_options(57, vec![(0, Field::I8(2))]);
+    assert_eq!(decode(arg_min), "ArgMinMax { output_type: I32 }");
+    // Absent table: the schema default, FLOAT32 (refused by the kernels, as in TFLite).
+    assert_eq!(
+        decode(Spec::default().with_opcode(56)),
+        "ArgMinMax { output_type: F32 }"
+    );
+    // ARG_MAX carrying `ArgMinOptions` is malformed.
+    malformed(
+        &Spec::default()
+            .with_opcode(56)
+            .with_options(57, vec![])
+            .bytes(),
+    );
+
+    // The deprecated `new_height` and `new_width` (fields 0 and 1) are ignored.
+    let bilinear = Spec::default().with_opcode(23).with_options(
+        15,
+        vec![
+            (0, Field::I32(9)),
+            (1, Field::I32(9)),
+            (2, Field::U8(1)),
+            (3, Field::U8(0)),
+        ],
+    );
+    assert_eq!(
+        decode(bilinear),
+        "Resize { align_corners: true, half_pixel_centers: false }"
+    );
+    let nearest = Spec::default()
+        .with_opcode(97)
+        .with_options(74, vec![(1, Field::U8(1))]);
+    assert_eq!(
+        decode(nearest),
+        "Resize { align_corners: false, half_pixel_centers: true }"
+    );
+    assert_eq!(
+        decode(Spec::default().with_opcode(97)),
+        "Resize { align_corners: false, half_pixel_centers: false }"
+    );
+    // RESIZE_BILINEAR carrying `ResizeNearestNeighborOptions` is malformed.
+    malformed(
+        &Spec::default()
+            .with_opcode(23)
+            .with_options(74, vec![])
+            .bytes(),
+    );
+
+    let transpose_conv = Spec::default().with_opcode(67).with_options(
+        49,
+        vec![
+            (0, Field::I8(1)),
+            (1, Field::I32(2)),
+            (2, Field::I32(3)),
+            (3, Field::I8(3)),
+            (4, Field::I8(2)),
+        ],
+    );
+    assert_eq!(
+        decode(transpose_conv),
+        "TransposeConv(TransposeConvOptions { padding: Valid, stride_w: 2, stride_h: 3, \
+         activation: Relu6 })"
+    );
+    // Versions 1 to 3 have no fused activation.
+    let transpose_conv = Spec::default()
+        .with_opcode(67)
+        .with_options(49, vec![(1, Field::I32(1)), (2, Field::I32(1))]);
+    assert_eq!(
+        decode(transpose_conv),
+        "TransposeConv(TransposeConvOptions { padding: Same, stride_w: 1, stride_h: 1, \
+         activation: None })"
+    );
+
     // Operators whose options nanoglia does not decode.
     let reshape = Spec::default()
         .with_opcode(22)
@@ -560,6 +639,41 @@ fn unknown_enum_values() {
             }
         );
     }
+    // Unknown ARG_MAX output type, TRANSPOSE_CONV padding and activation.
+    for (opcode, ty, options) in [
+        (56, 40, vec![(0, Field::I8(23))]),
+        (67, 49, vec![(0, Field::I8(2))]),
+        (67, 49, vec![(3, Field::I8(7))]),
+    ] {
+        let bytes = Spec::default()
+            .with_opcode(opcode)
+            .with_options(ty, options)
+            .bytes();
+        let model = Model::parse(&bytes).unwrap();
+        let err = model.subgraph(0).unwrap().operator(0).unwrap_err();
+        assert_eq!(
+            err.detail,
+            Detail::UnsupportedOp {
+                op_index: 0,
+                opcode
+            }
+        );
+    }
+}
+
+#[test]
+fn options_fields_must_fit_their_table() {
+    // A 1-byte field where the schema has a 4-byte one, at the end of the table: reading it would
+    // run past the table, so the verifier refuses the model.
+    let spec = Spec::default()
+        .with_opcode(67)
+        .with_options(49, vec![(0, Field::I8(0)), (2, Field::U8(1))]);
+    malformed(&spec.bytes());
+    // The same table with a 4-byte stride is fine.
+    let spec = Spec::default()
+        .with_opcode(67)
+        .with_options(49, vec![(0, Field::I8(0)), (2, Field::I32(1))]);
+    assert!(Model::parse(&spec.bytes()).is_ok());
 }
 
 #[test]

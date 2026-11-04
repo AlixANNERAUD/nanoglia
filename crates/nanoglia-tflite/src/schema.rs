@@ -157,6 +157,7 @@ pub(crate) mod builtin_options {
     pub(crate) const SOFTMAX: u8 = 9;
     pub(crate) const CONCATENATION: u8 = 10;
     pub(crate) const ADD: u8 = 11;
+    pub(crate) const RESIZE_BILINEAR: u8 = 15;
     pub(crate) const MUL: u8 = 21;
     pub(crate) const GATHER: u8 = 23;
     pub(crate) const REDUCER: u8 = 27;
@@ -165,6 +166,10 @@ pub(crate) mod builtin_options {
     pub(crate) const SQUEEZE: u8 = 30;
     pub(crate) const STRIDED_SLICE: u8 = 32;
     pub(crate) const SPLIT: u8 = 35;
+    pub(crate) const ARG_MAX: u8 = 40;
+    pub(crate) const TRANSPOSE_CONV: u8 = 49;
+    pub(crate) const ARG_MIN: u8 = 57;
+    pub(crate) const RESIZE_NEAREST_NEIGHBOR: u8 = 74;
     pub(crate) const LEAKY_RELU: u8 = 75;
     pub(crate) const SPLIT_V: u8 = 79;
 }
@@ -262,4 +267,30 @@ pub(crate) mod strided_slice {
 /// `table SplitOptions`, `table SplitVOptions`.
 pub(crate) mod split {
     pub(crate) const NUM_SPLITS: u16 = 0;
+}
+
+/// `table ArgMaxOptions`, `table ArgMinOptions`.
+pub(crate) mod arg_min_max {
+    pub(crate) const OUTPUT_TYPE: u16 = 0;
+}
+
+/// `table ResizeBilinearOptions` (fields 0 and 1, `new_height` and `new_width`, are deprecated).
+pub(crate) mod resize_bilinear {
+    pub(crate) const ALIGN_CORNERS: u16 = 2;
+    pub(crate) const HALF_PIXEL_CENTERS: u16 = 3;
+}
+
+/// `table ResizeNearestNeighborOptions`.
+pub(crate) mod resize_nearest_neighbor {
+    pub(crate) const ALIGN_CORNERS: u16 = 0;
+    pub(crate) const HALF_PIXEL_CENTERS: u16 = 1;
+}
+
+/// `table TransposeConvOptions`.
+pub(crate) mod transpose_conv {
+    pub(crate) const PADDING: u16 = 0;
+    pub(crate) const STRIDE_W: u16 = 1;
+    pub(crate) const STRIDE_H: u16 = 2;
+    pub(crate) const FUSED_ACTIVATION_FUNCTION: u16 = 3;
+    pub(crate) const QUANTIZED_BIAS_TYPE: u16 = 4;
 }

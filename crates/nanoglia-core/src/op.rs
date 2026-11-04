@@ -1,4 +1,4 @@
-use crate::TensorDesc;
+use crate::{DataType, TensorDesc};
 
 /// A TFLite builtin operator code (`BuiltinOperator` in the TFLite schema).
 ///
@@ -221,6 +221,19 @@ pub struct StridedSliceOptions {
     pub offset: bool,
 }
 
+/// Options of `TRANSPOSE_CONV`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub struct TransposeConvOptions {
+    /// Padding scheme of the convolution this operator is the transpose of.
+    pub padding: Padding,
+    /// Horizontal stride.
+    pub stride_w: i32,
+    /// Vertical stride.
+    pub stride_h: i32,
+    /// Fused activation (operator version 4 and later; `None` before).
+    pub activation: Activation,
+}
+
 /// Options decoded from the model for the operators nanoglia knows.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 #[non_exhaustive]
@@ -283,6 +296,21 @@ pub enum OpOptions<'a> {
         /// The number of outputs.
         num_splits: i32,
     },
+    /// `ARG_MAX`, `ARG_MIN`.
+    ArgMinMax {
+        /// The type of the output indices (TFLite accepts `I32` and `I64`; the schema default,
+        /// when the options are absent, is `F32`).
+        output_type: DataType,
+    },
+    /// `RESIZE_BILINEAR`, `RESIZE_NEAREST_NEIGHBOR`.
+    Resize {
+        /// Whether the corner pixels of the input and the output are aligned.
+        align_corners: bool,
+        /// Whether pixels are sampled at their centers (`+ 0.5`).
+        half_pixel_centers: bool,
+    },
+    /// `TRANSPOSE_CONV`.
+    TransposeConv(TransposeConvOptions),
     /// Raw options of a custom operator.
     Custom(&'a [u8]),
 }

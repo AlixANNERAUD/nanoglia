@@ -2,14 +2,16 @@
 
 use nanoglia_core::le::LeScalar;
 use nanoglia_core::{
-    Activation, BuiltinOp, Conv2DOptions, DepthwiseConv2DOptions, Detail, Error,
+    Activation, BuiltinOp, Conv2DOptions, DataType, DepthwiseConv2DOptions, Detail, Error,
     FullyConnectedOptions, OpOptions, Padding, Pool2DOptions, Result, StridedSliceOptions,
+    TransposeConvOptions,
 };
 
 use crate::fb::Table;
 use crate::schema::{
-    builtin_options as ty, concatenation, conv_2d, depthwise_conv_2d, elementwise, fully_connected,
-    gather, leaky_relu, operator, pool_2d, reducer, softmax, split, squeeze, strided_slice,
+    arg_min_max, builtin_options as ty, concatenation, conv_2d, depthwise_conv_2d, elementwise,
+    fully_connected, gather, leaky_relu, operator, pool_2d, reducer, resize_bilinear,
+    resize_nearest_neighbor, softmax, split, squeeze, strided_slice, transpose_conv,
 };
 
 /// The `BuiltinOptions` union type carried by `op`, for the operators whose options are decoded.
@@ -36,6 +38,11 @@ pub(crate) fn expected_type(op: BuiltinOp) -> Option<u8> {
         BuiltinOp::GATHER => ty::GATHER,
         BuiltinOp::SPLIT => ty::SPLIT,
         BuiltinOp::SPLIT_V => ty::SPLIT_V,
+        BuiltinOp::ARG_MAX => ty::ARG_MAX,
+        BuiltinOp::ARG_MIN => ty::ARG_MIN,
+        BuiltinOp::RESIZE_BILINEAR => ty::RESIZE_BILINEAR,
+        BuiltinOp::RESIZE_NEAREST_NEIGHBOR => ty::RESIZE_NEAREST_NEIGHBOR,
+        BuiltinOp::TRANSPOSE_CONV => ty::TRANSPOSE_CONV,
         _ => return None,
     })
 }
@@ -102,6 +109,22 @@ pub(crate) fn verify(ty: u8, table: &Table<'_>) -> Result<()> {
         ],
         ty::GATHER => &[(gather::AXIS, INT), (gather::BATCH_DIMS, INT)],
         ty::SPLIT | ty::SPLIT_V => &[(split::NUM_SPLITS, INT)],
+        ty::ARG_MAX | ty::ARG_MIN => &[(arg_min_max::OUTPUT_TYPE, BYTE)],
+        ty::RESIZE_BILINEAR => &[
+            (resize_bilinear::ALIGN_CORNERS, BYTE),
+            (resize_bilinear::HALF_PIXEL_CENTERS, BYTE),
+        ],
+        ty::RESIZE_NEAREST_NEIGHBOR => &[
+            (resize_nearest_neighbor::ALIGN_CORNERS, BYTE),
+            (resize_nearest_neighbor::HALF_PIXEL_CENTERS, BYTE),
+        ],
+        ty::TRANSPOSE_CONV => &[
+            (transpose_conv::PADDING, BYTE),
+            (transpose_conv::STRIDE_W, INT),
+            (transpose_conv::STRIDE_H, INT),
+            (transpose_conv::FUSED_ACTIVATION_FUNCTION, BYTE),
+            (transpose_conv::QUANTIZED_BIAS_TYPE, BYTE),
+        ],
         _ => &[],
     };
     for &(id, size) in scalars {
@@ -259,6 +282,24 @@ pub(crate) fn decode<'m>(
         ty::SPLIT | ty::SPLIT_V => OpOptions::Split {
             num_splits: f.scalar(split::NUM_SPLITS, 0)?,
         },
+        ty::ARG_MAX | ty::ARG_MIN => OpOptions::ArgMinMax {
+            output_type: DataType::from_tflite(f.scalar(arg_min_max::OUTPUT_TYPE, 0)?)
+                .ok_or(f.unsupported)?,
+        },
+        ty::RESIZE_BILINEAR => OpOptions::Resize {
+            align_corners: f.flag(resize_bilinear::ALIGN_CORNERS)?,
+            half_pixel_centers: f.flag(resize_bilinear::HALF_PIXEL_CENTERS)?,
+        },
+        ty::RESIZE_NEAREST_NEIGHBOR => OpOptions::Resize {
+            align_corners: f.flag(resize_nearest_neighbor::ALIGN_CORNERS)?,
+            half_pixel_centers: f.flag(resize_nearest_neighbor::HALF_PIXEL_CENTERS)?,
+        },
+        ty::TRANSPOSE_CONV => OpOptions::TransposeConv(TransposeConvOptions {
+            padding: f.padding(transpose_conv::PADDING)?,
+            stride_w: f.scalar(transpose_conv::STRIDE_W, 0)?,
+            stride_h: f.scalar(transpose_conv::STRIDE_H, 0)?,
+            activation: f.activation(transpose_conv::FUSED_ACTIVATION_FUNCTION)?,
+        }),
         _ => OpOptions::None,
     })
 }
