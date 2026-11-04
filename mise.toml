@@ -155,11 +155,12 @@ run = [
 ]
 
 [tasks.no-malloc]
-description = "Check that no C library linked into nanoglia references malloc/calloc/realloc/free"
+description = "Check that no C library linked into nanoglia, nor the C API's static library, references malloc/calloc/realloc/free"
 # Sequential: concurrent builds in the same target directory race under mbx.
 run = [
   { task = "cross-arm" },
   { task = "cross-riscv32" },
+  { task = "cross-c" },
   "tools/check-no-malloc.sh",
 ]
 
@@ -218,6 +219,18 @@ run = [
   "cmake -S crates/nanoglia-c/tests/package -B target/c/package -DCMAKE_PREFIX_PATH={{config_root}}/target/c/install",
   "cmake --build target/c/package",
   "ctest --test-dir target/c/package --output-on-failure",
+]
+
+[tasks.cross-c]
+description = "Build the C static library for Cortex-M4F (thumbv7em-none-eabihf) with CMake, without std nor a global allocator, link it into a bare-metal program without any C library, and build the int8-only variant"
+env.RUSTFLAGS = "-D warnings"
+run = [
+  # The archive lands in target/thumbv7em-none-eabihf/release, where `no-malloc` checks it.
+  "cmake -S crates/nanoglia-c -B target/c-thumbv7em -DNANOGLIA_CARGO_TARGET=thumbv7em-none-eabihf -DNANOGLIA_CARGO_TARGET_DIR={{config_root}}/target -DNANOGLIA_BUILD_TESTS=OFF -DNANOGLIA_BUILD_EXAMPLES=OFF",
+  "cmake --build target/c-thumbv7em",
+  "arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -std=c11 -Wall -Wextra -Werror -Os -ffreestanding -nostdlib -Wl,--gc-sections -Wl,-e,main -Wl,-z,noexecstack -Icrates/nanoglia-c/include crates/nanoglia-c/tests/firmware.c target/thumbv7em-none-eabihf/release/libnanoglia_c.a -o target/c-thumbv7em/firmware.elf",
+  "arm-none-eabi-size target/c-thumbv7em/firmware.elf",
+  "cargo rustc -p nanoglia-c --release --lib --crate-type staticlib --target thumbv7em-none-eabihf --target-dir target/c-thumbv7em-int8 --no-default-features --features panic-handler,cmsis-nn,kernels",
 ]
 
 [tasks.check]

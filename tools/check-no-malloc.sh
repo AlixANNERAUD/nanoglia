@@ -1,13 +1,14 @@
 #!/bin/sh
 # Checks that the C libraries compiled for the embedded targets never reference the C heap
 # (malloc, calloc, realloc, free and their reentrant variants): nanoglia takes every byte from the
-# allocator its caller passes.
+# allocator its caller passes. Also checks the static library of the C API (libnanoglia_c.a, from
+# `mise run cross-c`), which must not need the C heap nor a Rust global allocator.
 #
 # Usage: tools/check-no-malloc.sh [target-dir]   (run after `mise run cross-arm`/`cross-riscv32`)
 set -eu
 
 target_dir=${1:-${CARGO_TARGET_DIR:-target}}
-heap='^_*(malloc|calloc|realloc|free|aligned_alloc|memalign|posix_memalign|valloc|pvalloc)(_r)?$'
+heap='^_*(malloc|calloc|realloc|free|aligned_alloc|memalign|posix_memalign|valloc|pvalloc)(_r)?$|^__rust_(alloc|dealloc|realloc|alloc_zeroed)$'
 
 # The binutils of the target if installed, else the host `nm` (which reads any ELF file when
 # built with all targets).
@@ -31,10 +32,14 @@ nm_for() {
 checked=0
 failed=0
 # Static libraries built by the build scripts of the cross targets, e.g.
-# target/thumbv7em-none-eabihf/debug/build/nanoglia-cmsis-nn-sys-<hash>/out/libcmsis_nn.a
+# target/thumbv7em-none-eabihf/debug/build/nanoglia-cmsis-nn-sys-<hash>/out/libcmsis_nn.a, and the
+# C API, e.g. target/thumbv7em-none-eabihf/release/libnanoglia_c.a.
 for lib in "$target_dir"/thumb*/*/build/*/out/*.a \
     "$target_dir"/riscv*/*/build/*/out/*.a \
-    "$target_dir"/xtensa*/*/build/*/out/*.a; do
+    "$target_dir"/xtensa*/*/build/*/out/*.a \
+    "$target_dir"/thumb*/*/libnanoglia_c.a \
+    "$target_dir"/riscv*/*/libnanoglia_c.a \
+    "$target_dir"/xtensa*/*/libnanoglia_c.a; do
     [ -f "$lib" ] || continue
     triple=$(echo "${lib#"$target_dir"/}" | cut -d/ -f1)
     nm=$(nm_for "$triple")
@@ -54,7 +59,7 @@ if [ "$checked" -eq 0 ]; then
     exit 2
 fi
 if [ "$failed" -ne 0 ]; then
-    echo "$failed of $checked libraries reference malloc/calloc/realloc/free" >&2
+    echo "$failed of $checked libraries reference malloc/calloc/realloc/free or the Rust allocator" >&2
     exit 1
 fi
 echo "$checked libraries checked, none references the C heap"
