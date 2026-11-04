@@ -260,7 +260,9 @@ def write_case(case_dir: Path, model_path: Path, inputs, tolerance: float) -> No
     for i, y in enumerate(outputs):
         (case_dir / f"output_{i}.bin").write_bytes(y.astype(y.dtype.newbyteorder("<")).tobytes())
     case = {
-        "model": model_path.relative_to(REPO).as_posix(),
+        # Relative to the repository root; absolute for a model outside it.
+        "model": (model_path.relative_to(REPO) if model_path.is_relative_to(REPO)
+                  else model_path).as_posix(),
         "inputs": [tensor_json(d) for d in it.get_input_details()],
         "outputs": [tensor_json(d) for d in it.get_output_details()],
         "tolerance": tolerance,

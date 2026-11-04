@@ -60,6 +60,15 @@ description = "Regenerate the test models and golden outputs of testdata/ with t
 dir = "{{config_root}}/tools/oracle"
 run = "uv run python -I generate.py"
 
+[tasks.pytorch-export]
+description = "Export a small PyTorch model to a fully int8 LiteRT model with litert-torch, compute its golden outputs with LiteRT's reference kernels and run them with nanoglia (x86_64 Linux or macOS arm64 only: litert-torch has no other wheels)"
+# The model and its cases land in target/pytorch-export, which is not committed.
+env.RUSTFLAGS = "-D warnings"
+run = [
+  "cd tools/oracle && uv run --group torch python -I pytorch_export.py {{config_root}}/target/pytorch-export",
+  "NANOGLIA_GOLDEN_DIR={{config_root}}/target/pytorch-export cargo test -p nanoglia --test golden -- --nocapture",
+]
+
 [tasks.package]
 description = "Package every crate as crates.io would, and build each one from its package"
 env.CARGO_TARGET_DIR = "target/package"

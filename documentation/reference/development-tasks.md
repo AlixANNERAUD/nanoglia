@@ -15,7 +15,7 @@ at once.
 | --- | --- | --- |
 | Rust | stable, with `rustfmt`, `clippy`, `llvm-tools` and the targets `thumbv6m-none-eabi`, `thumbv7em-none-eabihf`, `thumbv8m.main-none-eabihf`, `riscv32imc-unknown-none-elf`, `wasm32-unknown-unknown`, `wasm32-wasip1` | every task |
 | mr-boxington | latest | every Cargo command |
-| uv | latest | `oracle`, `bench-compare` |
+| uv | latest | `oracle`, `pytorch-export`, `bench-compare` |
 | cargo-llvm-cov | latest | `coverage` |
 | cargo-deny | latest (task tool) | `deny` |
 | wasi-sdk | `wasi-sdk-33` (task tool) | `cross-wasm32`, `test-wasip1`, `bench-wasm` |
@@ -66,6 +66,7 @@ them): CMake runs Cargo with the mise environment it inherits.
 | `bench-wasm` | The same benchmark for `wasm32-wasip1` under wasmtime, once scalar and once with SIMD128 (`-C target-feature=+simd128`; the build scripts add `-msimd128` to the C code), each in its own target directory. | — |
 | `bench-compare` | `uv run --project tools python -I tools/compare.py` in `benchmarks/compare` (its own Cargo workspace and `Cargo.lock`, and its own uv project in `tools/`): builds one host benchmark per engine (nanoglia, tract, MicroFlow, embedded-nn, ember-rs) and runs each 3 times in turn (`ROUNDS`, time budget per model `BENCH_MS`, default 2000 ms), checking every output against the golden samples; then builds one keyword-spotting firmware per engine for `thumbv7em-none-eabihf` (profile `firmware`), reads its size with `arm-none-eabi-size` and runs it under a Cortex-M4 emulator (Unicorn) to check its output and measure its peak stack. Prints Markdown tables; raw results in `benchmarks/compare/target/compare/`. Downloads the other engines from crates.io and GitHub. See [performance](performance.md#compared-with-other-rust-engines). | — |
 | `oracle` | `uv run python -I generate.py` in `tools/oracle`: regenerates `testdata/ops/` and `testdata/mlperf-tiny/golden/` with LiteRT's reference kernels. Deterministic. | — |
+| `pytorch-export` | `uv run --group torch python -I pytorch_export.py target/pytorch-export` in `tools/oracle`: defines a small PyTorch image classifier (conv, batch norm and ReLU blocks, a `torch.split` channel shuffle, max pooling, a `permute`, a slice, a flatten and a linear head), quantizes it to static int8 with PT2E and litert-torch's quantizer (calibrated on 64 seeded random inputs), converts it with `litert_torch.convert`, prints its operators with their tensor types, and writes 3 golden cases computed with LiteRT's reference kernels into `target/pytorch-export`; then `cargo test -p nanoglia --test golden` on them (`NANOGLIA_GOLDEN_DIR`). Needs the optional `torch` dependency group (CPU torch, litert-torch), whose converter ships x86_64 Linux and macOS arm64 wheels only. | `ci.yml` PyTorch export (litert-torch, int8) |
 | `coverage` | `cargo llvm-cov --workspace --lcov --output-path coverage.lcov`, with mbx's build-script wrapper turned off. | `coverage.yml` |
 | `deny` | `cargo deny check` (licenses, advisories, bans, sources; `deny.toml`). | `ci.yml` Dependencies (cargo-deny) |
 | `msrv` | With Rust 1.89: `cargo check --workspace --all-targets` and `cargo check --workspace --lib --target thumbv7em-none-eabihf`, in `target/msrv`. | `ci.yml` MSRV |
@@ -85,7 +86,7 @@ the configuration of the Nano 33 BLE firmware) and "ESP-NN"
 
 | Workflow | Trigger | Jobs |
 | --- | --- | --- |
-| `ci.yml` | push to `main`, pull requests, manual | Format, Clippy, Test (default, int8 only, ESP-NN), C API (`test-c` with `CC=gcc` and `CC=clang`), Cross (seven entries above), Cross (ESP32-S3, ESP-NN optimized: `install-esp` then `cross-esp32s3`), Dependencies, MSRV, Docs, Fuzz. `RUSTFLAGS=-D warnings` for all. |
+| `ci.yml` | push to `main`, pull requests, manual | Format, Clippy, Test (default, int8 only, ESP-NN), C API (`test-c` with `CC=gcc` and `CC=clang`), Cross (seven entries above), Cross (ESP32-S3, ESP-NN optimized: `install-esp` then `cross-esp32s3`), Dependencies, MSRV, Docs, Fuzz, PyTorch export (`pytorch-export`, on ubuntu x86_64; the converted model and its cases are uploaded as the `pytorch-export` artifact). `RUSTFLAGS=-D warnings` for all. |
 | `coverage.yml` | push to `main`, pull requests | `mise run coverage`, uploaded to Codecov. |
 | `pr-title.yml` | pull requests | Checks that the title follows Conventional Commits (`feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `ci`, `build`, `conf`, `chore`, `style`, `revert`, optional scope, optional `!`). release-plz builds the changelogs from these titles. |
 | `release.yml` | push to `main` | validate (`mise run test`, `mise run package`), then release-plz: opens or updates a release pull request with versions and changelogs (`release-plz.toml`), and publishes to crates.io when it is merged. |

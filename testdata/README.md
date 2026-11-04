@@ -106,3 +106,14 @@ a small `.tflite` writer built on the `flatbuffers` package, and runs every
 case through LiteRT. Generation is deterministic: every case seeds its own
 random generator from its name, and re-running the script rewrites identical
 files. It deletes and rewrites `ops/` and `mlperf-tiny/golden/`.
+
+## A PyTorch export
+
+`mise run pytorch-export` (x86_64 Linux or macOS arm64, where litert-torch's
+converter has wheels; CI runs it on ubuntu) exports the small classifier of
+`tools/oracle/pytorch_export.py` to a fully int8 model with litert-torch,
+writes cases in the format above into `target/pytorch-export/sample_<k>/`
+(with an absolute `model` path when it lies outside the repository), and runs
+them with `NANOGLIA_GOLDEN_DIR` pointing there: `golden.rs` then runs that
+directory instead of `testdata/`. These cases are not committed, as the
+converted model may change with the versions of torch and litert-torch.

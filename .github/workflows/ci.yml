@@ -191,3 +191,26 @@ jobs:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
       - run: mise run fuzz
+
+  pytorch-export:
+    name: PyTorch export (litert-torch, int8)
+    # litert-torch's converter ships x86_64 Linux wheels, not aarch64 ones.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: pytorch-export
+      # Converts the model of tools/oracle/pytorch_export.py with the CPU torch of the `torch`
+      # dependency group, writes golden outputs with LiteRT's reference kernels, then runs them
+      # with nanoglia. The model is not committed: it may change with torch and litert-torch.
+      - run: mise run pytorch-export
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pytorch-export
+          path: target/pytorch-export
+          if-no-files-found: ignore
