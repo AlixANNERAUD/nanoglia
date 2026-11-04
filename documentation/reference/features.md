@@ -94,3 +94,20 @@ on every target and adds its optimized C and assembly kernels on
 ## nanoglia-tflite
 
 No features.
+
+## nanoglia-c
+
+The C API ([Use nanoglia from C](../how-to-guides/use-from-c.md)).
+Default features: `cmsis-nn`, `kernels`, `float`, `int16`. The CMake
+project of the crate sets the features from its options (`NANOGLIA_STD`,
+`NANOGLIA_PANIC_HANDLER`, `NANOGLIA_INT8_ONLY`, `NANOGLIA_ESP_NN`,
+`NANOGLIA_CARGO_FLAGS`).
+
+| Feature | Default | Enables |
+| --- | :---: | --- |
+| `cmsis-nn`, `esp-nn`, `kernels`, `float`, `int16`, `single-rounding` | as `nanoglia` | The same feature of `nanoglia`. |
+| `std` | no | Links the standard library: needed to build the static library (`cargo rustc --crate-type staticlib`) for a target with `std`, such as the host. Every function then catches a panic and returns `NANOGLIA_STATUS_UNKNOWN`. |
+| `panic-handler` | no | A `#[panic_handler]` that loops forever, compiled without `std`: needed to build the static library for a target without `std`. Leave it out when another crate of the program provides the panic handler. |
+
+Neither `std` nor `panic-handler` is on by default: the crate is also an
+rlib, which a Rust program links with its own panic handler or `std`.

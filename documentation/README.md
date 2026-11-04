@@ -32,6 +32,7 @@ are in [`AGENTS.md`](../AGENTS.md).
 | [Run in the browser](how-to-guides/run-in-the-browser.md) | Build for `wasm32-unknown-unknown` with CMSIS-NN, enable SIMD128, run under wasmtime |
 | [Run long inferences](how-to-guides/run-long-inferences.md) | Run an inference one operator at a time with `step`, as a future with `compute_async`, or stop it at a deadline from an observer |
 | [Write a backend](how-to-guides/write-a-backend.md) | Add a backend whose kernels use a driver it borrows, register it with `Graph::load_with`, time each operator with `compute_with` |
+| [Use nanoglia from C](how-to-guides/use-from-c.md) | Build the C library with CMake, link it on your computer or into a firmware, size its one buffer, run inferences in one call or step by step, handle the errors |
 
 ## Explanation
 

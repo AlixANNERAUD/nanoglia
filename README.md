@@ -34,6 +34,7 @@ let scores = ctx.output(0)?.as_slice::<i8>()?;
 | Types | int8 (the TinyML standard), int16 (16x8) and float32, 27 operators ([list](documentation/reference/supported-operators.md)) |
 | Safety | Untrusted models are fully verified before use: errors, never panics. The model reader is `#![forbid(unsafe_code)]` and fuzzed in CI |
 | Targets | Cortex-M0+, M4F, M33, ESP32-S3 (Xtensa), RISC-V, WebAssembly and desktops, each built in CI ([see below](#supported-platforms)) |
+| Languages | Rust, and C or C++ through a static library, a header and a CMake project ([see below](#c-and-c)) |
 
 ## Why nanoglia?
 
@@ -109,6 +110,43 @@ let mut ctx = graph.init_execution_context_in(&arena)?;
 The [first-inference tutorial](documentation/tutorials/first-inference.md) walks through both,
 and [`examples/nano33ble`](examples/nano33ble) is a complete firmware for the Arduino Nano 33 BLE.
 
+## C and C++
+
+The [`nanoglia-c`](crates/nanoglia-c) crate is a C API with the same memory contract: a static
+library, its header [`nanoglia.h`](crates/nanoglia-c/include/nanoglia.h) and a CMake project. The
+model and one buffer come from your program, and nothing calls `malloc`:
+
+```c
+#include "nanoglia.h"
+
+static _Alignas(NANOGLIA_MODEL_ALIGNMENT) const uint8_t model[] = { /* .tflite bytes */ };
+static unsigned char memory[24 * 1024]; /* nanoglia_memory_requirements() gives the size */
+
+nanoglia *nn;
+nanoglia_error error;
+if (nanoglia_load(model, sizeof model, memory, sizeof memory, &nn, &error) != NANOGLIA_STATUS_OK) {
+    printf("%s: %s\n", nanoglia_status_description(error.status),
+           nanoglia_detail_description(error.detail));
+}
+nanoglia_tensor input, output;
+nanoglia_input(nn, 0, &input);
+memcpy(input.data, features, input.size);
+nanoglia_compute(nn, &error); /* or nanoglia_step() until done, between other work */
+nanoglia_output(nn, 0, &output);
+```
+
+With CMake, add the directory and link the `nanoglia::nanoglia` target, which builds the library
+with Cargo for your computer or, with `-DNANOGLIA_CARGO_TARGET=thumbv7em-none-eabihf`, for a
+firmware:
+
+```cmake
+add_subdirectory(nanoglia/crates/nanoglia-c)
+target_link_libraries(app PRIVATE nanoglia::nanoglia)
+```
+
+[Use nanoglia from C](documentation/how-to-guides/use-from-c.md) covers the build, the memory
+layout, lifetimes, the step API and errors.
+
 ## Supported platforms
 
 | Target | Example hardware | Kernels | Checked in CI |
@@ -169,7 +207,7 @@ The [documentation](documentation/README.md) follows the [Diátaxis](https://dia
 | | |
 | --- | --- |
 | **Tutorial** | [Run your first inference](documentation/tutorials/first-inference.md) |
-| **How-to guides** | [Size the memory](documentation/how-to-guides/size-memory.md), [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [run in the browser](documentation/how-to-guides/run-in-the-browser.md), [run long inferences without blocking](documentation/how-to-guides/run-long-inferences.md), [write a backend](documentation/how-to-guides/write-a-backend.md) |
+| **How-to guides** | [Size the memory](documentation/how-to-guides/size-memory.md), [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [run in the browser](documentation/how-to-guides/run-in-the-browser.md), [run long inferences without blocking](documentation/how-to-guides/run-long-inferences.md), [write a backend](documentation/how-to-guides/write-a-backend.md), [use nanoglia from C](documentation/how-to-guides/use-from-c.md) |
 | **Explanation** | [Architecture](documentation/explanation/architecture.md), [bit-exactness with TensorFlow Lite](documentation/explanation/bit-exactness.md) |
 | **Reference** | [Supported operators](documentation/reference/supported-operators.md), [Cargo features](documentation/reference/features.md), [errors](documentation/reference/errors.md), [memory](documentation/reference/memory.md), [performance](documentation/reference/performance.md), [development tasks](documentation/reference/development-tasks.md) |
 
@@ -185,6 +223,7 @@ The API documentation is on [docs.rs](https://docs.rs/nanoglia).
 | [`nanoglia-cmsis-nn`](crates/nanoglia-cmsis-nn) / [`-sys`](crates/nanoglia-cmsis-nn-sys) | CMSIS-NN backend: int8 and int16 convolutions, fully-connected layers, pooling, softmax... |
 | [`nanoglia-esp-nn`](crates/nanoglia-esp-nn) / [`-sys`](crates/nanoglia-esp-nn-sys) | ESP-NN backend for the ESP32-S3 (feature `esp-nn`) |
 | [`nanoglia-kernels`](crates/nanoglia-kernels) | Pure Rust kernels: the operators the C libraries lack, and float32 |
+| [`nanoglia-c`](crates/nanoglia-c) | C API: a static library, its header and a CMake project |
 
 ## Frequently asked questions
 

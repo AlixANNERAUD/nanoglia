@@ -23,6 +23,13 @@ the C libraries built for the Arm and RISC-V targets reference no C heap
 function. `crates/nanoglia/tests/memory.rs` counts the allocations of a
 graph, a context and two `compute` calls.
 
+The C API (`nanoglia-c`) keeps the same contract with one buffer from
+the caller: `nanoglia_load()` places its handle (the graph and one
+context, 448 bytes on a 64-bit host, 224 on `thumbv7em-none-eabihf`)
+there, followed by an `Arena` holding the two blocks, so it needs
+`arena_bytes(1)` plus the handle
+([Use nanoglia from C](../how-to-guides/use-from-c.md#the-memory)).
+
 ### Allocators
 
 Any type implementing `allocator_api2::alloc::Allocator` (re-exported as

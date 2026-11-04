@@ -145,3 +145,19 @@ match nanoglia::Graph::load(&[model], nanoglia::Encoding::Autodetect, nanoglia::
     Err(e) => { /* `e` implements Display */ }
 }
 ```
+
+## In the C API
+
+The functions of `nanoglia-c` return a `nanoglia_status`:
+`NANOGLIA_STATUS_OK` (0), then one value per `ErrorCode`, in the order
+of the `ErrorCode` table (`NANOGLIA_STATUS_INVALID_ARGUMENT` = 1 to
+`NANOGLIA_STATUS_UNKNOWN` = 9). The C API adds its own
+`NANOGLIA_STATUS_INVALID_ARGUMENT` cases: a null pointer, a handle that
+is not a live one, and a model that does not start on a 16-byte
+boundary. A `nanoglia_error` carries the `Detail` as a `nanoglia_detail`
+value, in the order of the `Detail` table (`NANOGLIA_DETAIL_NONE` = 0 to
+`NANOGLIA_DETAIL_BACKEND` = 14, `UnsupportedOp` being
+`NANOGLIA_DETAIL_UNSUPPORTED_OPERATOR`; `NANOGLIA_DETAIL_UNKNOWN` for a
+detail the C API does not know), with its fields in `index`, `code`,
+`size`, `actual` and `backend`. See
+[Use nanoglia from C](../how-to-guides/use-from-c.md#errors).
