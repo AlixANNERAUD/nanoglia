@@ -1,3 +1,6 @@
 [submodule "crates/nanoglia-cmsis-nn-sys/cmsis-nn"]
 	path = crates/nanoglia-cmsis-nn-sys/cmsis-nn
 	url = https://github.com/ARM-software/CMSIS-NN
+[submodule "crates/nanoglia-esp-nn-sys/esp-nn"]
+	path = crates/nanoglia-esp-nn-sys/esp-nn
+	url = https://github.com/espressif/esp-nn

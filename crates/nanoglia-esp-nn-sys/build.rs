@@ -1,4 +1,8 @@
-//! Compiles the vendored ESP-NN sources into a static library.
+//! Compiles ESP-NN (the `esp-nn` git submodule) into a static library.
+//!
+//! Only files of `esp-nn/src` and `esp-nn/include` are read: the tests, test application and
+//! tools of the repository are never built. Keep the file selection below in sync with the
+//! `include` list of `Cargo.toml`.
 //!
 //! The ANSI C reference kernels are always built, so the crate builds (and its users can be
 //! tested) on any target. On ESP32-S3 (`xtensa-esp32s3-*` targets) the build also enables
@@ -15,6 +19,13 @@ fn main() {
     let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let esp_nn = root.join("esp-nn");
     let src = esp_nn.join("src");
+    if !esp_nn.join("include").join("esp_nn.h").is_file() {
+        panic!(
+            "{} not found: the ESP-NN git submodule is not checked out; run \
+             `git submodule update --init --recursive` (or `mise run submodules`)",
+            esp_nn.join("include").display()
+        );
+    }
     let target = env::var("TARGET").unwrap();
     let esp32s3 = target.starts_with("xtensa-esp32s3-");
 
@@ -86,7 +97,8 @@ fn main() {
         println!("cargo:rustc-cfg=esp_nn_esp32s3");
     }
     println!("cargo:include={}", esp_nn.join("include").display());
-    println!("cargo:rerun-if-changed=esp-nn");
+    println!("cargo:rerun-if-changed=esp-nn/include");
+    println!("cargo:rerun-if-changed=esp-nn/src");
     println!("cargo:rerun-if-changed=shim");
     println!("cargo:rerun-if-changed=src/dispatch.c");
     println!("cargo:rerun-if-changed=src/layout.c");

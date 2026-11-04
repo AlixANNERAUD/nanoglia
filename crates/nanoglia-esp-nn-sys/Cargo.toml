@@ -6,13 +6,32 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Vendored ESP-NN v1.4.2 (Espressif's int8 kernels, ESP32-S3 optimized) built with `cc`, and hand-written `no_std` FFI bindings."
+description = "ESP-NN v1.4.2 (Espressif's int8 kernels, ESP32-S3 optimized) built with `cc`, and hand-written `no_std` FFI bindings."
 documentation = "https://docs.rs/nanoglia-esp-nn-sys"
 readme = "README.md"
 keywords = ["esp-nn", "esp32", "neural-network", "no-std", "ffi"]
 categories = ["external-ffi-bindings", "embedded", "no-std", "no-std::no-alloc"]
 links = "esp_nn"
-include = ["/src", "/esp-nn", "/shim", "/build.rs", "/README.md"]
+# Only what the build script reads from the `esp-nn` submodule (headers, the ANSI C kernels but the
+# float logistic, the ESP32-S3 sources; not the ESP32-P4 ones, tests, test application or tools)
+# and its license. Keep in sync with the file selection of build.rs.
+include = [
+  "/build.rs",
+  "/src",
+  "/shim",
+  "/README.md",
+  "/esp-nn/LICENSE",
+  "/esp-nn/include/*.h",
+  "/esp-nn/src/**/*.h",
+  "/esp-nn/src/**/*_ansi.c",
+  "!/esp-nn/src/logistic/esp_nn_logistic_ansi.c",
+  "/esp-nn/src/**/*_esp32s3.c",
+  "/esp-nn/src/**/*_esp32s3.S",
+  "/esp-nn/src/**/*_opt.c",
+  "/esp-nn/src/common/esp_nn_multicore.c",
+  "/esp-nn/src/convolution/esp_nn_conv_mt_split.c",
+  "/esp-nn/src/basic_math/esp_nn_mul_mt.c",
+]
 
 [dependencies]
 
