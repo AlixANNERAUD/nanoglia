@@ -10,7 +10,7 @@ use crate::util::{
     cmax, expect_arity, expect_type, fixed_kernel, in_slice, input, out_slice, output, per_tensor,
     pod_struct, same_shape, shape_mismatch, unsupported, unsupported_type,
 };
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::{self, Layout, Region};
 use nanoglia_core::quant::{self, Multiplier, multiply_by_quantized_multiplier, round_f64};
 use nanoglia_core::{DataType, OpDesc, OpOptions, Result};
@@ -283,7 +283,7 @@ fn unsupported_lut() -> nanoglia_core::Error {
 }
 
 /// `SOFTMAX` on int16.
-pub(crate) static SOFTMAX_I16: Kernel = Kernel {
+pub(crate) static SOFTMAX_I16: FnKernel = FnKernel {
     name: "rust/softmax_i16",
     plan: softmax_i16_plan,
     prepare: softmax_i16_prepare,

@@ -166,7 +166,7 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
                 persist: graph.persist(op),
                 scratch,
             };
-            (op.kernel.eval)(&mut ctx)?;
+            op.kernel.eval(&mut ctx)?;
         }
         Ok(())
     }

@@ -4,7 +4,7 @@ use crate::util::{
     expect_arity, expect_type, fixed_kernel, in_slice, input, int_range, out_slice, output,
     per_tensor, pod_struct, same_elements, type_code, unsupported, unsupported_type,
 };
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::{self, Layout, Region};
 use nanoglia_core::quant::{
     Multiplier, multiply_by_quantized_multiplier, quantize_multiplier, round_f32,
@@ -337,7 +337,7 @@ fn dequantize_eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
 
 /// `DEQUANTIZE` of `i8`, `u8`, `i16` (per-tensor or, for 8-bit types, per-channel) and `f16`
 /// tensors to `f32`.
-pub(crate) static DEQUANTIZE: Kernel = Kernel {
+pub(crate) static DEQUANTIZE: FnKernel = FnKernel {
     name: "rust/dequantize",
     plan: dequantize_plan,
     prepare: dequantize_prepare,

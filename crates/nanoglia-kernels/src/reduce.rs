@@ -5,7 +5,7 @@ use crate::util::{
     constant, elements, expect_arity, in_slice, input, int_range, out_slice, output, per_tensor,
     pod_struct, read_index, shape_mismatch, type_code, unsupported, unsupported_type,
 };
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::{self, cast_slice_mut};
 use nanoglia_core::quant::{Multiplier, multiply_by_quantized_multiplier, quantize_multiplier};
 use nanoglia_core::{DataType, MAX_RANK, OpDesc, OpOptions, Result};
@@ -219,7 +219,7 @@ fn mean_eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
 }
 
 /// `MEAN` on `f32`, `i8`, `u8` and `i16`.
-pub(crate) static MEAN: Kernel = Kernel {
+pub(crate) static MEAN: FnKernel = FnKernel {
     name: "rust/mean",
     plan: mean_plan,
     prepare: mean_prepare,

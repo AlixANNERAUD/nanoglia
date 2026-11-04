@@ -42,7 +42,7 @@ impl Backend for EspNn {
         BackendKind::Cpu
     }
 
-    fn select(&self, op: &OpDesc<'_, '_>) -> Option<&'static Kernel> {
+    fn select<'s>(&'s self, op: &OpDesc<'_, '_>) -> Option<&'s dyn Kernel> {
         if !ENABLED {
             return None;
         }

@@ -4,7 +4,7 @@
 //! Port of esp-tflite-micro's `kernels/esp_nn/{add,mul}.cc` with TFLite Micro's
 //! `CalculateOpDataAdd` (general path, `left_shift = 20`) and `CalculateOpDataMul`.
 
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::Pod;
 use nanoglia_core::quant;
 use nanoglia_core::{BuiltinOp, OpDesc, OpOptions, Result};
@@ -15,10 +15,10 @@ use crate::fallback::{self, EspOp};
 use crate::layout::{read_params, write_params};
 
 /// The `ADD` kernel.
-pub(crate) static ADD: Kernel = fallback::kernel::<Binary<false>>();
+pub(crate) static ADD: FnKernel = fallback::kernel::<Binary<false>>();
 
 /// The `MUL` kernel.
-pub(crate) static MUL: Kernel = fallback::kernel::<Binary<true>>();
+pub(crate) static MUL: FnKernel = fallback::kernel::<Binary<true>>();
 
 /// ESP-NN parameters (the input multipliers are only used by `ADD`).
 #[repr(C)]
@@ -110,7 +110,7 @@ impl<const MUL: bool> EspOp for Binary<MUL> {
         "esp-nn/add_s8"
     };
 
-    fn fallback() -> &'static Kernel {
+    fn fallback() -> &'static FnKernel {
         if MUL {
             &nanoglia_cmsis_nn::kernels::MUL_S8
         } else {

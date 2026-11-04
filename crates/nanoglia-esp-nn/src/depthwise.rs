@@ -6,7 +6,7 @@
 //! channels / input channels) like LiteRT does. ESP-NN ignores dilations: dilated convolutions
 //! are left to the next backend.
 
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::Pod;
 use nanoglia_core::quant;
 use nanoglia_core::{BuiltinOp, DataType, OpDesc, OpOptions, Result, TensorDesc};
@@ -17,7 +17,7 @@ use crate::fallback::{self, EspOp};
 use crate::layout::{ChannelLayout, read_params};
 
 /// The `DEPTHWISE_CONV_2D` kernel.
-pub(crate) static KERNEL: Kernel = fallback::kernel::<Depthwise>();
+pub(crate) static KERNEL: FnKernel = fallback::kernel::<Depthwise>();
 
 /// ESP-NN parameters, followed by the per-channel multipliers and shifts.
 #[repr(C)]
@@ -168,7 +168,7 @@ pub(crate) struct Depthwise;
 impl EspOp for Depthwise {
     const NAME: &'static str = "esp-nn/depthwise_conv2d_s8";
 
-    fn fallback() -> &'static Kernel {
+    fn fallback() -> &'static FnKernel {
         &nanoglia_cmsis_nn::kernels::DEPTHWISE_CONV_2D_S8
     }
 

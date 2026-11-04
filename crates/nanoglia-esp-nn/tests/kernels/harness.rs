@@ -248,7 +248,7 @@ impl<'t> Op<'t> {
 
     /// The name of the kernel the ESP-NN backend selects.
     pub fn kernel_name(&self) -> &'static str {
-        self.with_desc(|desc| BACKEND.select(desc).expect("refused").name)
+        self.with_desc(|desc| BACKEND.select(desc).expect("refused").name())
     }
 
     /// Runs the operator with the ESP-NN backend, once with the ESP-NN lock free (ESP-NN runs)
@@ -263,9 +263,9 @@ impl<'t> Op<'t> {
             let kernel = BACKEND
                 .select(desc)
                 .expect("the backend refused the operator");
-            let plan = (kernel.plan)(desc).expect("plan");
+            let plan = kernel.plan(desc).expect("plan");
             let mut persist = Aligned::zeroed(plan.persistent);
-            (kernel.prepare)(desc, persist.bytes_mut()).expect("prepare");
+            kernel.prepare(desc, persist.bytes_mut()).expect("prepare");
             let eval = || {
                 // Garbage in the scratch buffer: kernels must not rely on its contents.
                 let mut scratch = Aligned::filled(plan.scratch, 0xA5);
@@ -283,7 +283,7 @@ impl<'t> Op<'t> {
                         persist: persist.bytes(),
                         scratch: scratch.bytes_mut(),
                     };
-                    (kernel.eval)(&mut ctx).expect("eval");
+                    kernel.eval(&mut ctx).expect("eval");
                 }
                 output
             };

@@ -24,8 +24,9 @@ pub(crate) enum Location {
 
 /// A prepared operator.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct OpEntry {
-    pub kernel: &'static Kernel,
+pub(crate) struct OpEntry<'k> {
+    /// The selected kernel, borrowed from a backend of the registry.
+    pub kernel: &'k dyn Kernel,
     pub persist_offset: u32,
     pub persist_len: u32,
     /// Index of the first input in the I/O table; outputs follow the inputs.
@@ -80,9 +81,11 @@ impl<T> Section<T> {
 
 /// A loaded model, ready to create execution contexts.
 ///
-/// The graph borrows the model bytes (`'m`): weights are never copied. It owns one block of
-/// memory from `A` holding the selected kernels, their prepared parameters and the memory plan.
-/// A graph is immutable: create one [`ExecutionContext`] per concurrent inference.
+/// The graph borrows the model bytes and the backends of its [`Registry`] (`'m`): weights are
+/// never copied, and each operator keeps a reference to the kernel its backend selected. It owns
+/// one block of memory from `A` holding the operator table, the prepared parameters and the
+/// memory plan. A graph is immutable: create one [`ExecutionContext`] per concurrent inference.
+/// It is `Send` and `Sync` when `A` is (kernels and backends are `Sync`).
 ///
 /// # Example
 ///
@@ -117,7 +120,7 @@ pub struct Graph<'m, A: Allocator> {
     model: &'m [u8],
     subgraph: SubGraph<'m>,
     block: Block<A>,
-    ops: Section<OpEntry>,
+    ops: Section<OpEntry<'m>>,
     locations: Section<Location>,
     io: Section<i32>,
     arena_size: usize,
@@ -211,6 +214,10 @@ impl<'m, A: Allocator> Graph<'m, A> {
     /// registry that supports it. Use it to add your own backends or kernels, or to restrict
     /// the backends a firmware links.
     ///
+    /// The graph borrows the backends for as long as it lives (the same lifetime `'m` as the
+    /// model bytes; the default registry is `'static`), so a backend may own state its kernels
+    /// use, such as a driver handle. See the guide *Write a backend* in the documentation.
+    ///
     /// ```
     /// # #[repr(C, align(16))]
     /// # struct Aligned<T: ?Sized>(T);
@@ -233,8 +240,41 @@ impl<'m, A: Allocator> Graph<'m, A> {
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// A graph cannot outlive the backends it borrows:
+    ///
+    /// ```compile_fail,E0597
+    /// # #[repr(C, align(16))]
+    /// # struct Aligned<T: ?Sized>(T);
+    /// # static MODEL: &Aligned<[u8]> = &Aligned(*include_bytes!(concat!(
+    /// #     env!("CARGO_MANIFEST_DIR"),
+    /// #     "/doc/classifier.tflite"
+    /// # )));
+    /// use nanoglia::core::OpDesc;
+    /// use nanoglia::core::allocator_api2::alloc::Global;
+    /// use nanoglia::core::backend::{Backend, Kernel};
+    /// use nanoglia::{Encoding, Graph, Registry, Target};
+    ///
+    /// struct Local;
+    /// impl Backend for Local {
+    ///     fn name(&self) -> &'static str {
+    ///         "local"
+    ///     }
+    ///     fn select<'s>(&'s self, op: &OpDesc<'_, '_>) -> Option<&'s dyn Kernel> {
+    ///         Registry::default().backends().iter().find_map(|b| b.select(op))
+    ///     }
+    /// }
+    ///
+    /// let graph = {
+    ///     let local = Local;
+    ///     let backends: [&dyn Backend; 1] = [&local];
+    ///     let registry = Registry::new(&backends);
+    ///     Graph::load_with(&registry, &[&MODEL.0], Encoding::Autodetect, Target::Auto, Global)
+    /// }; // error: `local` dropped while the graph still borrows it
+    /// # drop(graph);
+    /// ```
     pub fn load_with(
-        registry: &Registry<'_>,
+        registry: &Registry<'m>,
         builders: &[&'m [u8]],
         encoding: Encoding,
         target: Target,
@@ -290,11 +330,17 @@ impl<'m, A: Allocator> Graph<'m, A> {
             };
             let (desc, input_ids, output_ids) = describe(&subgraph, index, &mut descs)?;
             let (kernel, _) = select(registry, target, &desc)?;
-            let persist_len = (kernel.plan)(&desc)?.persistent;
-            let region = memory
-                .get_mut(persist_offset..persist_offset + persist_len)
+            let plan = kernel.plan(&desc)?;
+            if plan.scratch > sizing.scratch_size {
+                // The backend selected or planned differently in the first pass.
+                return Err(Error::new(ErrorCode::Unknown, Detail::None));
+            }
+            let persist_len = plan.persistent;
+            let region = persist_offset
+                .checked_add(persist_len)
+                .and_then(|end| memory.get_mut(persist_offset..end))
                 .ok_or_else(|| Error::new(ErrorCode::Unknown, Detail::None))?;
-            (kernel.prepare)(&desc, region)?;
+            kernel.prepare(&desc, region)?;
 
             let io_slots = sizing.sections.io.uninit(memory);
             let io_start = io_next;
@@ -310,8 +356,9 @@ impl<'m, A: Allocator> Graph<'m, A> {
                 inputs: input_ids.len() as u16,
                 outputs: output_ids.len() as u16,
             });
-            persist_offset +=
-                align_up(persist_len).ok_or_else(|| Error::out_of_memory(usize::MAX))?;
+            persist_offset = align_up(persist_len)
+                .and_then(|len| persist_offset.checked_add(len))
+                .ok_or_else(|| Error::out_of_memory(usize::MAX))?;
         }
 
         let scratch_offset =
@@ -399,7 +446,7 @@ impl<'m, A: Allocator> Graph<'m, A> {
 
     /// Name of the kernel selected for operator `index`, for diagnostics.
     pub fn kernel_name(&self, index: usize) -> Option<&'static str> {
-        self.ops().get(index).map(|op| op.kernel.name)
+        self.ops().get(index).map(|op| op.kernel.name())
     }
 
     fn io_desc(&self, list: LeSlice<'m, i32>, index: usize) -> Result<TensorDesc<'m>> {
@@ -423,7 +470,7 @@ impl<'m, A: Allocator> Graph<'m, A> {
         Err(Error::new(ErrorCode::NotFound, Detail::TensorNotFound))
     }
 
-    pub(crate) fn ops(&self) -> &[OpEntry] {
+    pub(crate) fn ops(&self) -> &[OpEntry<'m>] {
         self.ops.get(self.block.as_slice())
     }
 
@@ -438,7 +485,7 @@ impl<'m, A: Allocator> Graph<'m, A> {
         }
     }
 
-    pub(crate) fn persist(&self, op: &OpEntry) -> &[u8] {
+    pub(crate) fn persist(&self, op: &OpEntry<'_>) -> &[u8] {
         let start = op.persist_offset as usize;
         &self.block.as_slice()[start..start + op.persist_len as usize]
     }
@@ -651,14 +698,14 @@ fn open<'m>(builders: &[&'m [u8]], encoding: Encoding) -> Result<(&'m [u8], SubG
 }
 
 /// The sections of the graph block.
-struct BlockSections {
-    ops: Section<OpEntry>,
+struct BlockSections<'k> {
+    ops: Section<OpEntry<'k>>,
     locations: Section<Location>,
     io: Section<i32>,
     working: WorkingSections,
 }
 
-impl BlockSections {
+impl BlockSections<'_> {
     fn working_memory<'b>(&self, memory: &'b mut [u8]) -> (&'b mut [Interval], &'b mut [u32]) {
         self.working.working_memory(memory)
     }
@@ -698,14 +745,14 @@ impl WorkingSections {
 }
 
 /// Pass 1 of loading: the kernel of every operator, and the size of the graph block.
-struct Sizing {
-    sections: BlockSections,
+struct Sizing<'k> {
+    sections: BlockSections<'k>,
     persist_start: usize,
     block_size: usize,
     scratch_size: usize,
 }
 
-impl Sizing {
+impl Sizing<'_> {
     fn compute(registry: &Registry<'_>, target: Target, subgraph: &SubGraph<'_>) -> Result<Self> {
         let op_count = subgraph.operator_count();
         let tensor_count = subgraph.tensor_count();
@@ -721,7 +768,7 @@ impl Sizing {
             let (desc, _, _) = describe(subgraph, index, &mut descs)?;
             let (kernel, kind) = select(registry, target, &desc)?;
             npu_ops += usize::from(kind == BackendKind::Npu);
-            let plan = (kernel.plan)(&desc)?;
+            let plan = kernel.plan(&desc)?;
             persist_total = persist_total
                 .checked_add(
                     align_up(plan.persistent).ok_or_else(|| Error::out_of_memory(usize::MAX))?,
@@ -878,12 +925,12 @@ fn describe<'m, 'd>(
     Ok((desc, op.inputs, op.outputs))
 }
 
-fn select(
-    registry: &Registry<'_>,
+fn select<'r>(
+    registry: &Registry<'r>,
     target: Target,
     desc: &OpDesc<'_, '_>,
-) -> Result<(&'static Kernel, BackendKind)> {
-    for backend in registry.backends() {
+) -> Result<(&'r dyn Kernel, BackendKind)> {
+    for &backend in registry.backends() {
         let kind = backend.kind();
         if target == Target::Cpu && kind == BackendKind::Npu {
             continue;

@@ -2,6 +2,10 @@ use nanoglia_core::backend::Backend;
 
 /// The ordered list of backends a graph picks its kernels from: for each operator, the first
 /// backend that supports it wins.
+///
+/// A graph loaded with [`Graph::load_with`](crate::Graph::load_with) borrows the backends for
+/// `'r`, so they can live on the stack or hold references to state of your application (a
+/// driver, counters...). [`Registry::default`] is `'static` and works with any graph.
 #[derive(Clone, Copy)]
 pub struct Registry<'r> {
     backends: &'r [&'r dyn Backend],

@@ -4,7 +4,7 @@
 //! (`PAD`) or the constant value input (`PADV2`, whose zero point must be the output's).
 
 use nanoglia_cmsis_nn_sys as sys;
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::le::LeSlice;
 use nanoglia_core::pod::Pod;
 use nanoglia_core::{BuiltinOp, DataType, OpDesc, Result, TensorDesc};
@@ -13,7 +13,7 @@ use crate::common::{self, nhwc};
 use crate::layout::{read_params, write_params};
 
 /// The `PAD`/`PADV2` kernel.
-pub(crate) static KERNEL: Kernel = Kernel {
+pub(crate) static KERNEL: FnKernel = FnKernel {
     name: "cmsis-nn/pad_s8",
     plan,
     prepare,

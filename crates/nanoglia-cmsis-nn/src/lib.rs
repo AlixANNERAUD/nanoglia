@@ -2,7 +2,7 @@
 #![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
 
-use nanoglia_core::backend::{Backend, BackendKind, Kernel};
+use nanoglia_core::backend::{Backend, BackendKind, FnKernel, Kernel};
 use nanoglia_core::{BuiltinOp, OpDesc};
 
 mod common;
@@ -28,8 +28,9 @@ pub struct CmsisNn;
 pub static BACKEND: CmsisNn = CmsisNn;
 
 /// The int8 kernels [`BACKEND`] selects, for backends that run CMSIS-NN in their place (the
-/// ESP-NN backend does when another context is using ESP-NN). Compare the result of
-/// [`Backend::select`] with these to know which kernel an operator gets.
+/// ESP-NN backend does when another context is using ESP-NN). Compare the address of the kernel
+/// [`Backend::select`] returns with these (`core::ptr::addr_eq`) to know which kernel an operator
+/// gets.
 pub mod kernels {
     /// `CONV_2D`, int8.
     pub use crate::conv::KERNEL as CONV_2D_S8;
@@ -58,21 +59,27 @@ impl Backend for CmsisNn {
         BackendKind::Cpu
     }
 
-    fn select(&self, op: &OpDesc<'_, '_>) -> Option<&'static Kernel> {
-        let (kernel, supported): (&'static Kernel, fn(&OpDesc<'_, '_>) -> bool) =
-            match op.builtin()? {
-                BuiltinOp::CONV_2D => return conv::select(op),
-                BuiltinOp::DEPTHWISE_CONV_2D => (&depthwise::KERNEL, depthwise::supports),
-                BuiltinOp::FULLY_CONNECTED => return fully_connected::select(op),
-                BuiltinOp::AVERAGE_POOL_2D => (&pooling::AVERAGE, pooling::supports),
-                BuiltinOp::MAX_POOL_2D => (&pooling::MAX, pooling::supports),
-                BuiltinOp::SOFTMAX => (&softmax::KERNEL, softmax::supports),
-                BuiltinOp::ADD | BuiltinOp::MUL => return elementwise::select(op),
-                BuiltinOp::MAXIMUM => (&minmax::MAXIMUM, minmax::supports),
-                BuiltinOp::MINIMUM => (&minmax::MINIMUM, minmax::supports),
-                BuiltinOp::PAD | BuiltinOp::PADV2 => (&pad::KERNEL, pad::supports),
-                _ => return None,
-            };
-        supported(op).then_some(kernel)
+    fn select<'s>(&'s self, op: &OpDesc<'_, '_>) -> Option<&'s dyn Kernel> {
+        let kernel: &'static FnKernel = select(op)?;
+        Some(kernel)
     }
+}
+
+/// The kernel [`BACKEND`] selects for `op`.
+fn select(op: &OpDesc<'_, '_>) -> Option<&'static FnKernel> {
+    let (kernel, supported): (&'static FnKernel, fn(&OpDesc<'_, '_>) -> bool) =
+        match op.builtin()? {
+            BuiltinOp::CONV_2D => return conv::select(op),
+            BuiltinOp::DEPTHWISE_CONV_2D => (&depthwise::KERNEL, depthwise::supports),
+            BuiltinOp::FULLY_CONNECTED => return fully_connected::select(op),
+            BuiltinOp::AVERAGE_POOL_2D => (&pooling::AVERAGE, pooling::supports),
+            BuiltinOp::MAX_POOL_2D => (&pooling::MAX, pooling::supports),
+            BuiltinOp::SOFTMAX => (&softmax::KERNEL, softmax::supports),
+            BuiltinOp::ADD | BuiltinOp::MUL => return elementwise::select(op),
+            BuiltinOp::MAXIMUM => (&minmax::MAXIMUM, minmax::supports),
+            BuiltinOp::MINIMUM => (&minmax::MINIMUM, minmax::supports),
+            BuiltinOp::PAD | BuiltinOp::PADV2 => (&pad::KERNEL, pad::supports),
+            _ => return None,
+        };
+    supported(op).then_some(kernel)
 }

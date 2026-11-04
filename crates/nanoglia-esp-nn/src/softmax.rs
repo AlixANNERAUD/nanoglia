@@ -7,7 +7,7 @@
 //! `result - 128`: the output must be quantized with zero point -128 and a scale of 1/256 (LiteRT's
 //! tolerance of 0.1%).
 
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::Pod;
 use nanoglia_core::quant;
 use nanoglia_core::{BuiltinOp, OpDesc, OpOptions, Result};
@@ -18,7 +18,7 @@ use crate::fallback::{self, EspOp};
 use crate::layout::{read_params, write_params};
 
 /// The `SOFTMAX` kernel.
-pub(crate) static KERNEL: Kernel = fallback::kernel::<Softmax>();
+pub(crate) static KERNEL: FnKernel = fallback::kernel::<Softmax>();
 
 /// ESP-NN parameters.
 #[repr(C)]
@@ -112,7 +112,7 @@ pub(crate) struct Softmax;
 impl EspOp for Softmax {
     const NAME: &'static str = "esp-nn/softmax_s8";
 
-    fn fallback() -> &'static Kernel {
+    fn fallback() -> &'static FnKernel {
         &nanoglia_cmsis_nn::kernels::SOFTMAX_S8
     }
 

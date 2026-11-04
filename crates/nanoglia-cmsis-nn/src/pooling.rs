@@ -6,7 +6,7 @@
 //! the raw values and only the fused activation is applied.
 
 use nanoglia_cmsis_nn_sys as sys;
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::Pod;
 use nanoglia_core::{BuiltinOp, DataType, OpDesc, OpOptions, Result};
 
@@ -14,7 +14,7 @@ use crate::common::{self, nhwc};
 use crate::layout::{read_params, write_params};
 
 /// The `AVERAGE_POOL_2D` kernel.
-pub static AVERAGE: Kernel = Kernel {
+pub static AVERAGE: FnKernel = FnKernel {
     name: "cmsis-nn/average_pool2d_s8",
     plan,
     prepare,
@@ -22,7 +22,7 @@ pub static AVERAGE: Kernel = Kernel {
 };
 
 /// The `MAX_POOL_2D` kernel.
-pub static MAX: Kernel = Kernel {
+pub static MAX: FnKernel = FnKernel {
     name: "cmsis-nn/max_pool2d_s8",
     plan,
     prepare,

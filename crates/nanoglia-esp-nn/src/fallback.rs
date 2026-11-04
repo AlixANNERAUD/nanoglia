@@ -10,8 +10,7 @@
 //! persistent buffer holds a [`Header`], the ESP-NN parameters, then the CMSIS-NN ones; the
 //! scratch buffer is as large as the larger of the two needs.
 
-use nanoglia_core::backend::Backend;
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{Backend, EvalCtx, FnKernel, Kernel, KernelPlan};
 use nanoglia_core::pod::{Pod, read, write};
 use nanoglia_core::{ALIGN, Detail, Error, ErrorCode, OpDesc, Result};
 
@@ -23,7 +22,7 @@ pub(crate) trait EspOp {
     const NAME: &'static str;
 
     /// The CMSIS-NN kernel run when ESP-NN is busy.
-    fn fallback() -> &'static Kernel;
+    fn fallback() -> &'static FnKernel;
 
     /// The persistent and scratch bytes of the ESP-NN kernel, `None` if ESP-NN cannot run `op`
     /// exactly like TFLite.
@@ -37,8 +36,8 @@ pub(crate) trait EspOp {
 }
 
 /// The kernel of an [`EspOp`].
-pub(crate) const fn kernel<T: EspOp>() -> Kernel {
-    Kernel {
+pub(crate) const fn kernel<T: EspOp>() -> FnKernel {
+    FnKernel {
         name: T::NAME,
         plan: plan::<T>,
         prepare: prepare::<T>,
@@ -47,14 +46,14 @@ pub(crate) const fn kernel<T: EspOp>() -> Kernel {
 }
 
 /// Whether the backend claims `op` with `T`: ESP-NN supports it, and so does the CMSIS-NN kernel
-/// it falls back to.
+/// it falls back to (CMSIS-NN selects that very kernel: same address).
 pub(crate) fn select<T: EspOp>(
     op: &OpDesc<'_, '_>,
-    kernel: &'static Kernel,
-) -> Option<&'static Kernel> {
+    kernel: &'static FnKernel,
+) -> Option<&'static dyn Kernel> {
     T::plan(op)?;
-    let fallback = nanoglia_cmsis_nn::BACKEND.select(op)?;
-    core::ptr::eq(fallback, T::fallback()).then_some(kernel)
+    let fallback: &dyn Kernel = nanoglia_cmsis_nn::BACKEND.select(op)?;
+    core::ptr::addr_eq(fallback, T::fallback()).then_some(kernel)
 }
 
 /// Where the two parameter sets are in the persistent buffer. Written at its start.

@@ -39,7 +39,7 @@ pub(crate) use pod_struct;
 macro_rules! fixed_kernel {
     ($(#[$meta:meta])* $kernel:ident, $name:literal, $params:path, $eval:path) => {
         $(#[$meta])*
-        pub(crate) static $kernel: nanoglia_core::backend::Kernel = nanoglia_core::backend::Kernel {
+        pub(crate) static $kernel: nanoglia_core::backend::FnKernel = nanoglia_core::backend::FnKernel {
             name: $name,
             plan: |op| crate::util::plan_fixed(op, $params),
             prepare: |op, persist| crate::util::prepare_fixed(op, persist, $params),

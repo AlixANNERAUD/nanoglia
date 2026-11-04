@@ -9,7 +9,7 @@
 //! powers of two.
 
 use nanoglia_cmsis_nn_sys as sys;
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::{Pod, cast_slice, cast_slice_mut};
 use nanoglia_core::quant;
 use nanoglia_core::{BuiltinOp, DataType, OpDesc, OpOptions, Result};
@@ -18,7 +18,7 @@ use crate::common;
 use crate::layout::{read_params, write_params};
 
 /// The `ADD` kernel.
-pub static ADD: Kernel = Kernel {
+pub static ADD: FnKernel = FnKernel {
     name: "cmsis-nn/add_s8",
     plan,
     prepare,
@@ -26,7 +26,7 @@ pub static ADD: Kernel = Kernel {
 };
 
 /// The `MUL` kernel.
-pub static MUL: Kernel = Kernel {
+pub static MUL: FnKernel = FnKernel {
     name: "cmsis-nn/mul_s8",
     plan,
     prepare,
@@ -34,7 +34,7 @@ pub static MUL: Kernel = Kernel {
 };
 
 /// The int16 `ADD` kernel.
-pub(crate) static ADD_S16: Kernel = Kernel {
+pub(crate) static ADD_S16: FnKernel = FnKernel {
     name: "cmsis-nn/add_s16",
     plan,
     prepare,
@@ -42,7 +42,7 @@ pub(crate) static ADD_S16: Kernel = Kernel {
 };
 
 /// The int16 `MUL` kernel.
-pub(crate) static MUL_S16: Kernel = Kernel {
+pub(crate) static MUL_S16: FnKernel = FnKernel {
     name: "cmsis-nn/mul_s16",
     plan,
     prepare,
@@ -148,7 +148,7 @@ fn analyze(op: &OpDesc<'_, '_>) -> Option<Params> {
 }
 
 /// The kernel running `op`, if any.
-pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static Kernel> {
+pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static FnKernel> {
     analyze(op)?;
     let int16 = op.output(0)?.dtype == DataType::I16;
     if int16 && !crate::INT16 {

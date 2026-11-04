@@ -4,7 +4,7 @@
 //! Like LiteRT and TFLite Micro, the raw values are compared without requantization.
 
 use nanoglia_cmsis_nn_sys as sys;
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::Pod;
 use nanoglia_core::{BuiltinOp, DataType, Dims, OpDesc, Result};
 
@@ -12,7 +12,7 @@ use crate::common::{self, nhwc};
 use crate::layout::{read_params, write_params};
 
 /// The `MAXIMUM` kernel.
-pub(crate) static MAXIMUM: Kernel = Kernel {
+pub(crate) static MAXIMUM: FnKernel = FnKernel {
     name: "cmsis-nn/maximum_s8",
     plan,
     prepare,
@@ -20,7 +20,7 @@ pub(crate) static MAXIMUM: Kernel = Kernel {
 };
 
 /// The `MINIMUM` kernel.
-pub(crate) static MINIMUM: Kernel = Kernel {
+pub(crate) static MINIMUM: FnKernel = FnKernel {
     name: "cmsis-nn/minimum_s8",
     plan,
     prepare,

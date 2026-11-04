@@ -199,9 +199,9 @@ fn eval_rejects_wrong_buffers() {
         .output(&output);
     op.with_desc(|desc| {
         let kernel = BACKEND.select(desc).unwrap();
-        let plan = (kernel.plan)(desc).unwrap();
+        let plan = kernel.plan(desc).unwrap();
         let mut persist = Aligned::zeroed(plan.persistent);
-        (kernel.prepare)(desc, persist.bytes_mut()).unwrap();
+        kernel.prepare(desc, persist.bytes_mut()).unwrap();
         let mut scratch = Aligned::zeroed(plan.scratch);
         let short_input = Aligned::zeroed(31);
         let mut out = Aligned::zeroed(12);
@@ -213,7 +213,7 @@ fn eval_rejects_wrong_buffers() {
             persist: persist.bytes(),
             scratch: scratch.bytes_mut(),
         };
-        let error = (kernel.eval)(&mut ctx).unwrap_err();
+        let error = kernel.eval(&mut ctx).unwrap_err();
         assert_eq!(error.code, ErrorCode::InvalidArgument);
 
         // A scratch buffer smaller than planned.
@@ -229,7 +229,7 @@ fn eval_rejects_wrong_buffers() {
         };
         assert!(plan.scratch > 0);
         assert_eq!(
-            (kernel.eval)(&mut ctx).unwrap_err().code,
+            kernel.eval(&mut ctx).unwrap_err().code,
             ErrorCode::InvalidArgument
         );
     });

@@ -109,7 +109,7 @@ pub(crate) fn op(
 }
 
 /// The kernel the backend selects for `op`.
-pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static Kernel> {
+pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static dyn Kernel> {
     BACKEND.select(op)
 }
 
@@ -117,9 +117,9 @@ pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static Kernel> {
 /// Returns the outputs.
 pub(crate) fn run(op: &OpDesc<'_, '_>, activations: &[&[u8]]) -> Result<Vec<&'static mut [u8]>> {
     let kernel = select(op).ok_or(Error::unsupported(Detail::None))?;
-    let plan = (kernel.plan)(op)?;
+    let plan = kernel.plan(op)?;
     let persist = zeroed(plan.persistent);
-    (kernel.prepare)(op, persist)?;
+    kernel.prepare(op, persist)?;
     let scratch = zeroed(plan.scratch);
     // Garbage in the scratch buffer must not matter.
     scratch.fill(0xa5);
@@ -150,7 +150,7 @@ pub(crate) fn run(op: &OpDesc<'_, '_>, activations: &[&[u8]]) -> Result<Vec<&'st
         persist,
         scratch,
     };
-    (kernel.eval)(&mut ctx)?;
+    kernel.eval(&mut ctx)?;
     Ok(outputs)
 }
 

@@ -318,7 +318,7 @@ fn fully_connected_16x8() {
         ),
     ] {
         let op = fully_connected_16x8_op(scales, activation, bias());
-        assert_eq!(select(&op).unwrap().name, "rust/fully_connected_16x8");
+        assert_eq!(select(&op).unwrap().name(), "rust/fully_connected_16x8");
         let out = run1::<i16>(&op, &[buf(&FC16_X)]);
         assert_eq!(&out, tflm);
         for (a, b) in out.iter().zip(litert) {
@@ -411,7 +411,7 @@ fn softmax_i16() {
             &[Some(q(t(0, DataType::I16, shape), scale, 0))],
             &[q(t(1, DataType::I16, shape), 1.0 / 32768.0, 0)],
         );
-        assert_eq!(select(&op).unwrap().name, "rust/softmax_i16");
+        assert_eq!(select(&op).unwrap().name(), "rust/softmax_i16");
         assert_eq!(run1::<i16>(&op, &[buf(x)]), expected, "{shape:?}");
     }
 }
@@ -482,7 +482,7 @@ fn quantized_binary<T: Pod>(
         ],
         &[q(t(2, dtype, qo.0), qo.1.0, qo.1.1)],
     );
-    assert_eq!(select(&op).unwrap().name, "rust/binary_q");
+    assert_eq!(select(&op).unwrap().name(), "rust/binary_q");
     run1(&op, &[buf(a), buf(b)])
 }
 

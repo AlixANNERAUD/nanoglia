@@ -18,7 +18,7 @@
 //! not decode, and reads the bias as int64 by default.
 
 use nanoglia_cmsis_nn_sys as sys;
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::{Pod, cast_slice, cast_slice_mut};
 use nanoglia_core::quant;
 use nanoglia_core::{BuiltinOp, DataType, Detail, Error, OpDesc, OpOptions, Result, TensorDesc};
@@ -27,7 +27,7 @@ use crate::common::{self, nhwc};
 use crate::layout::{ChannelLayout, inconsistent, read_params};
 
 /// The `FULLY_CONNECTED` kernel.
-pub static KERNEL: Kernel = Kernel {
+pub static KERNEL: FnKernel = FnKernel {
     name: "cmsis-nn/fully_connected_s8",
     plan,
     prepare,
@@ -35,7 +35,7 @@ pub static KERNEL: Kernel = Kernel {
 };
 
 /// The 16x8 `FULLY_CONNECTED` kernel.
-pub(crate) static KERNEL_S16: Kernel = Kernel {
+pub(crate) static KERNEL_S16: FnKernel = FnKernel {
     name: "cmsis-nn/fully_connected_s16",
     plan,
     prepare,
@@ -220,7 +220,7 @@ fn layout(p: &Params) -> ChannelLayout<Params> {
 }
 
 /// The kernel running `op`, if any.
-pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static Kernel> {
+pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static FnKernel> {
     let a = analyze(op)?;
     Some(if a.input.dtype == DataType::I16 {
         if !crate::INT16 {

@@ -6,7 +6,7 @@
 //! channels / input channels) like LiteRT does, rather than read from the options.
 
 use nanoglia_cmsis_nn_sys as sys;
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::Pod;
 use nanoglia_core::quant;
 use nanoglia_core::{BuiltinOp, DataType, OpDesc, OpOptions, Result, TensorDesc};
@@ -15,7 +15,7 @@ use crate::common::{self, nhwc};
 use crate::layout::{ChannelLayout, read_params};
 
 /// The `DEPTHWISE_CONV_2D` kernel.
-pub static KERNEL: Kernel = Kernel {
+pub static KERNEL: FnKernel = FnKernel {
     name: "cmsis-nn/depthwise_conv2d_s8",
     plan,
     prepare,

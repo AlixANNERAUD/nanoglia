@@ -20,7 +20,7 @@
 //! persistent buffer.
 
 use nanoglia_cmsis_nn_sys as sys;
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::{Pod, cast_slice, cast_slice_mut};
 use nanoglia_core::quant::{self, Multiplier};
 use nanoglia_core::{BuiltinOp, DataType, OpDesc, OpOptions, Result, TensorDesc};
@@ -29,7 +29,7 @@ use crate::common::{self, nhwc};
 use crate::layout::{ChannelLayout, read_params};
 
 /// The `CONV_2D` kernel.
-pub static KERNEL: Kernel = Kernel {
+pub static KERNEL: FnKernel = FnKernel {
     name: "cmsis-nn/conv2d_s8",
     plan,
     prepare,
@@ -37,7 +37,7 @@ pub static KERNEL: Kernel = Kernel {
 };
 
 /// The 16x8 `CONV_2D` kernel.
-pub(crate) static KERNEL_S16: Kernel = Kernel {
+pub(crate) static KERNEL_S16: FnKernel = FnKernel {
     name: "cmsis-nn/conv2d_s16",
     plan,
     prepare,
@@ -222,7 +222,7 @@ fn layout(p: &Params) -> ChannelLayout<Params> {
 }
 
 /// The kernel running `op`, if any.
-pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static Kernel> {
+pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static FnKernel> {
     let a = analyze(op)?;
     Some(if a.input.dtype == DataType::I16 {
         if !crate::INT16 {

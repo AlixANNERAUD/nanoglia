@@ -14,7 +14,7 @@ use crate::util::{
     input, out_slice, output, per_tensor, pod_struct, quantized_activation, shape_mismatch,
     unsupported, unsupported_type,
 };
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::{self, Layout, Region};
 use nanoglia_core::quant::{self, Multiplier};
 use nanoglia_core::{DataType, OpDesc, OpOptions, Result, TensorDesc};
@@ -282,7 +282,7 @@ fn fc_16x8_eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
 }
 
 /// `FULLY_CONNECTED` with int16 activations, int8 weights and an int64 bias.
-pub(crate) static FULLY_CONNECTED_16X8: Kernel = Kernel {
+pub(crate) static FULLY_CONNECTED_16X8: FnKernel = FnKernel {
     name: "rust/fully_connected_16x8",
     plan: fc_16x8_plan,
     prepare: fc_16x8_prepare,

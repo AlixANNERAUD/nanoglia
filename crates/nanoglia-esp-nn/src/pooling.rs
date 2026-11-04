@@ -6,7 +6,7 @@
 //! the fused activation is applied. Like esp-tflite-micro, layers whose channel count is not a
 //! multiple of 4 run the ANSI C kernels (the ESP32-S3 ones need it).
 
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::Pod;
 use nanoglia_core::{BuiltinOp, OpDesc, OpOptions, Result};
 use nanoglia_esp_nn_sys as sys;
@@ -16,10 +16,10 @@ use crate::fallback::{self, EspOp};
 use crate::layout::{inconsistent, read_params, write_params};
 
 /// The `AVERAGE_POOL_2D` kernel.
-pub(crate) static AVERAGE: Kernel = fallback::kernel::<Pool<false>>();
+pub(crate) static AVERAGE: FnKernel = fallback::kernel::<Pool<false>>();
 
 /// The `MAX_POOL_2D` kernel.
-pub(crate) static MAX: Kernel = fallback::kernel::<Pool<true>>();
+pub(crate) static MAX: FnKernel = fallback::kernel::<Pool<true>>();
 
 /// ESP-NN parameters.
 #[repr(C)]
@@ -146,7 +146,7 @@ impl<const MAX: bool> EspOp for Pool<MAX> {
         "esp-nn/average_pool2d_s8"
     };
 
-    fn fallback() -> &'static Kernel {
+    fn fallback() -> &'static FnKernel {
         if MAX {
             &nanoglia_cmsis_nn::kernels::MAX_POOL_2D_S8
         } else {

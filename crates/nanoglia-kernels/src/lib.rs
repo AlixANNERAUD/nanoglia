@@ -25,7 +25,7 @@ mod tests;
 #[cfg(test)]
 extern crate std;
 
-use nanoglia_core::backend::{Backend, BackendKind, Kernel};
+use nanoglia_core::backend::{Backend, BackendKind, FnKernel, Kernel};
 use nanoglia_core::{BuiltinOp, OpDesc};
 
 /// The pure-Rust kernel backend (name `"rust"`).
@@ -41,14 +41,14 @@ pub static BACKEND: RustKernels = RustKernels;
 /// A static list of kernels.
 macro_rules! kernels {
     ($($(#[$attr:meta])* $kernel:path),+ $(,)?) => {{
-        const KERNELS: &[&Kernel] = &[$($(#[$attr])* &$kernel),+];
+        const KERNELS: &[&FnKernel] = &[$($(#[$attr])* &$kernel),+];
         KERNELS
     }};
 }
 
 impl RustKernels {
     /// The kernels that may run `op`, in order of preference.
-    fn candidates(op: BuiltinOp) -> &'static [&'static Kernel] {
+    fn candidates(op: BuiltinOp) -> &'static [&'static FnKernel] {
         match op {
             BuiltinOp::RESHAPE | BuiltinOp::SQUEEZE | BuiltinOp::EXPAND_DIMS => {
                 kernels!(copy::RESHAPE)
@@ -127,11 +127,12 @@ impl Backend for RustKernels {
         BackendKind::Cpu
     }
 
-    fn select(&self, op: &OpDesc<'_, '_>) -> Option<&'static Kernel> {
+    fn select<'s>(&'s self, op: &OpDesc<'_, '_>) -> Option<&'s dyn Kernel> {
         // A kernel supports an operator exactly when it can plan it.
-        Self::candidates(op.builtin()?)
+        let kernel: &'static FnKernel = Self::candidates(op.builtin()?)
             .iter()
             .copied()
-            .find(|kernel| (kernel.plan)(op).is_ok())
+            .find(|kernel| (kernel.plan)(op).is_ok())?;
+        Some(kernel)
     }
 }

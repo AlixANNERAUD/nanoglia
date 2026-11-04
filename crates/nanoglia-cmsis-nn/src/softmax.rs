@@ -7,7 +7,7 @@
 //! tolerance of 0.1%).
 
 use nanoglia_cmsis_nn_sys as sys;
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::Pod;
 use nanoglia_core::quant;
 use nanoglia_core::{BuiltinOp, DataType, OpDesc, OpOptions, Result};
@@ -16,7 +16,7 @@ use crate::common;
 use crate::layout::{read_params, write_params};
 
 /// The `SOFTMAX` kernel.
-pub static KERNEL: Kernel = Kernel {
+pub static KERNEL: FnKernel = FnKernel {
     name: "cmsis-nn/softmax_s8",
     plan,
     prepare,

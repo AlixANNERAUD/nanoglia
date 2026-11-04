@@ -6,7 +6,7 @@
 //! to the next backend (esp-tflite-micro runs the reference kernel for them). Grouped convolutions
 //! (input channels a multiple of the filter's) are supported.
 
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::Pod;
 use nanoglia_core::quant;
 use nanoglia_core::{BuiltinOp, OpDesc, OpOptions, Result, TensorDesc};
@@ -17,7 +17,7 @@ use crate::fallback::{self, EspOp};
 use crate::layout::{ChannelLayout, read_params};
 
 /// The `CONV_2D` kernel.
-pub(crate) static KERNEL: Kernel = fallback::kernel::<Conv>();
+pub(crate) static KERNEL: FnKernel = fallback::kernel::<Conv>();
 
 /// ESP-NN parameters, followed by the per-channel multipliers and shifts.
 #[repr(C)]
@@ -168,7 +168,7 @@ pub(crate) struct Conv;
 impl EspOp for Conv {
     const NAME: &'static str = "esp-nn/conv2d_s8";
 
-    fn fallback() -> &'static Kernel {
+    fn fallback() -> &'static FnKernel {
         &nanoglia_cmsis_nn::kernels::CONV_2D_S8
     }
 

@@ -7,7 +7,7 @@
 //! `esp_nn_fully_connected_per_ch_s8_batch` (a weight-stationary kernel on ESP32-S3, the
 //! per-row reference kernel in a loop elsewhere). ESP-NN takes the depths as `uint16_t`.
 
-use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};
+use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
 use nanoglia_core::pod::Pod;
 use nanoglia_core::quant;
 use nanoglia_core::{BuiltinOp, DataType, OpDesc, OpOptions, Result, TensorDesc};
@@ -18,7 +18,7 @@ use crate::fallback::{self, EspOp};
 use crate::layout::{ChannelLayout, inconsistent, read_params};
 
 /// The `FULLY_CONNECTED` kernel.
-pub(crate) static KERNEL: Kernel = fallback::kernel::<FullyConnected>();
+pub(crate) static KERNEL: FnKernel = fallback::kernel::<FullyConnected>();
 
 /// ESP-NN parameters, followed by the per-channel multipliers and shifts (one entry for
 /// per-tensor layers).
@@ -126,7 +126,7 @@ pub(crate) struct FullyConnected;
 impl EspOp for FullyConnected {
     const NAME: &'static str = "esp-nn/fully_connected_s8";
 
-    fn fallback() -> &'static Kernel {
+    fn fallback() -> &'static FnKernel {
         &nanoglia_cmsis_nn::kernels::FULLY_CONNECTED_S8
     }
 
