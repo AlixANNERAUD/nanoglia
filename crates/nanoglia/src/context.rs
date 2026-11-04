@@ -8,6 +8,33 @@ use nanoglia_core::{Allocator, Block, Detail, Error, MAX_OP_INPUTS, MAX_OP_OUTPU
 /// Write the inputs ([`Self::set_input`] or [`Self::input_mut`]) before every
 /// [`Self::compute`]: the memory plan reuses input memory once it has been consumed. Outputs
 /// stay valid until the next call that borrows the context mutably.
+///
+/// ```
+/// # #[repr(C, align(16))]
+/// # struct Aligned<T: ?Sized>(T);
+/// # static MODEL: &Aligned<[u8]> = &Aligned(*include_bytes!(concat!(
+/// #     env!("CARGO_MANIFEST_DIR"),
+/// #     "/doc/classifier.tflite"
+/// # )));
+/// # fn main() -> Result<(), nanoglia::Error> {
+/// use nanoglia::{Arena, Encoding, Graph, Target};
+///
+/// let mut memory = [0u8; 4 * 1024];
+/// let arena = Arena::new(&mut memory);
+/// let graph = Graph::load_in(&[&MODEL.0], Encoding::Autodetect, Target::Auto, &arena)?;
+/// let mut ctx = graph.init_execution_context_in(&arena)?;
+///
+/// for sample in [[1i8; 36], [-3i8; 36]] {
+///     // Inputs are written again before each inference.
+///     ctx.input_mut(0)?.as_mut_slice::<i8>()?.copy_from_slice(&sample);
+///     ctx.compute()?;
+///     let scores = ctx.output_by_name("output")?;
+///     let best = scores.as_slice::<i8>()?.iter().max();
+///     assert!(best.is_some());
+/// }
+/// # Ok(())
+/// # }
+/// ```
 pub struct ExecutionContext<'g, 'm, A: Allocator, B: Allocator> {
     graph: &'g Graph<'m, A>,
     arena: Block<B>,
@@ -35,7 +62,8 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
     }
 
     /// Copies `data` (raw little-endian bytes) into input `index`. Its length must match the
-    /// tensor size exactly.
+    /// tensor size exactly, otherwise the error carries [`Detail::SizeMismatch`]. To fill the
+    /// input in place without a copy, use [`Self::input_mut`].
     pub fn set_input(&mut self, index: usize, data: &[u8]) -> Result<()> {
         let mut input = self.input_mut(index)?;
         let bytes = input.bytes_mut();

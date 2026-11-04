@@ -83,6 +83,36 @@ impl<T> Section<T> {
 /// The graph borrows the model bytes (`'m`): weights are never copied. It owns one block of
 /// memory from `A` holding the selected kernels, their prepared parameters and the memory plan.
 /// A graph is immutable: create one [`ExecutionContext`] per concurrent inference.
+///
+/// # Example
+///
+/// Load a model from bytes the firmware already holds (here a small int8 classifier: input
+/// `[3, 12]`, output `[3, 6]`), with all memory taken from a buffer on the stack:
+///
+/// ```
+/// # #[repr(C, align(16))]
+/// # struct Aligned<T: ?Sized>(T);
+/// # static MODEL: &Aligned<[u8]> = &Aligned(*include_bytes!(concat!(
+/// #     env!("CARGO_MANIFEST_DIR"),
+/// #     "/doc/classifier.tflite"
+/// # )));
+/// # fn main() -> Result<(), nanoglia::Error> {
+/// use nanoglia::{Arena, Encoding, Graph, Target};
+///
+/// let mut memory = [0u8; 4 * 1024];
+/// let arena = Arena::new(&mut memory);
+///
+/// let graph = Graph::load_in(&[&MODEL.0], Encoding::Autodetect, Target::Auto, &arena)?;
+/// let mut ctx = graph.init_execution_context_in(&arena)?;
+///
+/// ctx.input_mut(0)?.as_mut_slice::<i8>()?.fill(10);
+/// ctx.compute()?;
+/// let scores = ctx.output(0)?;
+/// assert_eq!(scores.dims().as_slice(), &[3, 6]);
+/// assert_eq!(scores.as_slice::<i8>()?.len(), 18);
+/// # Ok(())
+/// # }
+/// ```
 pub struct Graph<'m, A: Allocator> {
     model: &'m [u8],
     subgraph: SubGraph<'m>,
@@ -141,6 +171,33 @@ impl<'m, A: Allocator> Graph<'m, A> {
     /// taking all its memory from `alloc`.
     ///
     /// `builders` holds the model bytes (a single buffer for TFLite), which the graph borrows.
+    /// They must stay valid and unchanged as long as the graph lives; constant buffers must be
+    /// aligned for their type, which holds when the model starts on a 16-byte boundary.
+    ///
+    /// The model is verified first: a malformed model returns an error, never panics.
+    ///
+    /// ```
+    /// # #[repr(C, align(16))]
+    /// # struct Aligned<T: ?Sized>(T);
+    /// # static MODEL: &Aligned<[u8]> = &Aligned(*include_bytes!(concat!(
+    /// #     env!("CARGO_MANIFEST_DIR"),
+    /// #     "/doc/classifier.tflite"
+    /// # )));
+    /// # fn main() -> Result<(), nanoglia::Error> {
+    /// use nanoglia::{Arena, Encoding, ErrorCode, Graph, Target};
+    ///
+    /// let mut memory = [0u8; 4 * 1024];
+    /// let arena = Arena::new(&mut memory);
+    /// let graph = Graph::load_in(&[&MODEL.0], Encoding::Autodetect, Target::Auto, &arena)?;
+    /// assert_eq!(graph.operator_count(), 1);
+    ///
+    /// // Not a TFLite model: an error, not a panic.
+    /// let error = Graph::load_in(&[b"not a model"], Encoding::Autodetect, Target::Auto, &arena)
+    ///     .unwrap_err();
+    /// assert_eq!(error.code, ErrorCode::InvalidEncoding);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn load_in(
         builders: &[&'m [u8]],
         encoding: Encoding,
@@ -150,7 +207,32 @@ impl<'m, A: Allocator> Graph<'m, A> {
         Self::load_with(&Registry::default(), builders, encoding, target, alloc)
     }
 
-    /// Loads a model, picking kernels from `registry`.
+    /// Loads a model, picking kernels from `registry`: for each operator, the first backend of the
+    /// registry that supports it. Use it to add your own backends or kernels, or to restrict
+    /// the backends a firmware links.
+    ///
+    /// ```
+    /// # #[repr(C, align(16))]
+    /// # struct Aligned<T: ?Sized>(T);
+    /// # static MODEL: &Aligned<[u8]> = &Aligned(*include_bytes!(concat!(
+    /// #     env!("CARGO_MANIFEST_DIR"),
+    /// #     "/doc/classifier.tflite"
+    /// # )));
+    /// # fn main() -> Result<(), nanoglia::Error> {
+    /// use nanoglia::{Arena, Detail, Encoding, ErrorCode, Graph, Registry, Target};
+    ///
+    /// let mut memory = [0u8; 4 * 1024];
+    /// let arena = Arena::new(&mut memory);
+    ///
+    /// // A registry without any backend: the model's FULLY_CONNECTED has no kernel.
+    /// let empty = Registry::new(&[]);
+    /// let error = Graph::load_with(&empty, &[&MODEL.0], Encoding::Autodetect, Target::Auto, &arena)
+    ///     .unwrap_err();
+    /// assert_eq!(error.code, ErrorCode::UnsupportedOperation);
+    /// assert!(matches!(error.detail, Detail::UnsupportedOp { op_index: 0, .. }));
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn load_with(
         registry: &Registry<'_>,
         builders: &[&'m [u8]],
@@ -426,9 +508,33 @@ impl<'m> Graph<'m, nanoglia_core::allocator_api2::alloc::Global> {
 /// Use it to size a static [`Arena`](nanoglia_core::Arena): compute it once on the host (or in
 /// a test) for your model, then reserve [`Self::arena_bytes`] bytes in the firmware.
 ///
-/// ```ignore
-/// let needs = MemoryRequirements::compute(&[MODEL], Encoding::Autodetect, Target::Auto)?;
-/// assert!(needs.arena_bytes(1) <= MEMORY.len());
+/// ```
+/// # #[repr(C, align(16))]
+/// # struct Aligned<T: ?Sized>(T);
+/// # static MODEL: &Aligned<[u8]> = &Aligned(*include_bytes!(concat!(
+/// #     env!("CARGO_MANIFEST_DIR"),
+/// #     "/doc/classifier.tflite"
+/// # )));
+/// # fn main() -> Result<(), nanoglia::Error> {
+/// use nanoglia::{Arena, Encoding, Graph, MemoryRequirements, Target};
+///
+/// // Only the memory planner's working memory is needed, and given back.
+/// let mut scratch = [0u8; 512];
+/// let needs = MemoryRequirements::compute_in(
+///     &[&MODEL.0],
+///     Encoding::Autodetect,
+///     Target::Auto,
+///     &Arena::new(&mut scratch),
+/// )?;
+///
+/// // A buffer of `arena_bytes(1)` holds the graph and one execution context, at any alignment.
+/// let mut memory = vec![0u8; needs.arena_bytes(1)];
+/// let arena = Arena::new(&mut memory);
+/// let graph = Graph::load_in(&[&MODEL.0], Encoding::Autodetect, Target::Auto, &arena)?;
+/// let _ctx = graph.init_execution_context_in(&arena)?;
+/// assert_eq!(graph.memory_requirements(), needs);
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MemoryRequirements {
