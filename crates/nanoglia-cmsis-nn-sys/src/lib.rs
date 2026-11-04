@@ -293,6 +293,40 @@ unsafe extern "C" {
         output_dims: *const cmsis_nn_dims,
     ) -> i32;
 
+    /// Transpose convolution, int8 activations and weights, int32 bias: a convolution of the
+    /// upsampled input with the reversed filter for strides up to 2 and more than 16 input
+    /// channels, `arm_transpose_conv_s8` otherwise.
+    pub fn arm_transpose_conv_wrapper_s8(
+        ctx: *const cmsis_nn_context,
+        reverse_conv_ctx: *const cmsis_nn_context,
+        transpose_conv_params: *const cmsis_nn_transpose_conv_params,
+        quant_params: *const cmsis_nn_per_channel_quant_params,
+        input_dims: *const cmsis_nn_dims,
+        input_data: *const i8,
+        filter_dims: *const cmsis_nn_dims,
+        filter_data: *const i8,
+        bias_dims: *const cmsis_nn_dims,
+        bias_data: *const i32,
+        output_dims: *const cmsis_nn_dims,
+        output_data: *mut i8,
+    ) -> arm_cmsis_nn_status;
+
+    /// Bytes of the `ctx` buffer of [`arm_transpose_conv_wrapper_s8`].
+    pub fn arm_transpose_conv_s8_get_buffer_size(
+        transpose_conv_params: *const cmsis_nn_transpose_conv_params,
+        input_dims: *const cmsis_nn_dims,
+        filter_dims: *const cmsis_nn_dims,
+        out_dims: *const cmsis_nn_dims,
+    ) -> i32;
+
+    /// Bytes of the `reverse_conv_ctx` buffer of [`arm_transpose_conv_wrapper_s8`] (the reversed
+    /// filter), 0 when it is not used.
+    pub fn arm_transpose_conv_s8_get_reverse_conv_buffer_size(
+        transpose_conv_params: *const cmsis_nn_transpose_conv_params,
+        input_dims: *const cmsis_nn_dims,
+        filter_dims: *const cmsis_nn_dims,
+    ) -> i32;
+
     /// 1x1 convolution with unit strides and no padding, int8 (also a batched fully-connected).
     pub fn arm_convolve_1x1_s8_fast(
         ctx: *const cmsis_nn_context,

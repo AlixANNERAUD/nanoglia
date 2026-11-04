@@ -659,3 +659,54 @@ pub fn softmax(beta: f32, input_scale: f32, input: &[i8], depth: usize) -> Vec<i
     }
     output
 }
+
+/// `reference_integer_ops::TransposeConv` (int8, per-channel), with `(h, w)` pairs in
+/// `ConvParams` (the dilation is not used).
+#[allow(clippy::too_many_arguments)]
+pub fn transpose_conv_per_channel(
+    p: &ConvParams,
+    multipliers: &[Multiplier],
+    input_dims: [i32; 4],
+    input: &[i8],
+    filter_dims: [i32; 4],
+    filter: &[i8],
+    bias: Option<&[i32]>,
+    output_dims: [i32; 4],
+) -> Vec<i8> {
+    let [batches, in_h, in_w, in_c] = input_dims;
+    let [out_c, filter_h, filter_w, _] = filter_dims;
+    let [_, out_h, out_w, _] = output_dims;
+    let mut acc = vec![0i32; output_dims.iter().product::<i32>() as usize];
+    for b in 0..batches {
+        for iy in 0..in_h {
+            for ix in 0..in_w {
+                for ic in 0..in_c {
+                    let ox0 = ix * p.stride.1 - p.padding.1;
+                    let oy0 = iy * p.stride.0 - p.padding.0;
+                    for fy in 0..filter_h {
+                        for fx in 0..filter_w {
+                            for oc in 0..out_c {
+                                let (ox, oy) = (ox0 + fx, oy0 + fy);
+                                if ox >= 0 && ox < out_w && oy >= 0 && oy < out_h {
+                                    let iv = input[offset(input_dims, b, iy, ix, ic)] as i32;
+                                    let fv = filter[offset(filter_dims, oc, fy, fx, ic)] as i32;
+                                    acc[offset(output_dims, b, oy, ox, oc)] +=
+                                        (iv + p.input_offset) * fv;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    acc.iter()
+        .enumerate()
+        .map(|(i, &a)| {
+            let oc = i % out_c as usize;
+            let mut v = a + bias.map_or(0, |bias| bias[oc]);
+            v = multiply_by_quantized_multiplier(v, multipliers[oc]);
+            (v + p.output_offset).clamp(p.activation.0, p.activation.1) as i8
+        })
+        .collect()
+}

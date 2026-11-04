@@ -15,6 +15,7 @@ mod minmax;
 mod pad;
 mod pooling;
 mod softmax;
+mod transpose_conv;
 
 /// Whether the int16 (16x8) kernels are offered (feature `int16`). When they are not, the
 /// branches that select them are dead code and the linker drops the C kernels.
@@ -79,6 +80,7 @@ fn select(op: &OpDesc<'_, '_>) -> Option<&'static FnKernel> {
             BuiltinOp::MAXIMUM => (&minmax::MAXIMUM, minmax::supports),
             BuiltinOp::MINIMUM => (&minmax::MINIMUM, minmax::supports),
             BuiltinOp::PAD | BuiltinOp::PADV2 => (&pad::KERNEL, pad::supports),
+            BuiltinOp::TRANSPOSE_CONV => (&transpose_conv::KERNEL, transpose_conv::supports),
             _ => return None,
         };
     supported(op).then_some(kernel)

@@ -14,3 +14,4 @@ mod pad;
 mod pooling;
 mod selection;
 mod softmax;
+mod transpose_conv;
