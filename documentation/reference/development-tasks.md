@@ -15,7 +15,7 @@ at once.
 | --- | --- | --- |
 | Rust | stable, with `rustfmt`, `clippy`, `llvm-tools` and the targets `thumbv6m-none-eabi`, `thumbv7em-none-eabihf`, `thumbv8m.main-none-eabihf`, `riscv32imc-unknown-none-elf`, `wasm32-unknown-unknown`, `wasm32-wasip1` | every task |
 | mr-boxington | latest | every Cargo command |
-| uv | latest | `oracle` |
+| uv | latest | `oracle`, `bench-compare` |
 | cargo-llvm-cov | latest | `coverage` |
 | cargo-deny | latest (task tool) | `deny` |
 | wasi-sdk | `wasi-sdk-33` (task tool) | `cross-wasm32`, `test-wasip1`, `bench-wasm` |
@@ -55,6 +55,7 @@ variable would not survive in mbx's build-script wrapper, so
 | `example-nano33ble` | `cargo build --release` in `examples/nano33ble`, then `arm-none-eabi-size` of the firmware. | `ci.yml` Cross (Nano 33 BLE firmware) |
 | `bench` | `cargo run --release -p nanoglia --example bench`: median time of one inference of each MLPerf Tiny model on the host. The time budget per model is 2000 ms, or `NANOGLIA_BENCH_MS`. | — |
 | `bench-wasm` | The same benchmark for `wasm32-wasip1` under wasmtime, once scalar and once with SIMD128 (`-C target-feature=+simd128`; the build scripts add `-msimd128` to the C code), each in its own target directory. | — |
+| `bench-compare` | `uv run --project tools python -I tools/compare.py` in `benchmarks/compare` (its own Cargo workspace and `Cargo.lock`, and its own uv project in `tools/`): builds one host benchmark per engine (nanoglia, tract, MicroFlow, embedded-nn, ember-rs) and runs each 3 times in turn (`ROUNDS`, time budget per model `BENCH_MS`, default 2000 ms), checking every output against the golden samples; then builds one keyword-spotting firmware per engine for `thumbv7em-none-eabihf` (profile `firmware`), reads its size with `arm-none-eabi-size` and runs it under a Cortex-M4 emulator (Unicorn) to check its output and measure its peak stack. Prints Markdown tables; raw results in `benchmarks/compare/target/compare/`. Downloads the other engines from crates.io and GitHub. See [performance](performance.md#compared-with-other-rust-engines). | — |
 | `oracle` | `uv run python -I generate.py` in `tools/oracle`: regenerates `testdata/ops/` and `testdata/mlperf-tiny/golden/` with LiteRT's reference kernels. Deterministic. | — |
 | `coverage` | `cargo llvm-cov --workspace --lcov --output-path coverage.lcov`, with mbx's build-script wrapper turned off. | `coverage.yml` |
 | `deny` | `cargo deny check` (licenses, advisories, bans, sources; `deny.toml`). | `ci.yml` Dependencies (cargo-deny) |

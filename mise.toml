@@ -210,6 +210,14 @@ run = [
 description = "Time one inference of each MLPerf Tiny model on the host"
 run = "cargo run -q --release -p nanoglia --example bench"
 
+[tasks.bench-compare]
+description = "Compare nanoglia with other Rust inference engines on the MLPerf Tiny models: correctness, host time, and size, RAM and output of a keyword-spotting firmware per engine (under a Cortex-M4 emulator)"
+dir = "{{config_root}}/benchmarks/compare"
+# Its own Cargo workspace (benchmarks/compare/Cargo.toml) and uv project (tools/): prints Markdown
+# tables, keeps the raw results in benchmarks/compare/target/compare/. ROUNDS and BENCH_MS change
+# the number of runs per engine (3) and the time budget per model and run (2000 ms).
+run = "uv run --project tools python -I tools/compare.py"
+
 [tasks.bench-wasm]
 description = "Time one inference of each MLPerf Tiny model compiled to wasm32-wasip1 under wasmtime, without and with SIMD128"
 tools = { "github:WebAssembly/wasi-sdk" = "wasi-sdk-33", wasmtime = "50.0.0" }
