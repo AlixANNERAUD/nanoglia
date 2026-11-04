@@ -1,5 +1,7 @@
 # nanoglia-cmsis-nn
 
+**Arm CMSIS-NN acceleration for TensorFlow Lite models in Rust:** int8 and int16 convolutions, fully-connected layers, pooling and softmax on Cortex-M (DSP, Helium), bit-exact with TensorFlow Lite Micro, `no_std` and allocation-free. Most applications depend on [`nanoglia`](https://crates.io/crates/nanoglia) instead, which enables this crate through its Cargo features.
+
 The [CMSIS-NN](https://github.com/ARM-software/CMSIS-NN) kernel backend of [nanoglia](https://github.com/AlixANNERAUD/nanoglia).
 
 [`BACKEND`] implements [`nanoglia_core::backend::Backend`]: it claims the operators CMSIS-NN runs exactly like the TFLite reference kernels and leaves the others to the next backend. Its parameter computations (requantization multipliers, paddings, activation ranges, softmax scaling...) are ported from the CMSIS-NN kernels of TensorFlow Lite Micro and run once, at prepare time; evaluation only fills the CMSIS-NN structs and calls the C function. Nothing allocates: parameters live in the persistent buffer and CMSIS-NN works in the shared scratch buffer the interpreter provides.

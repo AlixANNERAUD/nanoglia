@@ -1,5 +1,7 @@
 # nanoglia-core
 
+**The `no_std` building blocks of [nanoglia](https://github.com/AlixANNERAUD/nanoglia), the TensorFlow Lite inference engine for microcontrollers:** tensor and operator types, TFLite-exact fixed-point quantization math, a kernel-backend interface and an arena allocator. Use it to write your own kernel backend; Most applications depend on [`nanoglia`](https://crates.io/crates/nanoglia) instead, which enables this crate through its Cargo features.
+
 Types shared by the [nanoglia](https://github.com/AlixANNERAUD/nanoglia) crates:
 
 - tensors ([`TensorDesc`], [`DataType`], [`Dims`], [`Quantization`]) and operators ([`OpDesc`], [`BuiltinOp`], [`OpOptions`]), using the TFLite vocabulary;

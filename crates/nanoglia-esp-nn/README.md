@@ -1,5 +1,7 @@
 # nanoglia-esp-nn
 
+**Espressif ESP-NN acceleration for TensorFlow Lite models on the ESP32-S3, in `no_std` Rust, without ESP-IDF:** int8 convolutions, fully-connected layers, pooling and softmax with the chip's SIMD instructions, bit-exact with TensorFlow Lite. Most applications depend on [`nanoglia`](https://crates.io/crates/nanoglia) with its `esp-nn` feature instead.
+
 The [ESP-NN](https://github.com/espressif/esp-nn) kernel backend of [nanoglia](https://github.com/AlixANNERAUD/nanoglia).
 
 [`BACKEND`] implements [`nanoglia_core::backend::Backend`]: it claims the int8 operators ESP-NN runs exactly like the TFLite reference kernels and leaves the others to the next backend. Its parameter computations are ported from esp-tflite-micro's ESP-NN kernels (`tensorflow/lite/micro/kernels/esp_nn/`) and TensorFlow Lite Micro; they run once, at prepare time. Nothing allocates: parameters live in the persistent buffer and ESP-NN works in the shared scratch buffer the interpreter provides.

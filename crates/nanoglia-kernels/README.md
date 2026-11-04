@@ -1,5 +1,7 @@
 # nanoglia-kernels
 
+**Pure Rust neural-network kernels, bit-exact with TensorFlow Lite, for `no_std` targets:** quantization, activations, element-wise operations with broadcasting, int16 and float32 operators, without allocating or panicking. Most applications depend on [`nanoglia`](https://crates.io/crates/nanoglia) instead, which enables this crate through its Cargo features.
+
 Pure-Rust kernels of [nanoglia](https://github.com/AlixANNERAUD/nanoglia), exposed as the `"rust"` [`Backend`](nanoglia_core::backend::Backend) ([`BACKEND`]).
 
 They cover what the optimized C libraries lack: shape and quantization operators, a few int8 operators, and `f32` versions of the main operators. Each kernel ports the TensorFlow Lite reference kernel (`BUILTIN_REF` resolver) and its preparation code, including how multipliers and lookup tables are computed, so that results are bit-exact.

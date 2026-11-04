@@ -1,5 +1,7 @@
 # nanoglia-tflite
 
+**Read TensorFlow Lite / LiteRT `.tflite` models in `no_std` Rust, without allocating, copying or trusting them.** A zero-copy, panic-free flatbuffer verifier and reader for microcontrollers and WebAssembly, fuzzed in CI. Most applications depend on [`nanoglia`](https://crates.io/crates/nanoglia) instead, which enables this crate through its Cargo features.
+
 A reader for TensorFlow Lite (`.tflite`) models, used by [nanoglia](https://github.com/AlixANNERAUD/nanoglia):
 
 - **zero-copy**: tensor shapes, quantization parameters, operator inputs and constant data are views into the model bytes;
