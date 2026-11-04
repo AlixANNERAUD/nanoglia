@@ -158,163 +158,17 @@ impl<'m, A: Allocator> Graph<'m, A> {
         target: Target,
         alloc: A,
     ) -> Result<Self> {
-        let [bytes] = builders else {
-            return Err(Error::invalid_argument(Detail::None));
-        };
-        let bytes: &'m [u8] = bytes;
-        match encoding {
-            Encoding::TensorFlowLite => {}
-            Encoding::Autodetect if Model::is_tflite(bytes) => {}
-            Encoding::Autodetect => {
-                return Err(Error::new(
-                    ErrorCode::InvalidEncoding,
-                    Detail::UnknownEncoding,
-                ));
-            }
-        }
-        let model = Model::parse(bytes)?;
-        if model.subgraph_count() != 1 {
-            return Err(Error::unsupported(Detail::UnsupportedStructure));
-        }
-        let subgraph = model.subgraph(0)?;
-        let op_count = subgraph.operator_count();
+        let (bytes, subgraph) = open(builders, encoding)?;
+        let sizing = Sizing::compute(registry, target, &subgraph)?;
         let tensor_count = subgraph.tensor_count();
-        if op_count > u32::MAX as usize || tensor_count > u32::MAX as usize {
-            return Err(Error::unsupported(Detail::UnsupportedStructure));
-        }
-
-        // Pass 1: select the kernels and size everything.
-        let mut persist_total = 0usize;
-        let mut scratch_size = 0usize;
-        let mut io_total = 0usize;
-        let mut npu_ops = 0usize;
-        for index in 0..op_count {
-            let mut descs = OpDescs {
-                inputs: [None; MAX_OP_INPUTS],
-                outputs: [NO_TENSOR; MAX_OP_OUTPUTS],
-            };
-            let (desc, _, _) = describe(&subgraph, index, &mut descs)?;
-            let (kernel, kind) = select(registry, target, &desc)?;
-            npu_ops += usize::from(kind == BackendKind::Npu);
-            let plan = (kernel.plan)(&desc)?;
-            persist_total = persist_total
-                .checked_add(
-                    align_up(plan.persistent).ok_or_else(|| Error::out_of_memory(usize::MAX))?,
-                )
-                .ok_or_else(|| Error::out_of_memory(usize::MAX))?;
-            scratch_size = scratch_size.max(plan.scratch);
-            io_total += desc.inputs.len() + desc.outputs.len();
-        }
-        if target == Target::Npu && npu_ops == 0 {
-            return Err(Error::unsupported(Detail::None));
-        }
-
-        // Lay out the graph block.
-        let mut layout = Layout::from_size_align(0, ALIGN).map_err(|_| Error::out_of_memory(0))?;
-        let ops = Section::<OpEntry>::new(&mut layout, op_count)?;
-        let locations = Section::<Location>::new(&mut layout, tensor_count)?;
-        let io = Section::<i32>::new(&mut layout, io_total)?;
-        let intervals = Section::<Interval>::new(&mut layout, tensor_count)?;
-        let order = Section::<u32>::new(&mut layout, tensor_count)?;
-        let persist = Section::<u8>::new(&mut layout, 0)?;
-        let persist_start =
-            align_up(persist.offset).ok_or_else(|| Error::out_of_memory(usize::MAX))?;
-        let block_size = persist_start
-            .checked_add(persist_total)
-            .ok_or_else(|| Error::out_of_memory(usize::MAX))?;
-        let mut block = Block::new_zeroed(block_size, alloc)?;
+        let mut block = Block::new_zeroed(sizing.block_size, alloc)?;
         let memory = block.as_mut_slice();
 
-        // Lifetimes of the tensors. `first == u32::MAX` means "not available yet".
-        for slot in intervals.uninit(memory) {
-            slot.write(Interval {
-                size: 0,
-                first: u32::MAX,
-                last: 0,
-                offset: 0,
-            });
-        }
-        for raw in subgraph.inputs().iter() {
-            let t = tensor_index(raw, tensor_count)?.ok_or_else(malformed)?;
-            let iv = interval_mut(&intervals, memory, t);
-            iv.first = 0;
-        }
+        // Memory plan, in the working sections of the block.
+        let (intervals, order) = sizing.sections.working_memory(memory);
+        let activations = plan_activations(&subgraph, intervals, order)?;
 
-        // Pass 2: prepare the kernels, fill the tables and compute lifetimes.
-        let mut persist_offset = persist_start;
-        let mut io_next = 0usize;
-        for index in 0..op_count {
-            let mut descs = OpDescs {
-                inputs: [None; MAX_OP_INPUTS],
-                outputs: [NO_TENSOR; MAX_OP_OUTPUTS],
-            };
-            let (desc, input_ids, output_ids) = describe(&subgraph, index, &mut descs)?;
-            let (kernel, _) = select(registry, target, &desc)?;
-            let plan = (kernel.plan)(&desc)?;
-            let persist_len = plan.persistent;
-            let region = memory
-                .get_mut(persist_offset..persist_offset + persist_len)
-                .ok_or_else(|| Error::new(ErrorCode::Unknown, Detail::None))?;
-            (kernel.prepare)(&desc, region)?;
-
-            let op = index as u32;
-            for raw in input_ids.iter() {
-                if let Some(t) = tensor_index(raw, tensor_count)? {
-                    if desc_is_constant(&subgraph, t)? {
-                        continue;
-                    }
-                    let iv = interval_mut(&intervals, memory, t);
-                    if iv.first == u32::MAX {
-                        // Consumed before being produced (or never produced).
-                        return Err(malformed());
-                    }
-                    iv.last = iv.last.max(op);
-                }
-            }
-            for raw in output_ids.iter() {
-                let t = tensor_index(raw, tensor_count)?.ok_or_else(malformed)?;
-                if desc_is_constant(&subgraph, t)? {
-                    return Err(malformed());
-                }
-                let iv = interval_mut(&intervals, memory, t);
-                if iv.first != u32::MAX {
-                    // Produced twice, or an output overwriting a graph input.
-                    return Err(malformed());
-                }
-                iv.first = op;
-                iv.last = iv.last.max(op);
-            }
-
-            let io_slots = io.uninit(memory);
-            let io_start = io_next;
-            for raw in input_ids.iter().chain(output_ids.iter()) {
-                io_slots[io_next].write(raw);
-                io_next += 1;
-            }
-            ops.uninit(memory)[index].write(OpEntry {
-                kernel,
-                persist_offset: persist_offset as u32,
-                persist_len: persist_len as u32,
-                io_start: io_start as u32,
-                inputs: input_ids.len() as u16,
-                outputs: output_ids.len() as u16,
-            });
-            persist_offset +=
-                align_up(persist_len).ok_or_else(|| Error::out_of_memory(usize::MAX))?;
-        }
-        for raw in subgraph.outputs().iter() {
-            let t = tensor_index(raw, tensor_count)?.ok_or_else(malformed)?;
-            if desc_is_constant(&subgraph, t)? {
-                continue;
-            }
-            let iv = interval_mut(&intervals, memory, t);
-            if iv.first == u32::MAX {
-                return Err(malformed());
-            }
-            iv.last = op_count as u32;
-        }
-
-        // Sizes and constant locations.
+        // Tensor locations.
         for t in 0..tensor_count {
             let desc = subgraph.tensor(t)?;
             let location = if let Some(data) = desc.data {
@@ -330,56 +184,58 @@ impl<'m, A: Allocator> Graph<'m, A> {
                     len: data.len() as u32,
                 }
             } else {
-                let iv = interval_mut(&intervals, memory, t);
+                let (intervals, _) = sizing.sections.working_memory(memory);
+                let iv = intervals[t];
                 if iv.first == u32::MAX {
                     Location::Unused
                 } else {
-                    let len = desc.byte_len().ok_or_else(|| {
-                        Error::unsupported(Detail::ShapeMismatch { tensor: t as u32 })
-                    })?;
-                    iv.size = u32::try_from(len).map_err(|_| Error::out_of_memory(len))?;
                     Location::Arena {
-                        offset: 0,
-                        len: len as u32,
+                        offset: iv.offset,
+                        len: iv.size,
                     }
                 }
             };
-            locations.uninit(memory)[t].write(location);
+            sizing.sections.locations.uninit(memory)[t].write(location);
         }
 
-        // Memory plan.
-        let (interval_slice, order_slice) = {
-            // SAFETY: `intervals` and `order` are disjoint sections of the block, and every
-            // interval was initialised above; `order` is plain `u32` working memory.
-            let ivs = unsafe {
-                core::slice::from_raw_parts_mut(
-                    memory.as_mut_ptr().add(intervals.offset).cast::<Interval>(),
-                    intervals.len,
-                )
+        // Kernels: prepare their parameters and fill the operator and I/O tables.
+        let mut persist_offset = sizing.persist_start;
+        let mut io_next = 0usize;
+        for index in 0..subgraph.operator_count() {
+            let mut descs = OpDescs {
+                inputs: [None; MAX_OP_INPUTS],
+                outputs: [NO_TENSOR; MAX_OP_OUTPUTS],
             };
-            // SAFETY: as above; any bit pattern is a valid `u32`, and the block is zeroed.
-            let ord = unsafe {
-                core::slice::from_raw_parts_mut(
-                    memory.as_mut_ptr().add(order.offset).cast::<u32>(),
-                    order.len,
-                )
-            };
-            (ivs, ord)
-        };
-        let activations = planner::plan(interval_slice, order_slice)
-            .ok_or_else(|| Error::out_of_memory(usize::MAX))?;
-        for t in 0..tensor_count {
-            let offset = interval_mut(&intervals, memory, t).offset;
-            // SAFETY: every location was initialised above.
-            let location = unsafe { locations.uninit(memory)[t].assume_init_mut() };
-            if let Location::Arena { offset: slot, .. } = location {
-                *slot = offset;
+            let (desc, input_ids, output_ids) = describe(&subgraph, index, &mut descs)?;
+            let (kernel, _) = select(registry, target, &desc)?;
+            let persist_len = (kernel.plan)(&desc)?.persistent;
+            let region = memory
+                .get_mut(persist_offset..persist_offset + persist_len)
+                .ok_or_else(|| Error::new(ErrorCode::Unknown, Detail::None))?;
+            (kernel.prepare)(&desc, region)?;
+
+            let io_slots = sizing.sections.io.uninit(memory);
+            let io_start = io_next;
+            for raw in input_ids.iter().chain(output_ids.iter()) {
+                io_slots[io_next].write(raw);
+                io_next += 1;
             }
+            sizing.sections.ops.uninit(memory)[index].write(OpEntry {
+                kernel,
+                persist_offset: persist_offset as u32,
+                persist_len: persist_len as u32,
+                io_start: io_start as u32,
+                inputs: input_ids.len() as u16,
+                outputs: output_ids.len() as u16,
+            });
+            persist_offset +=
+                align_up(persist_len).ok_or_else(|| Error::out_of_memory(usize::MAX))?;
         }
+
         let scratch_offset =
             align_up(activations).ok_or_else(|| Error::out_of_memory(usize::MAX))?;
         let scratch_size =
-            align_up(scratch_size).ok_or_else(|| Error::out_of_memory(usize::MAX))?;
+            align_up(sizing.scratch_size).ok_or_else(|| Error::out_of_memory(usize::MAX))?;
         let arena_size = scratch_offset
             .checked_add(scratch_size)
             .ok_or_else(|| Error::out_of_memory(usize::MAX))?;
@@ -388,13 +244,21 @@ impl<'m, A: Allocator> Graph<'m, A> {
             model: bytes,
             subgraph,
             block,
-            ops,
-            locations,
-            io,
+            ops: sizing.sections.ops,
+            locations: sizing.sections.locations,
+            io: sizing.sections.io,
             arena_size,
             scratch_offset,
             scratch_size,
         })
+    }
+
+    /// The memory this graph uses: its own block and the arena of each execution context.
+    pub fn memory_requirements(&self) -> MemoryRequirements {
+        MemoryRequirements {
+            graph_bytes: self.block.len(),
+            context_bytes: self.arena_size,
+        }
     }
 
     /// Creates an execution context, taking its arena (activations and scratch memory) from
@@ -557,13 +421,304 @@ impl<'m> Graph<'m, nanoglia_core::allocator_api2::alloc::Global> {
     }
 }
 
-fn interval_mut<'b>(
-    section: &Section<Interval>,
-    memory: &'b mut [u8],
-    t: usize,
-) -> &'b mut Interval {
-    // SAFETY: every interval was initialised at the start of `load`.
-    unsafe { section.uninit(memory)[t].assume_init_mut() }
+/// Memory a model needs, computed without loading it.
+///
+/// Use it to size a static [`Arena`](nanoglia_core::Arena): compute it once on the host (or in
+/// a test) for your model, then reserve [`Self::arena_bytes`] bytes in the firmware.
+///
+/// ```ignore
+/// let needs = MemoryRequirements::compute(&[MODEL], Encoding::Autodetect, Target::Auto)?;
+/// assert!(needs.arena_bytes(1) <= MEMORY.len());
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MemoryRequirements {
+    /// Bytes of the graph block (kernel table, prepared parameters, memory plan).
+    pub graph_bytes: usize,
+    /// Bytes of each execution context (activations and scratch memory).
+    pub context_bytes: usize,
+}
+
+impl MemoryRequirements {
+    /// Size of an [`Arena`](nanoglia_core::Arena) buffer that holds the graph and `contexts`
+    /// execution contexts, whatever the alignment of the buffer.
+    pub const fn arena_bytes(&self, contexts: usize) -> usize {
+        let graph = self.graph_bytes.next_multiple_of(ALIGN);
+        let context = self.context_bytes.next_multiple_of(ALIGN);
+        // Up to `ALIGN - 1` bytes are lost aligning the first block.
+        ALIGN - 1 + graph + contexts * context
+    }
+
+    /// Computes the requirements of a model with the default [`Registry`]. Only the memory
+    /// planner's working memory (about 20 bytes per tensor) is taken from `alloc`, and it is
+    /// freed before returning.
+    pub fn compute_in<A: Allocator>(
+        builders: &[&[u8]],
+        encoding: Encoding,
+        target: Target,
+        alloc: A,
+    ) -> Result<Self> {
+        Self::compute_with(&Registry::default(), builders, encoding, target, alloc)
+    }
+
+    /// Computes the requirements of a model, picking kernels from `registry`.
+    pub fn compute_with<A: Allocator>(
+        registry: &Registry<'_>,
+        builders: &[&[u8]],
+        encoding: Encoding,
+        target: Target,
+        alloc: A,
+    ) -> Result<Self> {
+        let (_, subgraph) = open(builders, encoding)?;
+        let sizing = Sizing::compute(registry, target, &subgraph)?;
+
+        // Only the planner's working memory: the intervals and the order, laid out as in the
+        // graph block.
+        let tensor_count = subgraph.tensor_count();
+        let mut layout = Layout::from_size_align(0, ALIGN).map_err(|_| Error::out_of_memory(0))?;
+        let sections = WorkingSections {
+            intervals: Section::new(&mut layout, tensor_count)?,
+            order: Section::new(&mut layout, tensor_count)?,
+        };
+        let mut block = Block::new_zeroed(layout.size(), alloc)?;
+        let (intervals, order) = sections.working_memory(block.as_mut_slice());
+        let activations = plan_activations(&subgraph, intervals, order)?;
+
+        let context_bytes = align_up(activations)
+            .and_then(|a| a.checked_add(align_up(sizing.scratch_size)?))
+            .ok_or_else(|| Error::out_of_memory(usize::MAX))?;
+        Ok(Self {
+            graph_bytes: sizing.block_size,
+            context_bytes,
+        })
+    }
+
+    /// Computes the requirements of a model with the default [`Registry`], taking the planner's
+    /// working memory from the global allocator.
+    #[cfg(feature = "alloc")]
+    pub fn compute(builders: &[&[u8]], encoding: Encoding, target: Target) -> Result<Self> {
+        Self::compute_in(
+            builders,
+            encoding,
+            target,
+            nanoglia_core::allocator_api2::alloc::Global,
+        )
+    }
+}
+
+/// Checks the encoding, verifies the model and returns its bytes and its only subgraph.
+fn open<'m>(builders: &[&'m [u8]], encoding: Encoding) -> Result<(&'m [u8], SubGraph<'m>)> {
+    let [bytes] = builders else {
+        return Err(Error::invalid_argument(Detail::None));
+    };
+    let bytes: &'m [u8] = bytes;
+    match encoding {
+        Encoding::TensorFlowLite => {}
+        Encoding::Autodetect if Model::is_tflite(bytes) => {}
+        Encoding::Autodetect => {
+            return Err(Error::new(
+                ErrorCode::InvalidEncoding,
+                Detail::UnknownEncoding,
+            ));
+        }
+    }
+    let model = Model::parse(bytes)?;
+    if model.subgraph_count() != 1 {
+        return Err(Error::unsupported(Detail::UnsupportedStructure));
+    }
+    let subgraph = model.subgraph(0)?;
+    if subgraph.operator_count() > u32::MAX as usize || subgraph.tensor_count() > u32::MAX as usize
+    {
+        return Err(Error::unsupported(Detail::UnsupportedStructure));
+    }
+    Ok((bytes, subgraph))
+}
+
+/// The sections of the graph block.
+struct BlockSections {
+    ops: Section<OpEntry>,
+    locations: Section<Location>,
+    io: Section<i32>,
+    working: WorkingSections,
+}
+
+impl BlockSections {
+    fn working_memory<'b>(&self, memory: &'b mut [u8]) -> (&'b mut [Interval], &'b mut [u32]) {
+        self.working.working_memory(memory)
+    }
+}
+
+/// The memory planner's working memory.
+struct WorkingSections {
+    intervals: Section<Interval>,
+    order: Section<u32>,
+}
+
+impl WorkingSections {
+    /// The two working arrays, in a zeroed block laid out with these sections.
+    fn working_memory<'b>(&self, memory: &'b mut [u8]) -> (&'b mut [Interval], &'b mut [u32]) {
+        assert!(
+            self.intervals.offset + self.intervals.len * size_of::<Interval>() <= self.order.offset
+        );
+        assert!(self.order.offset + self.order.len * size_of::<u32>() <= memory.len());
+        // SAFETY: both sections lie in `memory` (checked above), do not overlap (`order` follows
+        // `intervals`), and are aligned for their types (the block is `ALIGN`-aligned and the
+        // offsets come from `Layout::extend`). `Interval` (four `u32`) and `u32` accept any bit
+        // pattern, so the zeroed or previously written bytes are valid values.
+        unsafe {
+            let base = memory.as_mut_ptr();
+            (
+                core::slice::from_raw_parts_mut(
+                    base.add(self.intervals.offset).cast::<Interval>(),
+                    self.intervals.len,
+                ),
+                core::slice::from_raw_parts_mut(
+                    base.add(self.order.offset).cast::<u32>(),
+                    self.order.len,
+                ),
+            )
+        }
+    }
+}
+
+/// Pass 1 of loading: the kernel of every operator, and the size of the graph block.
+struct Sizing {
+    sections: BlockSections,
+    persist_start: usize,
+    block_size: usize,
+    scratch_size: usize,
+}
+
+impl Sizing {
+    fn compute(registry: &Registry<'_>, target: Target, subgraph: &SubGraph<'_>) -> Result<Self> {
+        let op_count = subgraph.operator_count();
+        let tensor_count = subgraph.tensor_count();
+        let mut persist_total = 0usize;
+        let mut scratch_size = 0usize;
+        let mut io_total = 0usize;
+        let mut npu_ops = 0usize;
+        for index in 0..op_count {
+            let mut descs = OpDescs {
+                inputs: [None; MAX_OP_INPUTS],
+                outputs: [NO_TENSOR; MAX_OP_OUTPUTS],
+            };
+            let (desc, _, _) = describe(subgraph, index, &mut descs)?;
+            let (kernel, kind) = select(registry, target, &desc)?;
+            npu_ops += usize::from(kind == BackendKind::Npu);
+            let plan = (kernel.plan)(&desc)?;
+            persist_total = persist_total
+                .checked_add(
+                    align_up(plan.persistent).ok_or_else(|| Error::out_of_memory(usize::MAX))?,
+                )
+                .ok_or_else(|| Error::out_of_memory(usize::MAX))?;
+            scratch_size = scratch_size.max(plan.scratch);
+            io_total += desc.inputs.len() + desc.outputs.len();
+        }
+        if target == Target::Npu && npu_ops == 0 {
+            return Err(Error::unsupported(Detail::None));
+        }
+
+        let mut layout = Layout::from_size_align(0, ALIGN).map_err(|_| Error::out_of_memory(0))?;
+        let ops = Section::new(&mut layout, op_count)?;
+        let locations = Section::new(&mut layout, tensor_count)?;
+        let io = Section::new(&mut layout, io_total)?;
+        let intervals = Section::new(&mut layout, tensor_count)?;
+        let order = Section::new(&mut layout, tensor_count)?;
+        let persist_start =
+            align_up(layout.size()).ok_or_else(|| Error::out_of_memory(usize::MAX))?;
+        let block_size = persist_start
+            .checked_add(persist_total)
+            .ok_or_else(|| Error::out_of_memory(usize::MAX))?;
+        Ok(Self {
+            sections: BlockSections {
+                ops,
+                locations,
+                io,
+                working: WorkingSections { intervals, order },
+            },
+            persist_start,
+            block_size,
+            scratch_size,
+        })
+    }
+}
+
+/// Computes when each activation tensor is alive and places it in the context arena.
+///
+/// Fills `intervals` (one per tensor: size, first and last operator, offset; `first ==
+/// u32::MAX` for tensors no operator uses) and returns the size of the activation area.
+/// Checks the dataflow: every activation is produced once, before it is consumed.
+fn plan_activations(
+    subgraph: &SubGraph<'_>,
+    intervals: &mut [Interval],
+    order: &mut [u32],
+) -> Result<usize> {
+    let tensor_count = subgraph.tensor_count();
+    let op_count = subgraph.operator_count();
+    intervals.fill(Interval {
+        size: 0,
+        first: u32::MAX,
+        last: 0,
+        offset: 0,
+    });
+    for raw in subgraph.inputs().iter() {
+        let t = tensor_index(raw, tensor_count)?.ok_or_else(malformed)?;
+        intervals[t].first = 0;
+    }
+    for index in 0..op_count {
+        let op_index = index as u32;
+        let op = subgraph.operator(index)?;
+        for raw in op.inputs.iter() {
+            if let Some(t) = tensor_index(raw, tensor_count)? {
+                if desc_is_constant(subgraph, t)? {
+                    continue;
+                }
+                let iv = &mut intervals[t];
+                if iv.first == u32::MAX {
+                    // Consumed before being produced (or never produced).
+                    return Err(malformed());
+                }
+                iv.last = iv.last.max(op_index);
+            }
+        }
+        for raw in op.outputs.iter() {
+            let t = tensor_index(raw, tensor_count)?.ok_or_else(malformed)?;
+            if desc_is_constant(subgraph, t)? {
+                return Err(malformed());
+            }
+            let iv = &mut intervals[t];
+            if iv.first != u32::MAX {
+                // Produced twice, or an output overwriting a graph input.
+                return Err(malformed());
+            }
+            iv.first = op_index;
+            iv.last = iv.last.max(op_index);
+        }
+    }
+    for raw in subgraph.outputs().iter() {
+        let t = tensor_index(raw, tensor_count)?.ok_or_else(malformed)?;
+        if desc_is_constant(subgraph, t)? {
+            continue;
+        }
+        let iv = &mut intervals[t];
+        if iv.first == u32::MAX {
+            return Err(malformed());
+        }
+        iv.last = op_count as u32;
+    }
+    for (t, iv) in intervals.iter_mut().enumerate() {
+        if iv.first == u32::MAX {
+            continue;
+        }
+        let desc = subgraph.tensor(t)?;
+        if desc.data.is_some() {
+            continue;
+        }
+        let len = desc
+            .byte_len()
+            .ok_or_else(|| Error::unsupported(Detail::ShapeMismatch { tensor: t as u32 }))?;
+        iv.size = u32::try_from(len).map_err(|_| Error::out_of_memory(len))?;
+    }
+    planner::plan(intervals, order).ok_or_else(|| Error::out_of_memory(usize::MAX))
 }
 
 fn desc_is_constant(subgraph: &SubGraph<'_>, t: usize) -> Result<bool> {

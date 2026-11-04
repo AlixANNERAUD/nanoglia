@@ -5,7 +5,7 @@ use core::alloc::Layout;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use nanoglia::core::allocator_api2::alloc::{AllocError, Allocator, Global};
-use nanoglia::{Arena, Encoding, Graph, Target};
+use nanoglia::{Arena, Encoding, Graph, MemoryRequirements, Target};
 
 mod common;
 
@@ -127,4 +127,83 @@ fn several_contexts_share_one_graph() {
     a.compute().unwrap();
     b.compute().unwrap();
     assert_eq!(a.output(0).unwrap().bytes(), b.output(0).unwrap().bytes());
+}
+
+fn mlperf(name: &str) -> common::Aligned {
+    let path = common::repo_root().join(format!("testdata/mlperf-tiny/{name}.tflite"));
+    common::Aligned::read(&path)
+}
+
+const MLPERF: &[&str] = &[
+    "kws_ref_model",
+    "vww_96_int8",
+    "pretrainedResnet_quant",
+    "ad01_int8",
+];
+
+#[test]
+fn requirements_match_the_loaded_graph() {
+    for name in MLPERF {
+        let model = mlperf(name);
+        let needs = MemoryRequirements::compute_in(
+            &[model.bytes()],
+            Encoding::Autodetect,
+            Target::Auto,
+            Global,
+        )
+        .unwrap();
+        let graph =
+            Graph::load_in(&[model.bytes()], Encoding::Autodetect, Target::Auto, Global).unwrap();
+        assert_eq!(graph.memory_requirements(), needs, "{name}");
+        println!(
+            "{name}: graph {} B, context {} B, arena for one context {} B",
+            needs.graph_bytes,
+            needs.context_bytes,
+            needs.arena_bytes(1)
+        );
+    }
+}
+
+#[test]
+fn requirements_only_borrow_working_memory() {
+    let model = kws();
+    let counting = Counting::default();
+    MemoryRequirements::compute_in(
+        &[model.bytes()],
+        Encoding::Autodetect,
+        Target::Auto,
+        &counting,
+    )
+    .unwrap();
+    assert_eq!(counting.allocations.load(Ordering::SeqCst), 1);
+    assert_eq!(counting.live_bytes.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn arena_of_the_required_size_is_enough_at_any_alignment() {
+    for name in MLPERF {
+        let model = mlperf(name);
+        let needs = MemoryRequirements::compute_in(
+            &[model.bytes()],
+            Encoding::Autodetect,
+            Target::Auto,
+            Global,
+        )
+        .unwrap();
+        for contexts in [1, 2] {
+            let size = needs.arena_bytes(contexts);
+            let mut memory = vec![0u8; size + 16];
+            for skew in 0..16 {
+                let arena = Arena::new(&mut memory[skew..skew + size]);
+                let graph =
+                    Graph::load_in(&[model.bytes()], Encoding::Autodetect, Target::Auto, &arena)
+                        .unwrap_or_else(|e| panic!("{name}, skew {skew}: {e}"));
+                let mut first = graph.init_execution_context_in(&arena).unwrap();
+                if contexts == 2 {
+                    let _second = graph.init_execution_context_in(&arena).unwrap();
+                }
+                first.compute().unwrap();
+            }
+        }
+    }
 }

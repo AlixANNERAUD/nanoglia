@@ -22,7 +22,8 @@ let scores = ctx.output(0)?.as_slice::<i8>()?;
 - **Zero-copy:** the graph borrows the model bytes; weights stay where they are (flash or RAM).
 - **Your memory only:** a graph makes one allocation, each execution context one more, and
   `compute` none. They come from the allocator you pass: the global allocator (feature `alloc`),
-  your own, or an [`Arena`] over a static buffer.
+  your own, or an [`Arena`] over a static buffer. [`MemoryRequirements`] tells, without loading
+  the model, how large that buffer must be.
 - **Accelerated:** CMSIS-NN (Cortex-M DSP/Helium, portable C elsewhere), pure Rust kernels for the rest.
 - **Safe on untrusted models:** the flatbuffer is fully verified before use; errors, never panics.
 
