@@ -14,11 +14,14 @@ the pieces fit and why they are built this way.
 | `nanoglia-tflite` | Verifies a `.tflite` flatbuffer once, then reads it in place: zero-copy, allocation-free, panic-free, `#![forbid(unsafe_code)]`, its own small flatbuffer reader. | `nanoglia-core` |
 | `nanoglia-cmsis-nn-sys` | CMSIS-NN v8.0.0 (integer kernels) vendored and compiled with `cc`, hand-written FFI bindings. | — (build: `cc`) |
 | `nanoglia-cmsis-nn` | The `cmsis-nn` backend: the operators CMSIS-NN computes exactly like TFLite. | `nanoglia-core`, `nanoglia-cmsis-nn-sys` |
+| `nanoglia-esp-nn-sys` | ESP-NN v1.4.2 vendored and compiled with `cc` (ANSI C kernels everywhere, ESP32-S3 optimized kernels on Xtensa), hand-written FFI bindings and the lock of its global scratch buffers. | — (build: `cc`) |
+| `nanoglia-esp-nn` | The `esp-nn` backend (feature `esp-nn`): the int8 operators ESP-NN computes exactly like TFLite, with CMSIS-NN as fallback. | `nanoglia-core`, `nanoglia-cmsis-nn`, `nanoglia-esp-nn-sys` |
 | `nanoglia-kernels` | The `rust` backend: what CMSIS-NN lacks (shape and quantization operators, broadcasting, activations, int16 softmax and fully-connected) and the f32 operators. | `nanoglia-core`, `libm` |
 
 Everything is `#![no_std]`, with no dependency on a HAL, an RTOS or a
-vendor SDK. The only C code is CMSIS-NN, pure C that needs the C headers
-of the target but links no C library.
+vendor SDK. The only C code is CMSIS-NN and ESP-NN (compiled without
+ESP-IDF), which need the C headers of the target but link no C
+library.
 
 ## The API, after wasi-nn
 
@@ -100,7 +103,8 @@ never claims an operator it would compute differently from TFLite; it
 leaves it to the next one.
 
 `Registry::default()` holds the backends enabled by the Cargo features,
-fastest first: CMSIS-NN, then the Rust kernels. `Registry::new(&[...])`
+fastest first: ESP-NN (feature `esp-nn`, off by default), CMSIS-NN, then
+the Rust kernels. `Registry::new(&[...])`
 builds another list, for example to put your own backend first or to
 test one backend alone, and `Graph::load_with` takes it.
 
@@ -108,8 +112,19 @@ CMSIS-NN computes each operator in one call into C, after its
 parameters were computed at prepare time from TensorFlow Lite Micro's
 code ported to Rust. On Cortex-M4, M7 and M33 it uses the DSP
 extension, on Armv8.1-M Helium, and on every other target its portable
-C code. The Rust backend ports TFLite's reference kernels and their
-preparation code.
+C code. ESP-NN, on the ESP32-S3, uses the chip's SIMD instructions; its
+parameters are computed from the code of esp-tflite-micro, Espressif's
+port of TensorFlow Lite Micro. The Rust backend ports TFLite's reference
+kernels and their preparation code.
+
+ESP-NN keeps its scratch buffers in global variables, so only one
+context may run it at a time. The `esp-nn` backend takes a lock (an
+atomic flag that never blocks) around each call; when another thread,
+task, interrupt handler or core holds it, the operator runs the CMSIS-NN
+kernel instead, which computes the same result. For this, the backend
+claims an operator only if CMSIS-NN supports it too, and prepares both
+kernels: their parameters both live in the graph block, and the scratch
+area fits the larger of the two.
 
 ## Zero copy
 
@@ -129,5 +144,5 @@ that kernels read as typed arrays must be aligned
 neural accelerators, which would run as backends of kind `Npu` claiming
 whole operators or delegate operators. No such backend exists yet:
 `Target::Npu` currently fails with `ErrorCode::UnsupportedOperation`.
-ESP-NN, Espressif's kernel library for the ESP32-S3 and ESP32-P4, is
-planned as another CPU backend.
+ESP-NN's ESP32-P4 kernels are not built yet: they need Espressif's
+RISC-V compiler.

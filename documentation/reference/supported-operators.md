@@ -2,9 +2,9 @@
 
 Every TFLite builtin operator nanoglia runs, for which tensor types, on
 which backend, and under which conditions. The conditions come from the
-`select` and `plan` functions of the two backends
-(`crates/nanoglia-cmsis-nn/src/*.rs` and
-`crates/nanoglia-kernels/src/*.rs`): an operator that does not meet them
+`select` and `plan` functions of the backends
+(`crates/nanoglia-esp-nn/src/*.rs`, `crates/nanoglia-cmsis-nn/src/*.rs`
+and `crates/nanoglia-kernels/src/*.rs`): an operator that does not meet them
 is not claimed, and loading fails with `Detail::UnsupportedOp`
 ([Errors](errors.md)).
 
@@ -14,10 +14,13 @@ is not claimed, and loading fails with `Detail::UnsupportedOp`
 operator; the first backend whose `select` returns a kernel wins. The
 default registry (`Registry::default()`) holds, in this order:
 
-1. `cmsis-nn` (feature `cmsis-nn`): CMSIS-NN v8.0.0, with the DSP or
+1. `esp-nn` (feature `esp-nn`, off by default): ESP-NN v1.4.2, with its
+   optimized kernels on the ESP32-S3 and its ANSI C kernels elsewhere
+   (see [ESP-NN](#esp-nn) below).
+2. `cmsis-nn` (feature `cmsis-nn`): CMSIS-NN v8.0.0, with the DSP or
    Helium code paths on Arm Cortex-M and its portable C code on every
    other target.
-2. `rust` (feature `kernels`): pure Rust kernels.
+3. `rust` (feature `kernels`): pure Rust kernels.
 
 Inside the `rust` backend, a few operators have several kernels, tried
 in the order of the tables below. `Graph::kernel_name(index)` returns the
@@ -101,6 +104,32 @@ int64 bias.
 Any other operator, any custom operator, and any type not listed (for
 example int16 `DEPTHWISE_CONV_2D` or pooling, uint8 `ADD`, int4 weights)
 is unsupported.
+
+## ESP-NN
+
+With feature `esp-nn`, the `esp-nn` backend is asked first. It claims an
+int8 operator only when ESP-NN computes it exactly like TFLite **and**
+the CMSIS-NN kernel of the matrix above claims it too: while another
+context (thread, task, interrupt handler or core) is running ESP-NN,
+whose scratch buffers are global variables, the operator runs that
+CMSIS-NN kernel instead, with the same result. Otherwise the operator
+goes to CMSIS-NN or the Rust kernels as in the matrix.
+
+| Operator | Kernel | Conditions beyond the CMSIS-NN kernel's |
+| --- | --- | --- |
+| `CONV_2D` (int8) | `esp-nn/conv2d_s8` | no dilation; strides and paddings up to 32767 |
+| `DEPTHWISE_CONV_2D` (int8) | `esp-nn/depthwise_conv2d_s8` | no dilation; strides and paddings up to 32767 |
+| `FULLY_CONNECTED` (int8) | `esp-nn/fully_connected_s8` | input and output depths up to 65535 |
+| `AVERAGE_POOL_2D`, `MAX_POOL_2D` (int8) | `esp-nn/average_pool2d_s8`, `esp-nn/max_pool2d_s8` | strides, filter sizes and paddings up to 32767 |
+| `SOFTMAX` (int8) | `esp-nn/softmax_s8` | input scaling left shift up to 30 (31 for CMSIS-NN) |
+| `ADD`, `MUL` (int8, same shapes) | `esp-nn/add_s8`, `esp-nn/mul_s8` | — |
+
+The backend claims nothing when the `single-rounding` feature is on
+(ESP-NN only rounds twice), nor on targets without atomic
+compare-and-swap, such as Cortex-M0 and `riscv32imc` (its lock needs
+them). On targets other than the ESP32-S3, ESP-NN runs its ANSI C
+kernels, which are slower than CMSIS-NN's portable C: enable `esp-nn`
+there only to test the backend.
 
 ## Restrictions per operator
 
@@ -256,6 +285,9 @@ The golden cases of `testdata/` exercise `CONV_2D`, `DEPTHWISE_CONV_2D`,
 `SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `LOGISTIC`,
 `TANH`, `RELU`, `RELU6`, `CONCATENATION`, `QUANTIZE` and `DEQUANTIZE`
 against LiteRT (see `testdata/README.md`); the other kernels have unit
-tests in `crates/nanoglia-kernels/src/tests/`. The Arm DSP and Helium
-code paths of CMSIS-NN have not run on hardware yet (issue #2): host
-tests run its portable C code.
+tests in `crates/nanoglia-kernels/src/tests/`. The golden cases also run
+with the `esp-nn` backend first (its ANSI C kernels on the host), and
+`crates/nanoglia-esp-nn/tests/kernels/` checks its kernels against a
+TFLite reference. The Arm DSP and Helium code paths of CMSIS-NN and the
+ESP32-S3 kernels of ESP-NN have not run on hardware yet (issue #2): host
+tests run their portable C code.

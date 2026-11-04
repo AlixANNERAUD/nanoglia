@@ -126,7 +126,8 @@ operators: the largest scratch any kernel asks for.
 
 The four int8 reference models of `testdata/mlperf-tiny/`. Graph and
 context sizes measured with `Graph::graph_bytes()` and
-`context_bytes()` at commit `26f1b25` (2026-11-04), default features:
+`context_bytes()` on 2026-11-04 at commit `26f1b25` (64-bit numbers checked
+again at `e9f268d`, unchanged), default features:
 
 - 64-bit: Linux aarch64 host, printed by the test
   `requirements_match_the_loaded_graph` of
@@ -146,6 +147,22 @@ The 32-bit `arena_bytes(1)` column is computed with the formula above.
 With an `Arena` whose buffer starts on a 16-byte boundary, `Arena::used()`
 after loading and creating one context is `graph_bytes + context_bytes`
 (23712 B for keyword spotting on 32-bit).
+
+With feature `esp-nn`, each operator ESP-NN runs keeps the parameters of
+both ESP-NN and its CMSIS-NN fallback in the graph block, and the scratch
+area fits the larger of the two. On the same host, with default features
+plus `esp-nn` (ESP-NN's ANSI C kernels):
+
+| Model | Graph | Context | `arena_bytes(1)` |
+| --- | ---: | ---: | ---: |
+| `kws_ref_model` | 13568 B | 16160 B | 29743 B |
+| `vww_96_int8` | 54816 B | 64624 B | 119455 B |
+| `pretrainedResnet_quant` | 10336 B | 51456 B | 61807 B |
+| `ad01_int8` | 16848 B | 768 B | 17631 B |
+
+(`cargo test -p nanoglia --features esp-nn --test memory -- --nocapture`.)
+On the ESP32-S3, ESP-NN's optimized kernels may ask for other scratch
+sizes.
 
 These sizes come from the portable C code of CMSIS-NN. On Arm targets
 with the DSP or Helium extension, CMSIS-NN may ask for different scratch

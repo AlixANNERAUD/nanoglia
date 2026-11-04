@@ -34,6 +34,10 @@ the evaluation:
 - the CMSIS-NN backend ports the preparation of TensorFlow Lite Micro's
   CMSIS-NN kernels (`kernels/cmsis_nn/*.cc`), then calls the same
   CMSIS-NN functions;
+- the ESP-NN backend ports the preparation of esp-tflite-micro's ESP-NN
+  kernels and TensorFlow Lite Micro, then calls the same ESP-NN
+  functions, and claims only the operators whose CMSIS-NN kernel gives
+  the same result (it falls back to it when ESP-NN is busy);
 - the Rust backend ports the reference kernels of TFLite (the
   `BUILTIN_REF` resolver), with their preparation code.
 
@@ -70,10 +74,15 @@ test fails if a pending case starts to pass, so the list stays current.
 The same tests run compiled to WebAssembly under wasmtime (`mise run
 test-wasip1`).
 
+The golden cases run a second time with the ESP-NN backend first
+(`cargo test -p nanoglia --features esp-nn --test golden`, part of
+`mise run test`), and the test checks that ESP-NN ran some operators.
+
 What the oracle does not cover: on the host, CMSIS-NN compiles its
-portable C code. Its DSP and Helium code paths are written to give the
-same results, but they have not run against the golden data on
-hardware yet (issue #2).
+portable C code and ESP-NN its ANSI C kernels. CMSIS-NN's DSP and Helium
+code paths and ESP-NN's ESP32-S3 kernels are written to give the same
+results, but they have not run against the golden data on hardware yet
+(issue #2).
 
 ## Single and double rounding
 
@@ -91,7 +100,8 @@ this product:
 nanoglia uses double rounding, like the golden data. The
 `single-rounding` feature switches every crate, CMSIS-NN included
 (`CMSIS_NN_USE_SINGLE_ROUNDING`), to single rounding, for firmware built
-against a TFLite configured that way. Its results then differ from the
+against a TFLite configured that way. ESP-NN has no single-rounding
+mode, so the ESP-NN backend then claims nothing. Results differ from the
 golden data by design: CI builds this mode (clippy with all features)
 but does not run the golden tests with it.
 

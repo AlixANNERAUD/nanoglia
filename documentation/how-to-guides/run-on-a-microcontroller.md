@@ -1,16 +1,18 @@
 # Run on a microcontroller
 
-This guide runs a model on an Arm Cortex-M microcontroller without a
-heap, starting from the example firmware for the Arduino Nano 33 BLE,
-then adapting it to your own firmware.
+This guide runs a model on a microcontroller without a heap, starting
+from the example firmware for the Arduino Nano 33 BLE (Arm Cortex-M4F),
+then adapting it to your own firmware, on Arm Cortex-M or on the
+ESP32-S3.
 
 > **Status: not yet validated on hardware.** The firmware builds in CI
-> (`mise run example-nano33ble`) and the same code runs bit-exact on the
-> host, where CMSIS-NN compiles its portable C code. CMSIS-NN's DSP
-> (Cortex-M4, M7, M33) and Helium code paths have not yet been run and
-> compared with the golden outputs on a board: this is tracked in
-> issue #2. Check the results on your device against the host before
-> relying on them.
+> (`mise run example-nano33ble`, and `mise run cross-esp32s3` for the
+> ESP32-S3 libraries) and the same code runs bit-exact on the host, where
+> CMSIS-NN and ESP-NN compile their portable C code. CMSIS-NN's DSP
+> (Cortex-M4, M7, M33) and Helium code paths and ESP-NN's ESP32-S3
+> kernels have not yet been run and compared with the golden outputs on
+> a board: this is tracked in issue #2. Check the results on your device
+> against the host before relying on them.
 
 ## The Nano 33 BLE example
 
@@ -162,6 +164,42 @@ let graph = match Graph::load_in(&[&MODEL.0], Encoding::Autodetect, Target::Auto
 `Detail::UnsupportedOp { op_index, opcode }` names the first operator no
 enabled backend supports; `ErrorCode::TooLarge` means `MEMORY` is too
 small.
+
+## On an ESP32-S3
+
+ESP-NN, Espressif's kernel library, has optimized kernels for the
+ESP32-S3. Enable the `esp-nn` feature; keep `cmsis-nn` for the
+operators ESP-NN refuses (dilated convolutions, for example) and
+`kernels` for the rest:
+
+```toml
+[dependencies]
+nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features = false, features = ["esp-nn", "cmsis-nn", "kernels"] }
+```
+
+The target, `xtensa-esp32s3-none-elf`, needs Espressif's Rust toolchain
+and C compiler, both installed by
+[espup](https://github.com/esp-rs/espup):
+
+```sh
+espup install --targets esp32s3
+. $HOME/export-esp.sh
+export CC_xtensa_esp32s3_none_elf=xtensa-esp32s3-elf-gcc
+export AR_xtensa_esp32s3_none_elf=xtensa-esp32s3-elf-ar
+cargo +esp build --release --target xtensa-esp32s3-none-elf -Zbuild-std=core
+```
+
+This is what `mise run install-esp` and `mise run cross-esp32s3` do in
+nanoglia's repository. ESP-NN is compiled without ESP-IDF: it needs no
+FreeRTOS, no heap and no C library. The rest of this guide applies
+unchanged (static model, `Arena`, `load_in`, `compute` in a loop).
+
+ESP-NN's scratch buffers are global, so only one context runs it at a
+time: when two tasks or the two cores compute at once, one of them runs
+the CMSIS-NN kernels for those operators, with the same results
+([Supported operators](../reference/supported-operators.md#esp-nn)). The
+graph keeps the parameters of both, so it needs more memory than with
+CMSIS-NN alone ([Memory](../reference/memory.md#mlperf-tiny-footprints)).
 
 ## See also
 
