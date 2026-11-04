@@ -58,7 +58,7 @@ variable would not survive in mbx's build-script wrapper, so
 | `deny` | `cargo deny check` (licenses, advisories, bans, sources; `deny.toml`). | `ci.yml` Dependencies (cargo-deny) |
 | `msrv` | With Rust 1.89: `cargo check --workspace --all-targets` and `cargo check --workspace --lib --target thumbv7em-none-eabihf`, in `target/msrv`. | `ci.yml` MSRV |
 | `doc` | `cargo doc --no-deps --workspace` with `DOCS_RS=1` and `RUSTDOCFLAGS=-D warnings`. | `ci.yml` Docs (docs.rs mode) |
-| `package` | `cargo package --workspace` in `target/package`: packages every crate as crates.io would and builds each one from its package. | `release.yml` validate |
+| `package` | Removes `target/package` and the nanoglia sources Cargo extracted into `$CARGO_HOME/registry/src` on an earlier run, then `cargo package --workspace` in `target/package` (mbx's build-script cache off): packages every crate as crates.io would and builds each one from its package, against the current sources. | `release.yml` validate |
 | `fuzz` | `cargo fuzz run parse` for 60 seconds (inputs up to 400000 bytes) in `fuzz/`, seeded with the MLPerf Tiny models. | `ci.yml` Fuzz the model reader (1 min) |
 
 ## CI jobs without a task
