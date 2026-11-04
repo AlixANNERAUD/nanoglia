@@ -66,6 +66,31 @@ no-malloc, firmware, cargo-deny, MSRV, docs, fuzz). `coverage.yml` uploads `mise
 to Codecov. `release.yml` runs release-plz (`release-plz.toml`): a release PR with versions and
 changelogs from the commit messages, then publication. `pr-title.yml` checks PR titles.
 
+## Documentation
+
+User documentation lives in `documentation/` and follows [Diátaxis](https://diataxis.fr);
+`documentation/README.md` is the index. `tutorials/` are lessons followed from start to finish,
+`how-to-guides/` reach one goal each, `explanation/` says why, `reference/` lists every item and
+number.
+
+- Full words in file and directory names (`how-to-guides`, `development-tasks`), relative links
+  between pages. Add new pages to the index and to the Documentation table of the root
+  `README.md`.
+- Check every API name, signature, feature, size and default against the source, and every
+  number against a command you ran (say which, with the machine, date and commit). Quote time
+  and memory figures only from `reference/performance.md` and `reference/memory.md`, with a link.
+- Describe users generically ("your application", "an embedded OS"). Do not present host or
+  wasmtime timings as microcontroller numbers, and keep the hardware-validation status (issue #2)
+  visible where it matters.
+- When a change lands, update: `reference/supported-operators.md` (a `select`/`plan` condition,
+  a kernel or an operator), `reference/features.md` (Cargo features), `reference/errors.md` (an
+  `Error`, `ErrorCode` or `Detail` returned by a public function), `reference/memory.md` (the
+  allocation contract or the block layout; re-measure the MLPerf Tiny footprints with
+  `cargo test -p nanoglia --test memory -- --nocapture`), `reference/performance.md` (after
+  `mise run bench` / `bench-wasm` on a performance change), `reference/development-tasks.md`
+  (`mise.toml` or `.github/workflows/`), and the tutorial or guides whose code or output changes
+  (run their code again).
+
 ## Conventions
 
 - Rust 2024, MSRV 1.89, `cargo fmt`; English code and documentation; document public items.
