@@ -16,7 +16,10 @@ mod pad;
 mod pool;
 mod quantize;
 mod reduce;
+mod slice;
 mod softmax;
+mod strided;
+mod transpose;
 mod util;
 
 #[cfg(test)]
@@ -85,6 +88,9 @@ impl RustKernels {
             BuiltinOp::MEAN => kernels!(reduce::MEAN),
             BuiltinOp::PAD | BuiltinOp::PADV2 => kernels!(pad::PAD),
             BuiltinOp::CONCATENATION => kernels!(concat::CONCATENATION),
+            BuiltinOp::TRANSPOSE => kernels!(transpose::TRANSPOSE),
+            BuiltinOp::SLICE => kernels!(slice::SLICE),
+            BuiltinOp::STRIDED_SLICE => kernels!(slice::STRIDED_SLICE),
             BuiltinOp::ADD | BuiltinOp::SUB | BuiltinOp::MUL => {
                 kernels!(elementwise::BINARY, elementwise::QUANTIZED_BINARY)
             }

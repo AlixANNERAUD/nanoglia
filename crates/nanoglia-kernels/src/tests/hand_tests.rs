@@ -910,7 +910,7 @@ fn misaligned_constants_are_reported() {
 #[test]
 fn unknown_operators_are_not_claimed() {
     let x = t(0, DataType::F32, &[4]);
-    assert!(select(&unary(BuiltinOp::TRANSPOSE, x, x)).is_none());
+    assert!(select(&unary(BuiltinOp::DEPTH_TO_SPACE, x, x)).is_none());
     let custom = OpDesc {
         index: 0,
         code: OpCode::Custom("Foo"),
