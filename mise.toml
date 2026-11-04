@@ -59,8 +59,14 @@ run = "uv run python -I generate.py"
 [tasks.package]
 description = "Package every crate as crates.io would, and build each one from its package"
 env.CARGO_TARGET_DIR = "target/package"
+# Cargo verifies each crate against the others through a temporary registry with the same path
+# and versions on every run, and never re-extracts or rebuilds a registry package it has seen:
+# it would keep the sources extracted into $CARGO_HOME/registry/src by an earlier run (the CI
+# cache carries that directory between jobs) and verify against an older revision. Start from
+# neither. mbx's build-script cache is off for the same reason.
+env.MBX_BUILD_SCRIPT_EXECUTION = "false"
 run = [
-  "rm -rf {{config_root}}/target/package",
+  "rm -rf {{config_root}}/target/package \"${CARGO_HOME:-$HOME/.cargo}\"/registry/src/-*/nanoglia-*",
   "cargo package --workspace",
 ]
 
