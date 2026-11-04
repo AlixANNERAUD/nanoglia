@@ -1,0 +1,24 @@
+[package]
+name = "nanoglia-esp-nn"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ESP-NN kernel backend of nanoglia: TFLite-exact int8 convolutions, fully-connected layers, pooling, softmax and elementwise operators, optimized for the ESP32-S3."
+documentation = "https://docs.rs/nanoglia-esp-nn"
+readme = "README.md"
+keywords = ["esp-nn", "esp32", "neural-network", "no-std", "tinyml"]
+categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
+
+[dependencies]
+nanoglia-core = { workspace = true }
+nanoglia-cmsis-nn = { workspace = true }
+nanoglia-esp-nn-sys = { workspace = true }
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true

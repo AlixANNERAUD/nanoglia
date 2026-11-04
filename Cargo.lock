@@ -114,6 +114,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nanoglia-esp-nn"
+version = "0.1.0"
+dependencies = [
+ "nanoglia-cmsis-nn",
+ "nanoglia-core",
+ "nanoglia-esp-nn-sys",
+]
+
+[[package]]
 name = "nanoglia-esp-nn-sys"
 version = "0.1.0"
 dependencies = [
