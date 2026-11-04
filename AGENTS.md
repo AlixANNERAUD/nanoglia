@@ -98,3 +98,6 @@ number.
   `refactor:`, `docs:`, `test:`, `build:`, `ci:`, `chore:`), with a body explaining the why.
 - No AI attribution: no `Co-Authored-By` trailers for assistants, no "generated with" lines.
 - Design notes and plans stay out of the repository.
+- A bug or limitation found in a dependency (CMSIS-NN, ESP-NN, LiteRT, ...) gets a GitHub issue
+  with the `upstream` label: upstream version and link to the exact lines, the problem, the
+  impact on nanoglia and the workaround (with its file), and the steps to report or drop it.
