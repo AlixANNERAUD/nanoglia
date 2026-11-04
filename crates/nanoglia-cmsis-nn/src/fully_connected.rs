@@ -3,7 +3,7 @@
 //!
 //! Port of TFLite Micro's `kernels/cmsis_nn/fully_connected.cc` and of
 //! `CalculateOpDataFullyConnected`: the input is flattened to `[batches, accum_depth]`; outputs of
-//! rank 3 or more whose depth is a multiple of 4 run as a 1x1 convolution
+//! rank 3 or more whose input depth (`accum_depth`) is a multiple of 4 run as a 1x1 convolution
 //! (`arm_convolve_1x1_s8_fast`), the others through `arm_fully_connected_wrapper_s8`. Per-tensor
 //! requantization parameters are broadcast to one entry per channel at prepare time instead of in
 //! a scratch buffer at each evaluation.

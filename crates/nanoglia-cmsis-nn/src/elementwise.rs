@@ -4,8 +4,9 @@
 //! Port of TFLite Micro's `kernels/cmsis_nn/{add,mul}.cc` with `CalculateOpDataAdd` (general
 //! path, `left_shift = 20` for int8 and `15` for int16) and `CalculateOpDataMul`. int16 tensors
 //! are symmetric (zero point 0). TFLite (not TFLite Micro) runs int16 `ADD` through another,
-//! power-of-two kernel when all scales are powers of two and the `pot_scale_int16` option is set:
-//! such operators are refused.
+//! power-of-two kernel when all scales are powers of two and the `pot_scale_int16` option is set.
+//! nanoglia does not decode that option, so int16 `ADD` is refused whenever all three scales are
+//! powers of two.
 
 use nanoglia_cmsis_nn_sys as sys;
 use nanoglia_core::backend::{EvalCtx, Kernel, KernelPlan};

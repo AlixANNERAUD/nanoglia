@@ -10,7 +10,7 @@ On Cortex-M4/M7/M33 CMSIS-NN uses the DSP extension, on Armv8.1-M Helium; on oth
 |---|---|---|
 | `CONV_2D` | int8 in/out, int8 weights (per-tensor or per-channel), int32 bias | rank 4, any stride/dilation/padding, grouped convolutions |
 | `CONV_2D` (16x8) | int16 in/out (zero point 0), int8 weights (per-tensor or per-channel), int64 bias | rank 4, no groups, at most 511 filter values per output channel |
-| `DEPTHWISE_CONV_2D` | same | rank 4, any depth multiplier, stride, dilation, padding |
+| `DEPTHWISE_CONV_2D` | int8 in/out, int8 weights (per-tensor or per-channel), int32 bias (no int16 variant) | rank 4, any depth multiplier, stride, dilation, padding |
 | `FULLY_CONNECTED` | int8 in/out, int8 weights `[out, in]` (zero point 0, per-tensor or per-channel), int32 bias | input flattened to `[batches, in]`, `keep_num_dims` either way, default weight format |
 | `FULLY_CONNECTED` (16x8) | int16 in/out (zero point 0), int8 weights (per-tensor), int64 bias | same |
 | `AVERAGE_POOL_2D`, `MAX_POOL_2D` | int8 | rank 4, same input/output quantization |
