@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/strided_slice_strides_f32/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "float32",
+      "shape": [
+        1,
+        6,
+        6,
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "float32",
+      "shape": [
+        1,
+        2,
+        2,
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/strided_slice_strides_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        6,
+        6,
+        4
+      ],
+      "scale": 0.023499999195337296,
+      "zero_point": -7
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        2,
+        2,
+        4
+      ],
+      "scale": 0.023499999195337296,
+      "zero_point": -7
+    }
+  ],
+  "tolerance": 0
+}

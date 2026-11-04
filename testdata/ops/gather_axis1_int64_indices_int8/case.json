@@ -1,0 +1,41 @@
+{
+  "model": "testdata/ops/gather_axis1_int64_indices_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        2,
+        5,
+        3
+      ],
+      "scale": 0.023499999195337296,
+      "zero_point": -7
+    },
+    {
+      "name": "input_1",
+      "dtype": "int64",
+      "shape": [
+        2,
+        2
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "int8",
+      "shape": [
+        2,
+        2,
+        2,
+        3
+      ],
+      "scale": 0.023499999195337296,
+      "zero_point": -7
+    }
+  ],
+  "tolerance": 0
+}

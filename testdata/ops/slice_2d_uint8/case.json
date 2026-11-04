@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/slice_2d_uint8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "uint8",
+      "shape": [
+        5,
+        7
+      ],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "uint8",
+      "shape": [
+        3,
+        4
+      ],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    }
+  ],
+  "tolerance": 0
+}

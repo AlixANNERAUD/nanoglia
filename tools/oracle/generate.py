@@ -570,6 +570,267 @@ def quantize_cases():
     save_op_case(name, model, [qi.quantize(x)], tolerance=0)
 
 
+# --------------------------------------------------------------------------
+# Data-movement cases: TRANSPOSE, SLICE, STRIDED_SLICE, GATHER, SPLIT, SPLIT_V
+# --------------------------------------------------------------------------
+
+# One quantization per element type: these operators move bytes, so the
+# input and the outputs share it (as converters write them).
+MOVE_SPECS = {
+    "f32": FLOAT,
+    "int8": Spec(I8, 0.0235, -7),
+    "uint8": Spec("uint8", 0.0196, 131),
+    "int16": Spec(I16, 0.000244, 0),
+    "int32": Spec("int32"),
+}
+
+# LiteRT 2.3's BUILTIN_REF resolver registers STRIDED_SLICE versions 1 to 4
+# only, all with the same kernel; op_version.cc would ask for 6 (ellipsis or
+# new axis) or 8 (offset), which this resolver refuses.
+STRIDED_SLICE_MAX_VERSION = 4
+
+
+def move_data(rng, spec: Spec, shape) -> np.ndarray:
+    """Random values of `spec`'s type: quantized floats, or plain integers."""
+    if spec.dtype == F32 or spec.scale is not None:
+        return spec.quantize(uniform(rng, shape, -2.0, 3.0))
+    return rng.integers(-100000, 100000, size=shape, dtype=spec.dtype)
+
+
+def move_case(name, spec: Spec, op, version, operands, outputs, options, expected):
+    """Save a one-operator case of a data-movement operator.
+
+    `operands` lists the operator inputs in order:
+    - ("data", shape): a model input of `spec`, filled with random values;
+    - ("const_data", shape): a constant of `spec` with random values;
+    - ("const", array): a constant index tensor;
+    - ("input", array): a model input holding index values.
+    `outputs` are the output shapes; `expected(*values)` computes the outputs
+    with NumPy from the operand values, to check the case itself.
+    """
+    rng = rng_for(name)
+    b = ModelBuilder()
+    op_inputs, model_inputs, feeds, values = [], [], [], []
+    for i, (kind, val) in enumerate(operands):
+        if kind in ("data", "const_data"):
+            arr = move_data(rng, spec, val)
+            if kind == "data":
+                t = add_act(b, f"input_{len(model_inputs)}", spec, val)
+                model_inputs.append(t)
+                feeds.append(arr)
+            else:
+                t = b.add_tensor(f"const_{i}", arr.dtype, arr.shape, data=arr, scale=spec.scale,
+                                 zero_point=spec.zero_point)
+        elif kind == "const":
+            arr = val
+            t = b.add_tensor(f"const_{i}", arr.dtype, arr.shape, data=arr)
+        elif kind == "input":
+            arr = val
+            t = b.add_tensor(f"input_{len(model_inputs)}", arr.dtype, arr.shape)
+            model_inputs.append(t)
+            feeds.append(arr)
+        else:
+            raise ValueError(kind)
+        op_inputs.append(t)
+        values.append(arr)
+    outs = [add_act(b, f"output_{j}", spec, s) for j, s in enumerate(outputs)]
+    b.add_operator(op, op_inputs, outs, options, version=version)
+    model = b.build(model_inputs, outs)
+
+    got = run(model, feeds)
+    want = expected(*values)
+    want = want if isinstance(want, (list, tuple)) else [want]
+    for g, w in zip(got, want, strict=True):
+        if g.shape != w.shape or not np.array_equal(g, w):
+            raise AssertionError(f"{name}: LiteRT and NumPy disagree")
+    save_op_case(name, model, feeds, tolerance=0)
+
+
+def i32(values):
+    return np.array(values, dtype=np.int32)
+
+
+def i64(values):
+    return np.array(values, dtype=np.int64)
+
+
+def transpose(name, spec, shape, perm):
+    p = np.array(perm)
+    out = list(np.transpose(np.zeros(shape), p).shape)
+    rank = len(shape)
+    if rank > 5:
+        ver = 6
+    elif spec.dtype == I16:
+        ver = 5
+    elif rank > 4:
+        ver = 4
+    else:
+        ver = 2 if spec.dtype == I8 else 1
+    move_case(name, spec, Op.TRANSPOSE, ver, [("data", shape), ("const", i32(perm))], [out],
+              schema.TransposeOptionsT(), lambda x, _: np.transpose(x, p))
+
+
+def slice_(name, spec, shape, begin, size, index_type=np.int32):
+    stop = [d if s == -1 else b + s for d, b, s in zip(shape, begin, size)]
+    index = tuple(slice(b, e) for b, e in zip(begin, stop))
+    out = [e - b for b, e in zip(begin, stop)]
+    if len(shape) > 4:
+        ver = 5
+    elif spec.dtype == I16:
+        ver = 4
+    else:
+        ver = 2 if spec.dtype == I8 else 1
+    idx = np.array(begin, dtype=index_type), np.array(size, dtype=index_type)
+    move_case(name, spec, Op.SLICE, ver,
+              [("data", shape), ("const", idx[0]), ("const", idx[1])], [out],
+              schema.SliceOptionsT(), lambda x, *_: x[index])
+
+
+def strided_slice(name, spec, shape, begin, end, strides, index, *, begin_mask=0, end_mask=0,
+                  ellipsis_mask=0, new_axis_mask=0, shrink_axis_mask=0, offset=False):
+    """`index` is the equivalent NumPy index expression."""
+    out = list(np.zeros(shape)[index].shape)
+    if len(shape) > 4:
+        ver = 4
+    else:
+        ver = 2 if spec.dtype == I8 else 1
+    opts = schema.StridedSliceOptionsT(
+        beginMask=begin_mask, endMask=end_mask, ellipsisMask=ellipsis_mask,
+        newAxisMask=new_axis_mask, shrinkAxisMask=shrink_axis_mask, offset=offset)
+    move_case(name, spec, Op.STRIDED_SLICE, min(ver, STRIDED_SLICE_MAX_VERSION),
+              [("data", shape), ("const", i32(begin)), ("const", i32(end)),
+               ("const", i32(strides))], [out], opts, lambda x, *_: x[index])
+
+
+def gather_ref(params, indices, axis, batch_dims):
+    """TensorFlow's `gather` with `batch_dims`."""
+    if axis < 0:
+        axis += params.ndim
+    if batch_dims < 0:
+        batch_dims += indices.ndim
+    if batch_dims == 0:
+        return np.take(params, indices, axis=axis)
+    return np.stack([gather_ref(p, i, axis - 1, batch_dims - 1)
+                     for p, i in zip(params, indices)])
+
+
+def gather(name, spec, shape, indices, axis=0, batch_dims=0, const_params=False,
+           const_indices=False):
+    indices = np.asarray(indices)
+    out = list(gather_ref(np.zeros(shape), indices, axis, batch_dims).shape)
+    if indices.dtype == np.int16:
+        ver = 6
+    elif batch_dims != 0:
+        ver = 5
+    elif spec.dtype == I16:
+        ver = 4
+    else:
+        ver = 2 if spec.dtype == I8 else 1
+    operands = [("const_data" if const_params else "data", shape),
+                ("const" if const_indices else "input", indices)]
+    move_case(name, spec, Op.GATHER, ver, operands, [out],
+              schema.GatherOptionsT(axis=axis, batchDims=batch_dims),
+              lambda x, i: gather_ref(x, i, axis, batch_dims))
+
+
+def split(name, spec, shape, axis, num):
+    outs = [list(a.shape) for a in np.split(np.zeros(shape), num, axis=axis)]
+    if spec.dtype == I16:
+        ver = 4
+    elif spec.dtype == "int32":
+        ver = 3
+    else:
+        ver = 2 if spec.dtype == I8 else 1
+    move_case(name, spec, Op.SPLIT, ver, [("const", i32([axis])), ("data", shape)], outs,
+              schema.SplitOptionsT(numSplits=num),
+              lambda _, x: np.split(x, num, axis=axis))
+
+
+def split_v(name, spec, shape, sizes, axis, index_type=np.int32):
+    dim = shape[axis]
+    known = sum(s for s in sizes if s != -1)
+    real = [dim - known if s == -1 else s for s in sizes]
+    cuts = np.cumsum(real)[:-1]
+    outs = [list(a.shape) for a in np.split(np.zeros(shape), cuts, axis=axis)]
+    ver = 2 if spec.dtype == I8 else 1
+    move_case(name, spec, Op.SPLIT_V, ver,
+              [("data", shape), ("const", np.array(sizes, dtype=index_type)),
+               ("const", i32([axis]))], outs,
+              schema.SplitVOptionsT(numSplits=len(sizes)),
+              lambda x, *_: np.split(x, cuts, axis=axis))
+
+
+def movement_cases():
+    S = MOVE_SPECS
+    # TRANSPOSE
+    for t in ("f32", "int8"):
+        transpose(f"transpose_2d_{t}", S[t], [3, 5], [1, 0])
+        transpose(f"transpose_nhwc_to_nchw_{t}", S[t], [1, 3, 4, 5], [0, 3, 1, 2])
+    transpose("transpose_negative_perm_int16", S["int16"], [2, 3, 4], [-1, 0, 1])
+    transpose("transpose_3d_uint8", S["uint8"], [2, 3, 4], [2, 0, 1])
+    transpose("transpose_int32", S["int32"], [4, 2, 3], [1, 2, 0])
+    transpose("transpose_5d_int8", S["int8"], [2, 3, 1, 2, 4], [4, 0, 3, 1, 2])
+    transpose("transpose_6d_f32", S["f32"], [2, 1, 3, 2, 1, 2], [5, 3, 1, 0, 2, 4])
+
+    # SLICE
+    for t in ("f32", "int8"):
+        slice_(f"slice_4d_{t}", S[t], [1, 4, 5, 3], [0, 1, 1, 0], [1, 2, 3, 3])
+    slice_("slice_size_minus_one_int64_int8", S["int8"], [2, 6, 4], [1, 2, 1], [-1, 3, -1],
+           index_type=np.int64)
+    slice_("slice_2d_uint8", S["uint8"], [5, 7], [2, 3], [3, -1])
+    slice_("slice_int32", S["int32"], [3, 4, 2], [1, 0, 1], [2, 4, 1])
+    slice_("slice_6d_int16", S["int16"], [1, 2, 3, 2, 2, 3], [0, 1, 0, 1, 0, 1],
+           [-1, 1, 2, 1, 2, 2])
+
+    # STRIDED_SLICE
+    for t in ("f32", "int8"):
+        strided_slice(f"strided_slice_strides_{t}", S[t], [1, 6, 6, 4], [0, 1, 0, 0],
+                      [1, 5, 6, 4], [1, 2, 3, 1], np.s_[0:1, 1:5:2, 0:6:3, 0:4])
+    strided_slice("strided_slice_negative_strides_int8", S["int8"], [2, 5, 3], [-1, -1, 0],
+                  [0, -6, 3], [-1, -2, 1], np.s_[::-1, 4::-2, 0:3], end_mask=0b001)
+    strided_slice("strided_slice_masks_f32", S["f32"], [3, 4, 5], [2, 1, 3], [0, 3, 1],
+                  [1, 1, -1], np.s_[:, 1:3, :1:-1], begin_mask=0b101, end_mask=0b001)
+    strided_slice("strided_slice_shrink_int8", S["int8"], [2, 4, 3], [0, 2, 0], [2, 3, 3],
+                  [1, 1, 1], np.s_[:, 2, :], shrink_axis_mask=0b010)
+    strided_slice("strided_slice_shrink_negative_index_int16", S["int16"], [3, 4], [-1, 1],
+                  [0, 4], [1, 1], np.s_[-1, 1:], shrink_axis_mask=0b01)
+    strided_slice("strided_slice_ellipsis_new_axis_int16", S["int16"], [2, 3, 4], [0, 0, 1],
+                  [0, 0, 3], [1, 1, 1], np.s_[..., None, 1:3], ellipsis_mask=0b001,
+                  new_axis_mask=0b010)
+    strided_slice("strided_slice_partial_spec_uint8", S["uint8"], [4, 3, 2], [1], [3], [1],
+                  np.s_[1:3])
+    strided_slice("strided_slice_offset_int8", S["int8"], [2, 4, 3], [0, 1, 1], [2, 2, 2],
+                  [1, 1, 1], np.s_[0:2, 1:3, 1:3], offset=True)
+    strided_slice("strided_slice_5d_f32", S["f32"], [2, 3, 2, 3, 4], [0, 0, 0, 1, 0],
+                  [2, 3, 2, 3, 4], [1, 2, 1, 1, 2], np.s_[0:2, 0:3:2, 0:2, 1:3, 0:4:2])
+    strided_slice("strided_slice_int32", S["int32"], [6, 4], [5, 0], [0, 4], [-2, 1],
+                  np.s_[5:0:-2, 0:4])
+
+    # GATHER
+    for t in ("f32", "int8"):
+        gather(f"gather_axis0_{t}", S[t], [5, 4], i32([4, 0, 2]), const_indices=True)
+    gather("gather_axis1_int64_indices_int8", S["int8"], [2, 5, 3], i64([[4, 1], [0, 4]]),
+           axis=1)
+    gather("gather_negative_axis_int16", S["int16"], [3, 2, 6], i32([5, 0, 3, 3]), axis=-1)
+    gather("gather_batch_dims_f32", S["f32"], [2, 4, 3], i32([[3, 0], [1, 1]]), axis=1,
+           batch_dims=1)
+    gather("gather_embedding_int8", S["int8"], [10, 4], i32([[7, 2, 9, 0, 0, 5]]),
+           const_params=True)
+    gather("gather_int16_indices_uint8", S["uint8"], [6, 3], np.array([5, 1, 1], np.int16))
+    gather("gather_int32", S["int32"], [4, 3], i32([3, 1]), axis=0)
+    gather("gather_scalar_index_f32", S["f32"], [3, 4], np.array(2, np.int32), axis=1)
+
+    # SPLIT and SPLIT_V
+    for t in ("f32", "int8"):
+        split(f"split_axis3_{t}", S[t], [1, 4, 4, 6], 3, 3)
+        split_v(f"split_v_{t}", S[t], [2, 7, 3], [2, -1, 1], 1)
+    split("split_negative_axis_int16", S["int16"], [2, 6, 3], -2, 2)
+    split("split_axis0_uint8", S["uint8"], [4, 3], 0, 4)
+    split("split_int32", S["int32"], [2, 4], 1, 2)
+    split_v("split_v_int64_sizes_int16", S["int16"], [2, 3, 6], [3, 1, 2], -1,
+            index_type=np.int64)
+
+
 def op_cases():
     for mode in (I8, F32):
         s = "_" + {I8: "int8", F32: "f32"}[mode]
@@ -686,6 +947,7 @@ def main():
         if d.exists():
             shutil.rmtree(d)
     op_cases()
+    movement_cases()
     mlperf_cases()
     print(f"{len(CASES)} op cases in {OPS_DIR.relative_to(REPO)}")
     print(f"{len(MLPERF_MODELS)} x {MLPERF_SAMPLES} MLPerf Tiny cases in "

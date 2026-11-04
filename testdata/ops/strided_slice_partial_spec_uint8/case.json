@@ -1,0 +1,30 @@
+{
+  "model": "testdata/ops/strided_slice_partial_spec_uint8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "uint8",
+      "shape": [
+        4,
+        3,
+        2
+      ],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "uint8",
+      "shape": [
+        2,
+        3,
+        2
+      ],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    }
+  ],
+  "tolerance": 0
+}

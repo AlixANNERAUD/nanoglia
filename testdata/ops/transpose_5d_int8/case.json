@@ -1,0 +1,34 @@
+{
+  "model": "testdata/ops/transpose_5d_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        2,
+        3,
+        1,
+        2,
+        4
+      ],
+      "scale": 0.023499999195337296,
+      "zero_point": -7
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "int8",
+      "shape": [
+        4,
+        2,
+        2,
+        3,
+        1
+      ],
+      "scale": 0.023499999195337296,
+      "zero_point": -7
+    }
+  ],
+  "tolerance": 0
+}

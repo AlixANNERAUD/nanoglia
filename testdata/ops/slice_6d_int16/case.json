@@ -1,0 +1,36 @@
+{
+  "model": "testdata/ops/slice_6d_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int16",
+      "shape": [
+        1,
+        2,
+        3,
+        2,
+        2,
+        3
+      ],
+      "scale": 0.00024399999529123306,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "int16",
+      "shape": [
+        1,
+        1,
+        2,
+        1,
+        2,
+        2
+      ],
+      "scale": 0.00024399999529123306,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

@@ -1,0 +1,56 @@
+{
+  "model": "testdata/ops/split_axis3_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        6
+      ],
+      "scale": 0.023499999195337296,
+      "zero_point": -7
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        2
+      ],
+      "scale": 0.023499999195337296,
+      "zero_point": -7
+    },
+    {
+      "name": "output_1",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        2
+      ],
+      "scale": 0.023499999195337296,
+      "zero_point": -7
+    },
+    {
+      "name": "output_2",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        2
+      ],
+      "scale": 0.023499999195337296,
+      "zero_point": -7
+    }
+  ],
+  "tolerance": 0
+}

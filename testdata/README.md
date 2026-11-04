@@ -41,14 +41,16 @@ Every case directory holds:
   ```
 
   - `model`: path of the model, relative to the repository root;
-  - `dtype`: one of `int8`, `int16`, `uint8`, `int32`, `float32`;
+  - `dtype`: one of `int8`, `int16`, `uint8`, `int32`, `int64` (indices fed
+    to `GATHER`), `float32`;
   - `scale`, `zero_point`: per-tensor quantization of the tensor; `0.0` and `0`
     for a tensor that is not quantized (float);
   - `tolerance`: how far an output may be from the golden one. For quantized
     outputs, the maximum absolute difference in quantized units: always `0`,
     the outputs must be bit-exact. For float outputs, a relative bound:
     `|actual - expected| <= tolerance * max(1, |expected|)` (`1e-5`; `0` for
-    `dequantize_int8_f32`, whose result is a single correctly rounded product).
+    `dequantize_int8_f32`, whose result is a single correctly rounded product,
+    and for the data-movement operators below, which copy floats unchanged).
 
 ## Per-op cases
 
@@ -67,10 +69,22 @@ Every case directory holds:
 The variants of a case share their float data: `conv2d_3x3_same_int8` is the
 quantized version of `conv2d_3x3_same_f32`.
 
+The data-movement operators (`TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`,
+`SPLIT`, `SPLIT_V`) only copy bytes: their cases cover several ranks (up to 6),
+element types (`_f32`, `_int8`, `_uint8`, `_int16`, `_int32`; quantized inputs
+and outputs share one quantization, as converters write them) and options
+(negative axes and permutations, int64 indices, `size = -1`, the masks and
+`offset` of `STRIDED_SLICE`, `batch_dims`, `SPLIT_V` sizes with -1). The oracle
+also checks each of their LiteRT outputs against NumPy. LiteRT 2.3's reference
+resolver registers `STRIDED_SLICE` versions 1 to 4 only, all with the same
+kernel: the ellipsis, new-axis and offset cases declare version 4 instead of
+the 6 or 8 a converter would write.
+
 Operators covered: `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`,
 `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`, `SUB`, `MUL`, `MAXIMUM`,
 `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `LOGISTIC`, `TANH`, `RELU`, `RELU6`,
-`CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`.
+`CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`, `TRANSPOSE`, `SLICE`, `STRIDED_SLICE`,
+`GATHER`, `SPLIT`, `SPLIT_V`.
 
 Not covered: int8 `CONCATENATION` with different input and output
 quantization, which the reference kernel rejects (as TensorFlow Lite Micro does).

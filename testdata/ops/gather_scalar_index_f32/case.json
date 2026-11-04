@@ -1,0 +1,34 @@
+{
+  "model": "testdata/ops/gather_scalar_index_f32/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "float32",
+      "shape": [
+        3,
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    },
+    {
+      "name": "input_1",
+      "dtype": "int32",
+      "shape": [],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "float32",
+      "shape": [
+        3
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

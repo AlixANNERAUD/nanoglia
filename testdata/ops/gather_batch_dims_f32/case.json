@@ -1,0 +1,40 @@
+{
+  "model": "testdata/ops/gather_batch_dims_f32/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "float32",
+      "shape": [
+        2,
+        4,
+        3
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    },
+    {
+      "name": "input_1",
+      "dtype": "int32",
+      "shape": [
+        2,
+        2
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "float32",
+      "shape": [
+        2,
+        2,
+        3
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}
