@@ -90,3 +90,12 @@ changelog_path = "./crates/nanoglia-esp-nn/CHANGELOG.md"
 git_tag_enable = true
 git_tag_name = "{{ package }}-v{{ version }}"
 git_release_enable = false
+
+# The C API: published to crates.io too, for Rust programs and build scripts that build the C
+# library; its own changelog and tag.
+[[package]]
+name = "nanoglia-c"
+changelog_path = "./crates/nanoglia-c/CHANGELOG.md"
+git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_enable = false
