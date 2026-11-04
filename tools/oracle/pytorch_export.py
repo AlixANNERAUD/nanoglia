@@ -92,9 +92,13 @@ class RecurrentNet(nn.Module):
         super().__init__()
         self.rnn = rnn(features, hidden, batch_first=True)
         self.fc = nn.Linear(hidden, classes)
+        self.hidden = hidden
+        self.lstm = rnn is nn.LSTM
 
     def forward(self, x):  # [1, frames, features]
-        out, _ = self.rnn(x)  # [1, frames, hidden]
+        # An explicit initial state: litert-torch's GRU annotator reads it (#22).
+        h0 = torch.zeros(1, x.shape[0], self.hidden)
+        out, _ = self.rnn(x, (h0, h0) if self.lstm else h0)  # [1, frames, hidden]
         return self.fc(out[:, -1])  # [1, classes]
 
 
