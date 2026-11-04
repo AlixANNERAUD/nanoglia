@@ -80,6 +80,13 @@ fn max_diff(dtype: &str, actual: &[u8], expected: &[u8]) -> f64 {
             "int32" => (i32::from_le_bytes(a.try_into().unwrap()) as f64
                 - i32::from_le_bytes(e.try_into().unwrap()) as f64)
                 .abs(),
+            "int64" => {
+                let (a, e) = (
+                    i64::from_le_bytes(a.try_into().unwrap()),
+                    i64::from_le_bytes(e.try_into().unwrap()),
+                );
+                a.abs_diff(e) as f64
+            }
             "float32" => {
                 let (a, e) = (
                     f32::from_le_bytes(a.try_into().unwrap()),

@@ -6,6 +6,7 @@
 #![cfg_attr(not(all(feature = "float", feature = "int16")), allow(dead_code))]
 
 mod activation;
+mod arg_min_max;
 mod concat;
 mod conv;
 mod copy;
@@ -95,6 +96,7 @@ impl RustKernels {
             BuiltinOp::STRIDED_SLICE => kernels!(slice::STRIDED_SLICE),
             BuiltinOp::GATHER => kernels!(gather::GATHER),
             BuiltinOp::SPLIT | BuiltinOp::SPLIT_V => kernels!(split::SPLIT),
+            BuiltinOp::ARG_MAX | BuiltinOp::ARG_MIN => kernels!(arg_min_max::ARG_MIN_MAX),
             BuiltinOp::ADD | BuiltinOp::SUB | BuiltinOp::MUL => {
                 kernels!(elementwise::BINARY, elementwise::QUANTIZED_BINARY)
             }
