@@ -83,15 +83,17 @@ fn arm_cpu_flags(target: &str, features: &str) -> Vec<&'static str> {
         "thumbv7em" => vec!["-march=armv7e-m", "-mtune=cortex-m4"],
         // Cortex-M23: no DSP.
         "thumbv8m.base" => vec!["-mtune=cortex-m23"],
-        // Cortex-M33/M35P: the DSP extension is optional in the architecture but present in
-        // practically every part (nRF53, STM32L5/U5, RP2350...).
-        "thumbv8m.main" => vec!["-march=armv8-m.main+dsp", "-mtune=cortex-m33"],
+        // Cortex-M33/M35P: the DSP extension is optional, so it is used only when the Rust
+        // target enables it (`-C target-cpu=cortex-m33` or `-C target-feature=+dsp`).
+        "thumbv8m.main" if has("dsp") => vec!["-march=armv8-m.main+dsp", "-mtune=cortex-m33"],
+        "thumbv8m.main" => vec!["-march=armv8-m.main", "-mtune=cortex-m33"],
         // Cortex-M55/M85: Helium (MVE) when the Rust target enables it.
         "thumbv8.1m.main" if has("mve.fp") => {
             vec!["-march=armv8.1-m.main+mve.fp+fp.dp", "-mtune=cortex-m55"]
         }
         "thumbv8.1m.main" if has("mve") => vec!["-march=armv8.1-m.main+mve", "-mtune=cortex-m55"],
-        "thumbv8.1m.main" => vec!["-march=armv8.1-m.main+dsp", "-mtune=cortex-m55"],
+        "thumbv8.1m.main" if has("dsp") => vec!["-march=armv8.1-m.main+dsp", "-mtune=cortex-m55"],
+        "thumbv8.1m.main" => vec!["-march=armv8.1-m.main", "-mtune=cortex-m55"],
         _ => Vec::new(),
     }
 }

@@ -93,8 +93,11 @@ CFLAGS_thumbv7em_none_eabihf = "-isystem /usr/include/newlib"
 
 `/usr/include/newlib` is where Debian and Ubuntu install newlib's
 headers. The build script adds the DSP flags for Armv7E-M (Cortex-M4,
-M7) and Armv8-M Mainline (Cortex-M33), and Helium for Armv8.1-M targets
-with the `mve` target feature. The same variables, with the target name
+M7), where the DSP extension is always present. On Armv8-M Mainline
+(Cortex-M33) and Armv8.1-M (Cortex-M55, M85) it is optional, so the
+build script uses it, and Helium, only when the Rust target enables it:
+build with `-C target-cpu=cortex-m33` (or `-C target-feature=+dsp`, and
+`+mve` for Helium), otherwise CMSIS-NN runs its portable C code. The same variables, with the target name
 changed, work for `thumbv6m-none-eabi` (Cortex-M0+, no DSP).
 
 For `thumbv8m.main-none-eabihf`, whose name contains a dot, `cc` also
