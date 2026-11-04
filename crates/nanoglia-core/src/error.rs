@@ -87,6 +87,12 @@ pub enum Detail {
     },
     /// No input or output tensor has the requested name.
     TensorNotFound,
+    /// An [`Observer`](https://docs.rs/nanoglia/latest/nanoglia/trait.Observer.html) stopped the
+    /// computation before this operator (code `Timeout`).
+    Interrupted {
+        /// Index of the operator that did not run.
+        op_index: u32,
+    },
     /// A backend library reported a failure.
     Backend {
         /// Name of the backend.

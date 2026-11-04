@@ -1,5 +1,6 @@
 //! `ExecutionContext::compute_with`: what an observer sees of each operator.
 
+use core::ops::ControlFlow;
 use nanoglia::core::allocator_api2::alloc::Global;
 use nanoglia::core::backend::{Backend, FnKernel, Kernel, KernelPlan};
 use nanoglia::core::{BuiltinOp, OpDesc};
@@ -27,12 +28,13 @@ struct Trace {
 }
 
 impl Observer for Trace {
-    fn before(&mut self, op: &OpInfo<'_>) {
+    fn before(&mut self, op: &OpInfo<'_>) -> ControlFlow<()> {
         self.calls.push(("before", op.index(), op.kernel_name()));
         self.opcodes.push(match op.opcode().unwrap() {
             OpCode::Builtin(code) => code.0,
             OpCode::Custom(_) => -1,
         });
+        ControlFlow::Continue(())
     }
 
     fn after(&mut self, op: &OpInfo<'_>, result: &Result<()>) {
@@ -81,7 +83,7 @@ struct Capture {
 }
 
 impl Observer for Capture {
-    fn before(&mut self, op: &OpInfo<'_>) {
+    fn before(&mut self, op: &OpInfo<'_>) -> ControlFlow<()> {
         assert_eq!(
             op.input(op.input_count()).unwrap_err().detail,
             Detail::IndexOutOfRange {
@@ -89,6 +91,7 @@ impl Observer for Capture {
             }
         );
         self.inputs.push(op.input(0).unwrap().bytes().to_vec());
+        ControlFlow::Continue(())
     }
 
     fn after(&mut self, op: &OpInfo<'_>, _result: &Result<()>) {

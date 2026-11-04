@@ -1,8 +1,12 @@
 use crate::graph::{Graph, GraphTensors, Location};
 use crate::{TensorMut, TensorRef};
+use core::future::Future;
+use core::ops::ControlFlow;
+use core::pin::Pin;
+use core::task::{Context, Poll};
 use nanoglia_core::backend::{EvalCtx, Kernel};
 use nanoglia_core::{
-    Allocator, Block, Detail, Error, MAX_OP_INPUTS, MAX_OP_OUTPUTS, OpCode, Result,
+    Allocator, Block, Detail, Error, ErrorCode, MAX_OP_INPUTS, MAX_OP_OUTPUTS, OpCode, Result,
 };
 
 /// The mutable state of one inference: the arena holding the activations and the scratch memory.
@@ -40,6 +44,8 @@ use nanoglia_core::{
 pub struct ExecutionContext<'g, 'm, A: Allocator, B: Allocator> {
     graph: &'g Graph<'m, A>,
     arena: Block<B>,
+    /// The next operator of the inference run step by step, if one is in progress.
+    next: Option<usize>,
 }
 
 impl<A: Allocator, B: Allocator> core::fmt::Debug for ExecutionContext<'_, '_, A, B> {
@@ -55,6 +61,7 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
         Ok(Self {
             graph,
             arena: Block::new_zeroed(graph.context_bytes(), alloc)?,
+            next: None,
         })
     }
 
@@ -137,6 +144,7 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
     /// #     "/doc/classifier.tflite"
     /// # )));
     /// # fn main() -> Result<(), nanoglia::Error> {
+    /// use core::ops::ControlFlow;
     /// use nanoglia::{Arena, Encoding, Graph, Observer, OpInfo, Result, Target};
     /// use std::time::{Duration, Instant};
     ///
@@ -148,8 +156,9 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
     /// }
     ///
     /// impl Observer for Profiler {
-    ///     fn before(&mut self, _op: &OpInfo<'_>) {
+    ///     fn before(&mut self, _op: &OpInfo<'_>) -> ControlFlow<()> {
     ///         self.start = Some(Instant::now());
+    ///         ControlFlow::Continue(())
     ///     }
     ///
     ///     fn after(&mut self, op: &OpInfo<'_>, _result: &Result<()>) {
@@ -176,6 +185,109 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
     /// ```
     #[inline]
     pub fn compute_with<O: Observer + ?Sized>(&mut self, observer: &mut O) -> Result<()> {
+        self.next = None;
+        for index in 0..self.graph.operator_count() {
+            self.run_operator(index, observer)?;
+        }
+        Ok(())
+    }
+
+    /// Runs the next operator of the current inference, starting a new inference (on the current
+    /// inputs) if none is in progress, and returns whether it was the last one.
+    ///
+    /// Use it to run a long inference in slices, between which the application does something
+    /// else: answer a radio, refresh a display, check a deadline. Stopping is free: stop calling
+    /// `step`, or call [`Self::cancel`]. The granularity is one operator: a single operator
+    /// (a large convolution) cannot be split.
+    ///
+    /// Do not change the inputs while an inference is in progress: the operators already run
+    /// would not see the change, and the memory plan may already have reused the inputs' memory.
+    /// Outputs hold their final values only once `step` returns [`Step::Done`]. If an operator
+    /// fails, its error is returned and the inference is abandoned: the next `step` starts over.
+    ///
+    /// ```
+    /// # #[repr(C, align(16))]
+    /// # struct Aligned<T: ?Sized>(T);
+    /// # static MODEL: &Aligned<[u8]> = &Aligned(*include_bytes!(concat!(
+    /// #     env!("CARGO_MANIFEST_DIR"),
+    /// #     "/doc/classifier.tflite"
+    /// # )));
+    /// # fn main() -> Result<(), nanoglia::Error> {
+    /// use nanoglia::{Arena, Encoding, Graph, Step, Target};
+    ///
+    /// let mut memory = [0u8; 4 * 1024];
+    /// let arena = Arena::new(&mut memory);
+    /// let graph = Graph::load_in(&[&MODEL.0], Encoding::Autodetect, Target::Auto, &arena)?;
+    /// let mut ctx = graph.init_execution_context_in(&arena)?;
+    ///
+    /// ctx.input_mut(0)?.as_mut_slice::<i8>()?.fill(10);
+    /// while ctx.step()? == Step::Pending {
+    ///     // Anything else the firmware has to do between two operators.
+    /// }
+    /// assert_eq!(ctx.output(0)?.as_slice::<i8>()?.len(), 18);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub fn step(&mut self) -> Result<Step> {
+        self.step_with(&mut ())
+    }
+
+    /// [`Self::step`], calling `observer` around the operator it runs.
+    pub fn step_with<O: Observer + ?Sized>(&mut self, observer: &mut O) -> Result<Step> {
+        let count = self.graph.operator_count();
+        let index = self.next.take().unwrap_or(0);
+        if index >= count {
+            return Ok(Step::Done);
+        }
+        // `next` stays `None` if the operator fails: the inference is abandoned.
+        self.run_operator(index, observer)?;
+        if index + 1 == count {
+            Ok(Step::Done)
+        } else {
+            self.next = Some(index + 1);
+            Ok(Step::Pending)
+        }
+    }
+
+    /// Abandons the inference run step by step, if any: the next [`Self::step`] starts a new one.
+    pub fn cancel(&mut self) {
+        self.next = None;
+    }
+
+    /// The index of the next operator [`Self::step`] will run, if an inference is in progress.
+    pub fn next_operator(&self) -> Option<usize> {
+        self.next
+    }
+
+    /// Runs the graph on the current inputs, yielding to the async executor between two
+    /// operators so that other tasks run during a long inference. Allocates nothing and needs no
+    /// particular executor (it works with embassy, RTIC or your own).
+    ///
+    /// Dropping the future abandons the inference. Like [`Self::step`], it cannot yield in the
+    /// middle of an operator.
+    pub async fn compute_async(&mut self) -> Result<()> {
+        self.compute_async_with(&mut ()).await
+    }
+
+    /// [`Self::compute_async`], calling `observer` around each operator.
+    pub async fn compute_async_with<O: Observer + ?Sized>(
+        &mut self,
+        observer: &mut O,
+    ) -> Result<()> {
+        self.next = None;
+        loop {
+            match self.step_with(observer) {
+                Ok(Step::Done) => return Ok(()),
+                Ok(Step::Pending) => YieldNow(false).await,
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    /// Runs operator `index`, with the observer around it.
+    #[inline]
+    fn run_operator<O: Observer + ?Sized>(&mut self, index: usize, observer: &mut O) -> Result<()> {
         let graph = self.graph;
         let model = graph.model();
         let io = graph.io_table();
@@ -183,8 +295,12 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
         let (scratch_offset, scratch_len) = graph.scratch();
         let arena_len = self.arena.len();
         let base = self.arena.as_mut_ptr();
-
-        for (index, op) in graph.ops().iter().enumerate() {
+        let Some(op) = graph.ops().get(index) else {
+            return Err(Error::invalid_argument(Detail::IndexOutOfRange {
+                index: index as u32,
+            }));
+        };
+        {
             let start = op.io_start as usize;
             let inputs = &io[start..start + op.inputs as usize];
             let outputs =
@@ -200,9 +316,17 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
                 arena,
             };
             // SAFETY: no mutable view of the arena is alive: the previous kernel has returned.
-            observer.before(&info(unsafe {
+            let flow = observer.before(&info(unsafe {
                 core::slice::from_raw_parts(base, arena_len)
             }));
+            if flow.is_break() {
+                return Err(Error::new(
+                    ErrorCode::Timeout,
+                    Detail::Interrupted {
+                        op_index: index as u32,
+                    },
+                ));
+            }
 
             let mut input_bytes: [&[u8]; MAX_OP_INPUTS] = [&[]; MAX_OP_INPUTS];
             for (slot, &raw) in input_bytes.iter_mut().zip(inputs) {
@@ -251,9 +375,8 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
                 &info(unsafe { core::slice::from_raw_parts(base, arena_len) }),
                 &result,
             );
-            result?;
+            result
         }
-        Ok(())
     }
 }
 
@@ -265,9 +388,14 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
 pub trait Observer {
     /// Called before operator `op` runs. Its inputs are ready; the contents of its outputs are
     /// undefined (whatever the arena held there).
+    ///
+    /// Return [`ControlFlow::Break`] to stop the computation before this operator, for example
+    /// when a deadline has passed: `compute*` then returns an error with code
+    /// [`ErrorCode::Timeout`] and [`Detail::Interrupted`].
     #[inline(always)]
-    fn before(&mut self, op: &OpInfo<'_>) {
+    fn before(&mut self, op: &OpInfo<'_>) -> ControlFlow<()> {
         let _ = op;
+        ControlFlow::Continue(())
     }
 
     /// Called after operator `op` ran, with the kernel's result. Its outputs hold the computed
@@ -283,8 +411,8 @@ impl Observer for () {}
 
 impl<O: Observer + ?Sized> Observer for &mut O {
     #[inline(always)]
-    fn before(&mut self, op: &OpInfo<'_>) {
-        (**self).before(op);
+    fn before(&mut self, op: &OpInfo<'_>) -> ControlFlow<()> {
+        (**self).before(op)
     }
 
     #[inline(always)]
@@ -365,5 +493,31 @@ impl<'a> OpInfo<'a> {
             .get(i)
             .ok_or_else(|| Error::invalid_argument(Detail::IndexOutOfRange { index: i as u32 }))?;
         self.tensors.view(raw, self.arena)
+    }
+}
+
+/// Progress of an inference run step by step ([`ExecutionContext::step`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Step {
+    /// Operators remain: call `step` again.
+    Pending,
+    /// The inference is complete: the outputs hold its result.
+    Done,
+}
+
+/// A future that is pending once, waking itself, then ready: lets the executor run other tasks.
+struct YieldNow(bool);
+
+impl Future for YieldNow {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        if self.0 {
+            Poll::Ready(())
+        } else {
+            self.0 = true;
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
     }
 }
