@@ -1,48 +1,210 @@
-# nanoglia
+# nanoglia: run TensorFlow Lite models on microcontrollers, in Rust
 
 [![crates.io](https://img.shields.io/crates/v/nanoglia.svg)](https://crates.io/crates/nanoglia)
 [![docs.rs](https://img.shields.io/docsrs/nanoglia)](https://docs.rs/nanoglia)
 [![CI](https://github.com/AlixANNERAUD/nanoglia/actions/workflows/ci.yml/badge.svg)](https://github.com/AlixANNERAUD/nanoglia/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/AlixANNERAUD/nanoglia/graph/badge.svg)](https://codecov.io/gh/AlixANNERAUD/nanoglia)
-[![no_std](https://img.shields.io/badge/no__std-no%20alloc-success)](crates/nanoglia/README.md)
+[![no_std](https://img.shields.io/badge/no__std-no%20alloc-success)](documentation/reference/memory.md)
 [![MSRV 1.89](https://img.shields.io/badge/MSRV-1.89-informational)](Cargo.toml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**Run neural networks loaded at runtime on microcontrollers, with one `no_std` Rust API and the best kernels of each chip.**
+**Load a `.tflite` neural network at run time and run it on a microcontroller, without a heap,
+an RTOS or a vendor SDK.** `nanoglia` is a `no_std` TinyML inference engine for Rust: it reads
+TensorFlow Lite (LiteRT) models straight from flash, RAM, an SD card or the network, without
+copying their weights, and runs them with the fastest kernels of your chip: Arm
+[CMSIS-NN](https://github.com/ARM-software/CMSIS-NN) on Cortex-M (STM32, nRF52/nRF53, RP2350,
+NXP, Renesas...) and Espressif [ESP-NN](https://github.com/espressif/esp-nn) on the ESP32-S3,
+with pure Rust kernels for everything else. One API, close to
+[wasi-nn](https://github.com/WebAssembly/wasi-nn), from a Cortex-M0 to WebAssembly.
 
-nanoglia reads TensorFlow Lite (`.tflite`) models straight from flash or RAM, without copying their weights, and runs them with:
+```rust,ignore
+let graph = Graph::load_in(&[MODEL], Encoding::Autodetect, Target::Auto, &arena)?;
+let mut ctx = graph.init_execution_context_in(&arena)?;
+ctx.input_mut(0)?.as_mut_slice::<i8>()?.copy_from_slice(&features);
+ctx.compute()?; // allocates nothing
+let scores = ctx.output(0)?.as_slice::<i8>()?;
+```
 
-- [CMSIS-NN](https://github.com/ARM-software/CMSIS-NN) on Arm Cortex-M (DSP and Helium extensions), and as a portable C fallback everywhere else;
-- [ESP-NN](https://github.com/espressif/esp-nn) on ESP32-S3 (feature `esp-nn`; ESP32-P4 planned);
-- pure Rust kernels for the operators these libraries lack.
+| At a glance | |
+| --- | --- |
+| Models | TensorFlow Lite / LiteRT `.tflite`, **loaded at run time**: update a model over the air without reflashing the firmware |
+| Accuracy | **Bit-exact with TensorFlow Lite**: 123 of 126 golden cases identical byte for byte, including the [MLPerf Tiny](https://github.com/mlcommons/tiny) keyword-spotting, visual-wake-words and image-classification models ([why the other 3 differ](documentation/explanation/bit-exactness.md)) |
+| Memory | **One allocation per model, one per inference context, none per inference**, all from the allocator you pass: the global allocator, your own, or a static buffer. Keyword spotting needs **23.8 KiB** of RAM in total ([measured](documentation/reference/memory.md)) |
+| Speed | CMSIS-NN (Cortex-M DSP and Helium), ESP-NN (ESP32-S3 SIMD); in WebAssembly, SIMD128 makes the models **2 to 3.3 times faster** ([measured](documentation/reference/performance.md)) |
+| Types | int8 (the TinyML standard), int16 (16x8) and float32, 27 operators ([list](documentation/reference/supported-operators.md)) |
+| Safety | Untrusted models are fully verified before use: errors, never panics. The model reader is `#![forbid(unsafe_code)]` and fuzzed in CI |
+| Targets | Cortex-M0+, M4F, M33, ESP32-S3 (Xtensa), RISC-V, WebAssembly and desktops, each built in CI ([see below](#supported-platforms)) |
 
-It needs no RTOS, no HAL and no vendor SDK. Every byte it uses comes from the allocator you give it: the Rust global allocator, your own allocator, or a static buffer.
+## Why nanoglia?
 
-> Status: early development. 123 of the 126 golden cases (per-operator int8, int16 and float32 cases, and the four MLPerf Tiny int8 models) run bit-exact with the TFLite reference kernels; the anomaly-detection model is within one or two units, because LiteRT's reference fully-connected kernel requantizes in floating point (see `crates/nanoglia/tests/golden.rs`).
+TinyML on microcontrollers usually means one of two compromises. TensorFlow Lite Micro is C++, and
+reaching each vendor's optimized kernels means its build system and SDK (ESP-IDF for ESP-NN,
+STM32Cube for ST, ...). The pure Rust engines compile the model *into* the firmware at build time,
+so changing a model means rebuilding and reflashing, and they leave the hardware acceleration on
+the table. `nanoglia` keeps the model a file and the firmware a plain Rust binary.
+
+- **Models loaded at run time.** Store models in flash, receive them over BLE, Wi-Fi or a serial
+  link, pick one at boot: `Graph::load_in` verifies the bytes and runs them. Weights stay where
+  they are (zero copy), even in memory-mapped flash.
+- **The best kernels of each chip, no SDK.** CMSIS-NN and ESP-NN are vendored and compiled by Cargo
+  with `cc`: no ESP-IDF, no STM32Cube, no CMake. Each operator runs on the fastest backend that
+  supports it exactly, and falls back to portable code otherwise.
+- **Your memory, and only yours.** `#![no_std]`, no global allocator needed. A graph takes one block,
+  an execution context one more, and `compute` none. Use an `Arena` over a `static` buffer, sized
+  ahead of time with `MemoryRequirements`: no fragmentation, no surprises at run time.
+- **The same numbers as on your PC.** Every kernel reproduces TensorFlow Lite's fixed-point
+  arithmetic bit for bit, so a model validated in Python gives the same outputs on the device.
+  126 golden cases generated with LiteRT's reference kernels run on every commit, on the host and in
+  WebAssembly.
+- **Safe on untrusted input.** A corrupted or malicious `.tflite` file returns an error with a
+  wasi-nn error code and a precise reason. It never panics, never reads out of bounds.
+
+## Quick start
+
+Until the first crates.io release, depend on the repository:
+
+```toml
+[dependencies]
+nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", features = ["alloc"] }
+```
+
+Run the MLPerf Tiny keyword-spotting model on your computer:
+
+```rust,ignore
+use nanoglia::{Encoding, Graph, Target};
+
+#[repr(C, align(16))]
+struct Aligned<T: ?Sized>(T);
+static MODEL: &Aligned<[u8]> = &Aligned(*include_bytes!("kws_ref_model.tflite"));
+
+fn main() -> Result<(), nanoglia::Error> {
+    let graph = Graph::load(&[&MODEL.0], Encoding::Autodetect, Target::Auto)?;
+    let mut ctx = graph.init_execution_context()?;
+
+    ctx.input_mut(0)?.as_mut_slice::<i8>()?.fill(0); // 49 frames x 10 MFCC features
+    ctx.compute()?;
+
+    let scores = ctx.output(0)?;
+    println!("scores: {:?}", scores.as_slice::<i8>()?);
+    Ok(())
+}
+```
+
+On a microcontroller, drop `alloc` and give the graph a static buffer instead:
+
+```rust,ignore
+use nanoglia::{Arena, Encoding, Graph, Target};
+
+static mut MEMORY: [u8; 24 * 1024] = [0; 24 * 1024]; // MemoryRequirements::arena_bytes(1) = 23 791
+
+let arena = Arena::new(unsafe { &mut *core::ptr::addr_of_mut!(MEMORY) });
+let graph = Graph::load_in(&[&MODEL.0], Encoding::Autodetect, Target::Auto, &arena)?;
+let mut ctx = graph.init_execution_context_in(&arena)?;
+```
+
+The [first-inference tutorial](documentation/tutorials/first-inference.md) walks through both,
+and [`examples/nano33ble`](examples/nano33ble) is a complete firmware for the Arduino Nano 33 BLE.
+
+## Supported platforms
+
+| Target | Example hardware | Kernels | Checked in CI |
+| --- | --- | --- | --- |
+| `thumbv7em-none-eabihf` | Cortex-M4F/M7: nRF52840 (Arduino Nano 33 BLE), STM32F4/H7 | CMSIS-NN with DSP | Library build and the Nano 33 BLE firmware |
+| `thumbv8m.main-none-eabihf` | Cortex-M33: nRF5340, STM32U5, RP2350 | CMSIS-NN (DSP with `-C target-cpu=cortex-m33`) | Library build |
+| `thumbv6m-none-eabi` | Cortex-M0+: RP2040, STM32G0 | CMSIS-NN, portable C | Library build |
+| `xtensa-esp32s3-none-elf` | ESP32-S3 | ESP-NN with PIE SIMD (feature `esp-nn`), CMSIS-NN | Library build with the optimized ESP-NN kernels |
+| `riscv32imc-unknown-none-elf` | ESP32-C3 and other RV32 cores | CMSIS-NN, portable C | Library build |
+| `wasm32-unknown-unknown` | Browsers | Portable C and Rust, SIMD128 | Library build |
+| `wasm32-wasip1` | WASI runtimes (wasmtime...) | Portable C and Rust | Whole test suite under wasmtime |
+| Linux, macOS, Windows | Desktop, CI, embedded Linux | Portable C and Rust | Whole test suite (Linux) |
+
+Every library builds without any global allocator, and a CI job checks that no C code references
+`malloc`. The Arm DSP and ESP32-S3 SIMD code paths are built in CI but have not run on hardware
+yet: [issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2) tracks that validation.
+
+## Compared to other options
+
+As of November 2026:
+
+| | Runtime-loaded models | Rust API | Hardware kernels | `no_std`, no heap | Notes |
+| --- | --- | --- | --- | --- | --- |
+| **nanoglia** | ✅ `.tflite` | ✅ | CMSIS-NN, ESP-NN | ✅ | Bit-exact with TensorFlow Lite |
+| [TensorFlow Lite Micro](https://github.com/tensorflow/tflite-micro) | ✅ `.tflite` | ❌ C++ | CMSIS-NN, Ethos-U, ESP-NN (through ESP-IDF) | ✅ (C++) | The reference C++ runtime |
+| [tfmicro](https://crates.io/crates/tfmicro) | ✅ `.tflite` | ✅ bindings | CMSIS-NN (Arm) | ✅ | Rust bindings to a 2020 TensorFlow Lite Micro |
+| [MicroFlow](https://crates.io/crates/microflow) | ❌ compiled in at build time | ✅ | ❌ | ✅ | Pure Rust, model turned into code by a macro |
+| [embedded-nn](https://crates.io/crates/embedded-nn) | ❌ compiled ahead of time | ✅ | ❌ | ✅ | Pure Rust kernels and toolchain |
+| [tract](https://crates.io/crates/tract-tflite) | ✅ ONNX, TFLite... | ✅ | ❌ | ❌ needs `std` | Desktop and server inference |
+
+Pick `nanoglia` when the model must stay a file (updates, several models, user-provided models),
+the firmware must stay a plain Rust binary without a vendor SDK, and memory use must be known
+ahead of time. Pick an ahead-of-time engine when the model never changes and the last few
+kilobytes of flash matter more than hardware acceleration.
+
+## Documentation
+
+The [documentation](documentation/README.md) follows the [Diátaxis](https://diataxis.fr) layout.
+
+| | |
+| --- | --- |
+| **Tutorial** | [Run your first inference](documentation/tutorials/first-inference.md) |
+| **How-to guides** | [Size the memory](documentation/how-to-guides/size-memory.md), [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [run in the browser](documentation/how-to-guides/run-in-the-browser.md) |
+| **Explanation** | [Architecture](documentation/explanation/architecture.md), [bit-exactness with TensorFlow Lite](documentation/explanation/bit-exactness.md) |
+| **Reference** | [Supported operators](documentation/reference/supported-operators.md), [Cargo features](documentation/reference/features.md), [errors](documentation/reference/errors.md), [memory](documentation/reference/memory.md), [performance](documentation/reference/performance.md), [development tasks](documentation/reference/development-tasks.md) |
+
+The API documentation is on [docs.rs](https://docs.rs/nanoglia).
 
 ## Crates
 
 | Crate | Role |
-|---|---|
+| --- | --- |
 | [`nanoglia`](crates/nanoglia) | The library: load a model, create execution contexts, compute |
-| [`nanoglia-core`](crates/nanoglia-core) | Tensor, operator and error types, kernel-backend interface, quantization math, arena allocator |
-| [`nanoglia-tflite`](crates/nanoglia-tflite) | Zero-copy, allocation-free, panic-free TFLite model verifier and reader |
-| [`nanoglia-cmsis-nn-sys`](crates/nanoglia-cmsis-nn-sys) | Vendored CMSIS-NN v8.0.0 (integer kernels) built with `cc`, raw FFI bindings |
-| [`nanoglia-cmsis-nn`](crates/nanoglia-cmsis-nn) | CMSIS-NN kernel backend: int8 convolutions, fully-connected layers, pooling, softmax, add and mul, bit-exact with TFLite |
-| [`nanoglia-esp-nn-sys`](crates/nanoglia-esp-nn-sys) | Vendored ESP-NN v1.4.2 built with `cc`: ANSI C kernels everywhere, ESP32-S3 SIMD kernels on Xtensa |
-| [`nanoglia-esp-nn`](crates/nanoglia-esp-nn) | ESP-NN kernel backend (feature `esp-nn`): int8 convolutions, fully-connected layers, pooling, softmax, add and mul |
-| [`nanoglia-kernels`](crates/nanoglia-kernels) | Pure-Rust kernels bit-exact with TFLite's reference kernels: shape and quantization operators, int8 gaps of CMSIS-NN, float32 operators |
+| [`nanoglia-core`](crates/nanoglia-core) | Tensor, operator and error types, kernel-backend interface, TFLite-exact quantization math, arena allocator |
+| [`nanoglia-tflite`](crates/nanoglia-tflite) | Zero-copy, allocation-free, panic-free TensorFlow Lite model verifier and reader |
+| [`nanoglia-cmsis-nn`](crates/nanoglia-cmsis-nn) / [`-sys`](crates/nanoglia-cmsis-nn-sys) | CMSIS-NN backend: int8 and int16 convolutions, fully-connected layers, pooling, softmax... |
+| [`nanoglia-esp-nn`](crates/nanoglia-esp-nn) / [`-sys`](crates/nanoglia-esp-nn-sys) | ESP-NN backend for the ESP32-S3 (feature `esp-nn`) |
+| [`nanoglia-kernels`](crates/nanoglia-kernels) | Pure Rust kernels: the operators the C libraries lack, and float32 |
 
-## Documentation
+## Frequently asked questions
 
-The [documentation](documentation/README.md) follows [Diátaxis](https://diataxis.fr):
+**How do I run a TensorFlow Lite model on a microcontroller in Rust?** Add `nanoglia`, place the
+`.tflite` bytes on a 16-byte boundary, and call `Graph::load_in` then `compute` as in the
+[quick start](#quick-start). No C++ toolchain, no TensorFlow Lite Micro build, no vendor SDK: Cargo
+compiles the C kernels it needs with your target's C compiler.
 
-| Kind | Pages |
-|---|---|
-| Tutorial | [Your first inference](documentation/tutorials/first-inference.md) |
-| How-to guides | [Size the memory](documentation/how-to-guides/size-memory.md), [Convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [Run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [Run in the browser](documentation/how-to-guides/run-in-the-browser.md) |
-| Explanation | [Architecture](documentation/explanation/architecture.md), [Bit-exactness](documentation/explanation/bit-exactness.md) |
-| Reference | [Supported operators](documentation/reference/supported-operators.md), [Cargo features](documentation/reference/features.md), [Errors](documentation/reference/errors.md), [Memory](documentation/reference/memory.md), [Performance](documentation/reference/performance.md), [Development tasks](documentation/reference/development-tasks.md) |
+**Can I update the model without reflashing the firmware?** Yes: that is what nanoglia is built
+for. The model is data. Write a new `.tflite` file to flash or receive it over the network, and
+load it.
+
+**Which models work?** Fully quantized int8 models (the usual TinyML export), 16x8 models and float32
+models, using the [supported operators](documentation/reference/supported-operators.md): convolutions,
+depthwise convolutions, fully-connected layers, pooling, softmax, element-wise operations,
+activations, reshapes, padding, means, quantization... Loading fails with the index of the first
+unsupported operator otherwise.
+
+**I train in PyTorch. Can I use nanoglia?** Yes: export to `.tflite` with Google's
+[`litert-torch`](https://github.com/google-ai-edge/litert-torch), see
+[convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md). ONNX models can
+be converted with [onnx2tf](https://github.com/PINTO0309/onnx2tf).
+
+**How much RAM and flash does it need?** RAM is exactly what `MemoryRequirements` reports for your
+model: 23.8 KiB for MLPerf Tiny keyword spotting, 94 KiB for visual wake words. The Nano 33 BLE
+example firmware is 181 KB of flash, 54 KB of which is the model.
+
+**Why TensorFlow Lite and not ONNX?** A `.tflite` file can be read in place, without parsing or
+copying, and its int8 arithmetic is defined precisely enough to be reproduced bit for bit; the
+whole microcontroller ecosystem (MLPerf Tiny, Edge Impulse, vendor tools) uses it. See
+[bit-exactness](documentation/explanation/bit-exactness.md).
+
+**Does it run in a web browser?** Yes, as WebAssembly, with SIMD128 for speed: see
+[run in the browser](documentation/how-to-guides/run-in-the-browser.md).
+
+## Contributing
+
+Issues and pull requests are welcome. The repository uses [mise](https://mise.jdx.dev) for its
+toolchain and tasks: `mise install`, then `mise run check` before pushing. [`AGENTS.md`](AGENTS.md)
+describes the invariants (memory contract, bit-exactness, no panics) and the tests, and
+[development tasks](documentation/reference/development-tasks.md) lists every task. Pull request
+titles follow [Conventional Commits](https://www.conventionalcommits.org).
 
 ## License
 
