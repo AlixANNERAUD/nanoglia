@@ -18,6 +18,7 @@ mod pad;
 mod pool;
 mod quantize;
 mod reduce;
+mod resize;
 mod slice;
 mod softmax;
 mod split;
@@ -97,6 +98,12 @@ impl RustKernels {
             BuiltinOp::GATHER => kernels!(gather::GATHER),
             BuiltinOp::SPLIT | BuiltinOp::SPLIT_V => kernels!(split::SPLIT),
             BuiltinOp::ARG_MAX | BuiltinOp::ARG_MIN => kernels!(arg_min_max::ARG_MIN_MAX),
+            BuiltinOp::RESIZE_NEAREST_NEIGHBOR => kernels!(resize::RESIZE_NEAREST_NEIGHBOR),
+            BuiltinOp::RESIZE_BILINEAR => kernels!(
+                #[cfg(feature = "float")]
+                resize::RESIZE_BILINEAR_F32,
+                resize::RESIZE_BILINEAR_Q
+            ),
             BuiltinOp::ADD | BuiltinOp::SUB | BuiltinOp::MUL => {
                 kernels!(elementwise::BINARY, elementwise::QUANTIZED_BINARY)
             }
