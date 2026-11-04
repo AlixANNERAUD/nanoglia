@@ -419,6 +419,43 @@ impl<'m, A: Allocator> Graph<'m, A> {
         self.io_desc(self.subgraph.outputs(), index)
     }
 
+    /// Descriptions of the inputs, in order.
+    ///
+    /// Every tensor of the model was decoded when the graph loaded, from the same bytes, so
+    /// [`Self::input`] cannot fail for an index below [`Self::input_count`]: the iterator yields
+    /// exactly `input_count()` descriptions.
+    ///
+    /// ```
+    /// # #[repr(C, align(16))]
+    /// # struct Aligned<T: ?Sized>(T);
+    /// # static MODEL: &Aligned<[u8]> = &Aligned(*include_bytes!(concat!(
+    /// #     env!("CARGO_MANIFEST_DIR"),
+    /// #     "/doc/classifier.tflite"
+    /// # )));
+    /// # fn main() -> Result<(), nanoglia::Error> {
+    /// use nanoglia::{Arena, DataType, Encoding, Graph, Target};
+    ///
+    /// let mut memory = [0u8; 4 * 1024];
+    /// let arena = Arena::new(&mut memory);
+    /// let graph = Graph::load_in(&[&MODEL.0], Encoding::Autodetect, Target::Auto, &arena)?;
+    /// for input in graph.inputs() {
+    ///     assert_eq!(input.dtype, DataType::I8);
+    ///     assert_eq!(input.dims.as_slice(), &[3, 12]);
+    /// }
+    /// assert_eq!(graph.outputs().map(|output| output.name).collect::<Vec<_>>(), ["output"]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn inputs(&self) -> impl Iterator<Item = TensorDesc<'m>> + '_ {
+        (0..self.input_count()).filter_map(|i| self.input(i).ok())
+    }
+
+    /// Descriptions of the outputs, in order; as [`Self::inputs`], it yields exactly
+    /// [`Self::output_count`] descriptions.
+    pub fn outputs(&self) -> impl Iterator<Item = TensorDesc<'m>> + '_ {
+        (0..self.output_count()).filter_map(|i| self.output(i).ok())
+    }
+
     /// Index of the input named `name`.
     pub fn input_index(&self, name: &str) -> Result<usize> {
         self.find(self.subgraph.inputs(), name)
@@ -623,7 +660,7 @@ impl<'a> GraphTensors<'a> {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MemoryRequirements {
     /// Bytes of the graph block (kernel table, prepared parameters, memory plan).
     pub graph_bytes: usize,

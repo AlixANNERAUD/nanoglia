@@ -60,7 +60,7 @@ pub fn round_f32(x: f32) -> f32 {
 
 /// A real multiplier encoded as a Q31 fixed-point significand and a power-of-two shift
 /// (positive: left shift), as produced by TFLite's `QuantizeMultiplier`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[repr(C)]
 pub struct Multiplier {
     /// Q31 significand.

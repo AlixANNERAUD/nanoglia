@@ -81,7 +81,7 @@ impl BuiltinOp {
 }
 
 /// The code identifying an operator.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum OpCode<'a> {
     /// A builtin operator.
     Builtin(BuiltinOp),
@@ -90,7 +90,7 @@ pub enum OpCode<'a> {
 }
 
 /// Padding scheme of convolutions and pooling.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Padding {
     /// Output has the same spatial size as the input divided by the stride (TFLite `SAME`).
@@ -101,7 +101,7 @@ pub enum Padding {
 }
 
 /// Activation fused into an operator (TFLite `ActivationFunctionType`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Activation {
     /// No activation.
@@ -135,7 +135,7 @@ impl Activation {
 }
 
 /// Options of `CONV_2D`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Conv2DOptions {
     /// Padding scheme.
     pub padding: Padding,
@@ -152,7 +152,7 @@ pub struct Conv2DOptions {
 }
 
 /// Options of `DEPTHWISE_CONV_2D`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct DepthwiseConv2DOptions {
     /// Padding scheme.
     pub padding: Padding,
@@ -171,7 +171,7 @@ pub struct DepthwiseConv2DOptions {
 }
 
 /// Options of `FULLY_CONNECTED`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct FullyConnectedOptions {
     /// Fused activation.
     pub activation: Activation,
@@ -184,7 +184,7 @@ pub struct FullyConnectedOptions {
 }
 
 /// Options of `AVERAGE_POOL_2D` and `MAX_POOL_2D`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Pool2DOptions {
     /// Padding scheme.
     pub padding: Padding,

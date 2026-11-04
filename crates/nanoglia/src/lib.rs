@@ -25,7 +25,7 @@ pub use nanoglia_core::{
 };
 
 /// How the model bytes are encoded, as in wasi-nn's `graph-encoding`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Encoding {
     /// A TensorFlow Lite / LiteRT flatbuffer (`.tflite`).
@@ -35,7 +35,7 @@ pub enum Encoding {
 }
 
 /// Where the graph should run, as in wasi-nn's `execution-target`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
 pub enum Target {
     /// CPU kernels only (with the SIMD/DSP extensions of the chip); delegates are ignored.

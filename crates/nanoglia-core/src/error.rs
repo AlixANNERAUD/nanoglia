@@ -26,7 +26,7 @@ pub enum ErrorCode {
 }
 
 /// The precise reason of an [`Error`], with the indices needed to locate it in the model.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[non_exhaustive]
 pub enum Detail {
@@ -97,7 +97,7 @@ pub enum Detail {
 }
 
 /// The error type of every fallible nanoglia operation. It is `Copy` and never allocates.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Error {
     /// The wasi-nn compatible category.

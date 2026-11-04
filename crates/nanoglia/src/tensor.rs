@@ -66,6 +66,13 @@ impl<'a> TensorRef<'a> {
     }
 }
 
+impl AsRef<[u8]> for TensorRef<'_> {
+    /// Raw little-endian contents, as [`TensorRef::bytes`].
+    fn as_ref(&self) -> &[u8] {
+        self.data
+    }
+}
+
 /// A writable view of an input tensor of an execution context.
 #[derive(Debug)]
 pub struct TensorMut<'a> {
@@ -109,5 +116,19 @@ impl<'a> TensorMut<'a> {
             return Err(type_mismatch(&self.desc));
         }
         cast_slice_mut(self.data)
+    }
+}
+
+impl AsRef<[u8]> for TensorMut<'_> {
+    /// Raw little-endian contents.
+    fn as_ref(&self) -> &[u8] {
+        self.data
+    }
+}
+
+impl AsMut<[u8]> for TensorMut<'_> {
+    /// Raw little-endian contents, as [`TensorMut::bytes_mut`].
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.data
     }
 }
