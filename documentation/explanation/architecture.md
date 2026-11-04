@@ -1,0 +1,133 @@
+# Architecture
+
+nanoglia loads a TensorFlow Lite model at run time, picks a kernel for
+each operator among the libraries available on the chip, plans the
+memory, and runs inferences without allocating. This page explains how
+the pieces fit and why they are built this way.
+
+## Crates
+
+| Crate | Role | Depends on |
+| --- | --- | --- |
+| `nanoglia` | The API your application uses: `Graph`, `ExecutionContext`, `Registry`, `MemoryRequirements`, tensor views. Loads, plans, computes. | all the others |
+| `nanoglia-core` | The shared vocabulary: tensors (`TensorDesc`, `DataType`, `Dims`, `Quantization`), operators (`OpDesc`, `BuiltinOp`, `OpOptions`), errors, the `Backend` / `Kernel` interface, TFLite-exact quantization math (`quant`), `Arena` and `Block`. | `allocator-api2` |
+| `nanoglia-tflite` | Verifies a `.tflite` flatbuffer once, then reads it in place: zero-copy, allocation-free, panic-free, `#![forbid(unsafe_code)]`, its own small flatbuffer reader. | `nanoglia-core` |
+| `nanoglia-cmsis-nn-sys` | CMSIS-NN v8.0.0 (integer kernels) vendored and compiled with `cc`, hand-written FFI bindings. | — (build: `cc`) |
+| `nanoglia-cmsis-nn` | The `cmsis-nn` backend: the operators CMSIS-NN computes exactly like TFLite. | `nanoglia-core`, `nanoglia-cmsis-nn-sys` |
+| `nanoglia-kernels` | The `rust` backend: what CMSIS-NN lacks (shape and quantization operators, broadcasting, activations, int16 softmax and fully-connected) and the f32 operators. | `nanoglia-core`, `libm` |
+
+Everything is `#![no_std]`, with no dependency on a HAL, an RTOS or a
+vendor SDK. The only C code is CMSIS-NN, pure C that needs the C headers
+of the target but links no C library.
+
+## The API, after wasi-nn
+
+The public API follows [wasi-nn](https://github.com/WebAssembly/wasi-nn),
+the WebAssembly interface for machine-learning inference:
+
+| wasi-nn | nanoglia |
+| --- | --- |
+| `load(builders, encoding, target)` | `Graph::load_in(builders, Encoding, Target, alloc)` |
+| `graph-encoding` | `Encoding::{TensorFlowLite, Autodetect}` |
+| `execution-target` | `Target::{Cpu, Npu, Auto}` |
+| `init-execution-context` | `Graph::init_execution_context_in(alloc)` |
+| `set-input`, `compute`, `get-output` | `ExecutionContext::set_input` / `input_mut`, `compute`, `output` |
+| `error-code` | `ErrorCode` |
+
+The same vocabulary lets a wasi-nn host for WebAssembly modules run on
+nanoglia and forward its errors unchanged. What wasi-nn leaves out,
+nanoglia adds as extra parameters: the allocator of each call, and the
+`Registry` of backends.
+
+## Loading a model
+
+`Graph::load_with(registry, builders, encoding, target, alloc)` runs
+these steps (`crates/nanoglia/src/graph.rs`):
+
+1. **Open and verify.** The encoding is checked (`TFL3` identifier), and
+   `nanoglia_tflite::Model::parse` verifies the whole flatbuffer once:
+   offsets, vtables, vectors, strings and indices. After this, every
+   read stays in bounds, so a corrupted or hostile model gives an
+   `Error`, never a panic or an out-of-bounds read. Only one subgraph is
+   supported.
+2. **Select kernels and size the graph.** For each operator, nanoglia
+   builds an `OpDesc` on the stack (its code, options and the
+   descriptions of its tensors, borrowed from the model) and asks the
+   backends of the registry in order; the first `select` that returns a
+   kernel wins. The kernel's `plan` reports how many bytes of persistent
+   parameters and of scratch memory it needs. The sum of the
+   parameters, the tables and the planner's working memory gives the
+   size of the graph block; the largest scratch gives the size of the
+   scratch area.
+3. **Allocate the graph block**: the only allocation of the graph.
+4. **Plan the activations.** nanoglia computes, for each activation
+   tensor, the first and last operator that uses it, checking the
+   dataflow on the way (each tensor produced once, before it is
+   consumed, never a constant). The greedy planner then places the
+   tensors in the context arena, largest first, each at the lowest
+   offset that does not overlap a tensor alive at the same time. This is
+   the strategy of TensorFlow Lite Micro's `GreedyMemoryPlanner`. The
+   planner works in the graph block, so it allocates nothing.
+5. **Locate the tensors.** Constants are recorded as offsets in the
+   model bytes (and checked to be aligned for their type), activations as
+   offsets in the context arena.
+6. **Prepare the kernels.** Each kernel's `prepare` writes its
+   parameters into its region of the graph block: requantization
+   multipliers and shifts, paddings, activation ranges, lookup tables,
+   precomputed sums. After this, kernels never read the model again.
+
+`MemoryRequirements::compute_with` runs steps 1, 2 and 4 with only the
+planner's working memory, and returns the two sizes without loading
+anything ([Size the memory](../how-to-guides/size-memory.md)).
+
+## Running an inference
+
+`ExecutionContext` owns one block: the activations and the scratch area.
+`compute` walks the operator table and, for each operator, builds the
+input and output byte slices from the recorded locations (constants in
+the model, activations in the arena), then calls the kernel's `eval`
+with them, its prepared parameters and the scratch area. `eval` reads
+only these and never allocates. A kernel is three plain function
+pointers (`plan`, `prepare`, `eval`) in a `static`, so the operator
+table holds a reference per operator and no trait object.
+
+## Backends and the registry
+
+A backend implements `nanoglia::core::backend::Backend`: a name, a kind
+(`Cpu` or `Npu`) and `select`, which returns a kernel only if it fully
+supports the operator with its types, shapes and options. A backend
+never claims an operator it would compute differently from TFLite; it
+leaves it to the next one.
+
+`Registry::default()` holds the backends enabled by the Cargo features,
+fastest first: CMSIS-NN, then the Rust kernels. `Registry::new(&[...])`
+builds another list, for example to put your own backend first or to
+test one backend alone, and `Graph::load_with` takes it.
+
+CMSIS-NN computes each operator in one call into C, after its
+parameters were computed at prepare time from TensorFlow Lite Micro's
+code ported to Rust. On Cortex-M4, M7 and M33 it uses the DSP
+extension, on Armv8.1-M Helium, and on every other target its portable
+C code. The Rust backend ports TFLite's reference kernels and their
+preparation code.
+
+## Zero copy
+
+Weights are the largest part of a model (the MLPerf Tiny model files
+weigh 54 KB to 333 KB), often more than the RAM of a microcontroller.
+nanoglia never copies them. The TFLite flatbuffer is designed to be read in place,
+so the model can stay in flash (memory-mapped) or wherever your
+application loaded it, and kernels read constant tensors straight from
+it. Tensor descriptions are views into the model bytes too, read byte by
+byte so that metadata needs no alignment. Only the constant buffers
+that kernels read as typed arrays must be aligned
+([Memory](../reference/memory.md#model-bytes)).
+
+## Accelerators and delegates
+
+`Target::Npu`, `Target::Cpu` and `BackendKind::Npu` are in the API for
+neural accelerators, which would run as backends of kind `Npu` claiming
+whole operators or delegate operators. No such backend exists yet:
+`Target::Npu` currently fails with `ErrorCode::UnsupportedOperation`.
+ESP-NN, Espressif's kernel library for the ESP32-S3 and ESP32-P4, is
+planned as another CPU backend.
