@@ -205,6 +205,21 @@ cbindgen --quiet --config cbindgen.toml --output ../../target/c/nanoglia.h
 diff -u include/nanoglia.h ../../target/c/nanoglia.h || { echo 'include/nanoglia.h is out of date: run `mise run header`' >&2; exit 1; }
 """
 
+[tasks.test-c]
+description = "Check the C header, build the C library with CMake for the host, run the C tests and the example (CTest), then install it and build the example against the installed package"
+# Sequential: concurrent builds in the same target directory race under mbx. CMake runs Cargo in
+# target/c/cargo.
+run = [
+  { task = "check-header" },
+  "cmake -S crates/nanoglia-c -B target/c -DCMAKE_BUILD_TYPE=Release",
+  "cmake --build target/c",
+  "ctest --test-dir target/c --output-on-failure",
+  "cmake --install target/c --prefix target/c/install",
+  "cmake -S crates/nanoglia-c/tests/package -B target/c/package -DCMAKE_PREFIX_PATH={{config_root}}/target/c/install",
+  "cmake --build target/c/package",
+  "ctest --test-dir target/c/package --output-on-failure",
+]
+
 [tasks.check]
 description = "Checks to run before pushing"
 # Sequential: concurrent builds in the same target directory race under mbx.

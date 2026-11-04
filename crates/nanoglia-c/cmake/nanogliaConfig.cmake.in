@@ -1,0 +1,20 @@
+@PACKAGE_INIT@
+
+# The nanoglia::nanoglia target: libnanoglia_c.a, its header and the system libraries it needs.
+if(NOT TARGET nanoglia::nanoglia)
+    set(nanoglia_system_libraries "@NANOGLIA_SYSTEM_LIBRARIES@")
+    if(@NANOGLIA_NEEDS_THREADS@)
+        include(CMakeFindDependencyMacro)
+        find_dependency(Threads)
+        list(APPEND nanoglia_system_libraries Threads::Threads)
+    endif()
+    add_library(nanoglia::nanoglia STATIC IMPORTED)
+    set_target_properties(nanoglia::nanoglia PROPERTIES
+        IMPORTED_LOCATION "@PACKAGE_CMAKE_INSTALL_LIBDIR@/@NANOGLIA_LIBRARY_NAME@"
+        INTERFACE_INCLUDE_DIRECTORIES "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@"
+        INTERFACE_LINK_LIBRARIES "${nanoglia_system_libraries}"
+    )
+    unset(nanoglia_system_libraries)
+endif()
+
+check_required_components(nanoglia)
