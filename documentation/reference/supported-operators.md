@@ -6,7 +6,7 @@ which backend, and under which conditions. The conditions come from the
 (`crates/nanoglia-cmsis-nn/src/*.rs` and
 `crates/nanoglia-kernels/src/*.rs`): an operator that does not meet them
 is not claimed, and loading fails with `Detail::UnsupportedOp`
-([Errors](errors.md#unsupportedop)).
+([Errors](errors.md)).
 
 ## How a kernel is chosen
 
