@@ -671,11 +671,15 @@ pub struct MemoryRequirements {
 impl MemoryRequirements {
     /// Size of an [`Arena`](nanoglia_core::Arena) buffer that holds the graph and `contexts`
     /// execution contexts, whatever the alignment of the buffer.
+    ///
+    /// Saturates at `usize::MAX` (a size no buffer can have) instead of overflowing.
     pub const fn arena_bytes(&self, contexts: usize) -> usize {
-        let graph = self.graph_bytes.next_multiple_of(ALIGN);
-        let context = self.context_bytes.next_multiple_of(ALIGN);
+        let graph = round_up_saturating(self.graph_bytes);
+        let context = round_up_saturating(self.context_bytes);
         // Up to `ALIGN - 1` bytes are lost aligning the first block.
-        ALIGN - 1 + graph + contexts * context
+        (ALIGN - 1)
+            .saturating_add(graph)
+            .saturating_add(contexts.saturating_mul(context))
     }
 
     /// Computes the requirements of a model with the default [`Registry`]. Only the memory
@@ -743,6 +747,14 @@ impl MemoryRequirements {
             target,
             nanoglia_core::allocator_api2::alloc::Global,
         )
+    }
+}
+
+/// `n` rounded up to a multiple of [`ALIGN`], saturating at `usize::MAX`.
+const fn round_up_saturating(n: usize) -> usize {
+    match n.checked_next_multiple_of(ALIGN) {
+        Some(rounded) => rounded,
+        None => usize::MAX,
     }
 }
 

@@ -207,3 +207,18 @@ fn arena_of_the_required_size_is_enough_at_any_alignment() {
         }
     }
 }
+
+#[test]
+fn arena_bytes_saturates_instead_of_overflowing() {
+    let huge = MemoryRequirements {
+        graph_bytes: usize::MAX - 3,
+        context_bytes: usize::MAX / 2,
+    };
+    assert_eq!(huge.arena_bytes(0), usize::MAX);
+    assert_eq!(huge.arena_bytes(3), usize::MAX);
+    let small = MemoryRequirements {
+        graph_bytes: 10,
+        context_bytes: 20,
+    };
+    assert_eq!(small.arena_bytes(2), 15 + 16 + 2 * 32);
+}
