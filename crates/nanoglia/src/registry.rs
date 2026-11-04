@@ -16,6 +16,8 @@ impl core::fmt::Debug for Registry<'_> {
 }
 
 static DEFAULT_BACKENDS: &[&dyn Backend] = &[
+    #[cfg(feature = "esp-nn")]
+    &nanoglia_esp_nn::BACKEND,
     #[cfg(feature = "cmsis-nn")]
     &nanoglia_cmsis_nn::BACKEND,
     #[cfg(feature = "kernels")]
@@ -35,8 +37,8 @@ impl<'r> Registry<'r> {
 }
 
 impl Default for Registry<'static> {
-    /// The backends enabled by the crate features, fastest first: CMSIS-NN (feature
-    /// `cmsis-nn`), then the Rust kernels (feature `kernels`).
+    /// The backends enabled by the crate features, fastest first: ESP-NN (feature `esp-nn`),
+    /// CMSIS-NN (feature `cmsis-nn`), then the Rust kernels (feature `kernels`).
     fn default() -> Self {
         Self::new(DEFAULT_BACKENDS)
     }

@@ -18,6 +18,10 @@ default = ["cmsis-nn", "kernels", "float", "int16"]
 alloc = ["nanoglia-core/alloc"]
 ## CMSIS-NN kernels: Arm DSP/Helium on Cortex-M, portable C elsewhere.
 cmsis-nn = ["dep:nanoglia-cmsis-nn"]
+## ESP-NN kernels, tried first: ESP32-S3 optimized on `xtensa-esp32s3` targets, ANSI C elsewhere
+## (slower than CMSIS-NN's portable C: enable it on other targets for testing only). Falls back to
+## CMSIS-NN when another context is running ESP-NN.
+esp-nn = ["dep:nanoglia-esp-nn"]
 ## Pure Rust kernels for the operators CMSIS-NN lacks, and float32.
 kernels = ["dep:nanoglia-kernels"]
 ## float32 operators (needs `kernels`). Leave it out of int8-only firmware to save flash.
@@ -34,6 +38,7 @@ defmt = ["nanoglia-core/defmt"]
 nanoglia-core = { workspace = true }
 nanoglia-tflite = { workspace = true }
 nanoglia-cmsis-nn = { workspace = true, optional = true, default-features = false }
+nanoglia-esp-nn = { workspace = true, optional = true }
 nanoglia-kernels = { workspace = true, optional = true, default-features = false }
 
 [dev-dependencies]

@@ -7,6 +7,10 @@ mod common;
 use common::{Aligned, repo_root};
 use nanoglia::core::allocator_api2::alloc::Global;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Operators run by the ESP-NN backend (feature `esp-nn`), over all cases.
+static ESP_NN_OPERATORS: AtomicUsize = AtomicUsize::new(0);
 
 struct Case {
     dir: PathBuf,
@@ -80,6 +84,14 @@ fn run(case: &Case) -> Result<(), String> {
     let model = Aligned::read(&repo_root().join(case.json["model"].as_str().unwrap()));
     let graph = Graph::load_in(&[model.bytes()], Encoding::Autodetect, Target::Auto, Global)
         .map_err(|e| format!("load: {e}"))?;
+    let esp_nn = (0..graph.operator_count())
+        .filter(|&i| {
+            graph
+                .kernel_name(i)
+                .is_some_and(|n| n.starts_with("esp-nn/"))
+        })
+        .count();
+    ESP_NN_OPERATORS.fetch_add(esp_nn, Ordering::Relaxed);
     let mut ctx = graph
         .init_execution_context_in(Global)
         .map_err(|e| format!("context: {e}"))?;
@@ -170,4 +182,10 @@ fn golden_cases() {
     );
     assert!(cases.len() > 100, "test data not found");
     assert!(failures.is_empty(), "failing cases: {failures:#?}");
+    // ESP-NN has no single-rounding mode: the backend then claims nothing.
+    if cfg!(feature = "esp-nn") && !cfg!(feature = "single-rounding") {
+        let esp_nn = ESP_NN_OPERATORS.load(Ordering::Relaxed);
+        println!("{esp_nn} operators run by ESP-NN");
+        assert!(esp_nn > 0, "the ESP-NN backend ran no operator");
+    }
 }

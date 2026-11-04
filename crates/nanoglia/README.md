@@ -24,7 +24,7 @@ let scores = ctx.output(0)?.as_slice::<i8>()?;
   `compute` none. They come from the allocator you pass: the global allocator (feature `alloc`),
   your own, or an [`Arena`] over a static buffer. [`MemoryRequirements`] tells, without loading
   the model, how large that buffer must be.
-- **Accelerated:** CMSIS-NN (Cortex-M DSP/Helium, portable C elsewhere), pure Rust kernels for the rest.
+- **Accelerated:** CMSIS-NN (Cortex-M DSP/Helium, portable C elsewhere), ESP-NN (ESP32-S3, feature `esp-nn`), pure Rust kernels for the rest.
 - **Safe on untrusted models:** the flatbuffer is fully verified before use; errors, never panics.
 
 Errors carry a wasi-nn [`ErrorCode`] plus a precise [`Detail`].
