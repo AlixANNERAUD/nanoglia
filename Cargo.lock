@@ -92,6 +92,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nanoglia-c"
+version = "0.1.0"
+dependencies = [
+ "nanoglia",
+]
+
+[[package]]
 name = "nanoglia-cmsis-nn"
 version = "0.1.0"
 dependencies = [

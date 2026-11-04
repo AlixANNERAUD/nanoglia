@@ -188,6 +188,23 @@ description = "Build the documentation as docs.rs does"
 env = { DOCS_RS = "1", RUSTDOCFLAGS = "-D warnings" }
 run = "cargo doc --no-deps --workspace"
 
+[tasks.header]
+description = "Regenerate the C header crates/nanoglia-c/include/nanoglia.h from the C API (cbindgen)"
+# cbindgen publishes Linux binaries only (x86_64 and aarch64).
+tools = { "github:mozilla/cbindgen" = { version = "0.29.4", bin = "cbindgen", platforms = { linux-x64 = { asset_pattern = "cbindgen-ubuntu22.04" }, linux-arm64 = { asset_pattern = "cbindgen-ubuntu22.04-aarch64" } } } }
+dir = "{{config_root}}/crates/nanoglia-c"
+run = "cbindgen --quiet --config cbindgen.toml --output include/nanoglia.h"
+
+[tasks.check-header]
+description = "Check that the committed C header is the one cbindgen generates from the C API"
+tools = { "github:mozilla/cbindgen" = { version = "0.29.4", bin = "cbindgen", platforms = { linux-x64 = { asset_pattern = "cbindgen-ubuntu22.04" }, linux-arm64 = { asset_pattern = "cbindgen-ubuntu22.04-aarch64" } } } }
+dir = "{{config_root}}/crates/nanoglia-c"
+run = """
+mkdir -p ../../target/c
+cbindgen --quiet --config cbindgen.toml --output ../../target/c/nanoglia.h
+diff -u include/nanoglia.h ../../target/c/nanoglia.h || { echo 'include/nanoglia.h is out of date: run `mise run header`' >&2; exit 1; }
+"""
+
 [tasks.check]
 description = "Checks to run before pushing"
 # Sequential: concurrent builds in the same target directory race under mbx.

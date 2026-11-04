@@ -1,0 +1,51 @@
+[package]
+name = "nanoglia-c"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "C API of nanoglia: run TensorFlow Lite models loaded at runtime from C or C++, with every byte in one buffer you provide, as a static library with a header and a CMake project."
+documentation = "https://docs.rs/nanoglia-c"
+readme = "README.md"
+keywords = ["neural-network", "ffi", "embedded", "tinyml", "tflite"]
+categories = ["science", "embedded", "no-std", "no-std::no-alloc", "external-ffi-bindings"]
+
+# Only an rlib: Cargo builds every crate type listed here, also when the crate is a dependency,
+# and a `staticlib` needs a panic handler (or `std`). The C library is built with
+# `cargo rustc --crate-type staticlib`, as the CMake project does; a firmware with other Rust
+# libraries depends on this rlib from its own staticlib crate, with its own panic handler.
+[lib]
+name = "nanoglia_c"
+
+[features]
+default = ["cmsis-nn", "kernels", "float", "int16"]
+## Link the standard library: its panic handler, and panics are caught at the C boundary
+## (`NANOGLIA_STATUS_UNKNOWN`). Needed to build the static library for a target with `std` (the host).
+std = []
+## A panic handler that loops forever, for a static library built for a target without `std`.
+## Leave it out when another crate of the program provides the panic handler.
+panic-handler = []
+## CMSIS-NN kernels: Arm DSP/Helium on Cortex-M, portable C elsewhere.
+cmsis-nn = ["nanoglia/cmsis-nn"]
+## ESP-NN kernels, tried first: ESP32-S3 optimized on `xtensa-esp32s3` targets.
+esp-nn = ["nanoglia/esp-nn"]
+## Pure Rust kernels for the operators CMSIS-NN lacks, and float32.
+kernels = ["nanoglia/kernels"]
+## float32 operators (needs `kernels`).
+float = ["nanoglia/float"]
+## int16 (16x8) operators.
+int16 = ["nanoglia/int16"]
+## Single-rounding requantization (`TFLITE_SINGLE_ROUNDING`).
+single-rounding = ["nanoglia/single-rounding"]
+
+[dependencies]
+nanoglia = { workspace = true }
+
+[package.metadata.docs.rs]
+features = ["std"]
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true

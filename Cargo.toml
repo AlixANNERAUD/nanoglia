@@ -13,6 +13,7 @@ repository = "https://github.com/AlixANNERAUD/nanoglia"
 license = "Apache-2.0"
 
 [workspace.dependencies]
+nanoglia = { version = "0.1.0", path = "crates/nanoglia", default-features = false }
 nanoglia-core = { version = "0.1.0", path = "crates/nanoglia-core", default-features = false }
 nanoglia-tflite = { version = "0.1.0", path = "crates/nanoglia-tflite" }
 nanoglia-cmsis-nn = { version = "0.1.0", path = "crates/nanoglia-cmsis-nn", default-features = false }
