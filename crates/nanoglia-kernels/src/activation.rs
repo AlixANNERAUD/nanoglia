@@ -363,8 +363,10 @@ fn lut_params(op: &OpDesc<'_, '_>) -> Result<LutParams> {
     let output_q = per_tensor(output)?;
     let f: fn(f32) -> f32 = match op.builtin() {
         Some(BuiltinOp::LOGISTIC) => {
-            // TFLite requires the output to cover [0, 1) exactly.
-            if f64::from(output_q.0) != 1.0 / 256.0 {
+            // TFLite requires the output to cover [0, 1) exactly: scale 1/256, zero point -128
+            // for int8 and 0 for uint8.
+            let zero_point = if input.dtype == DataType::I8 { -128 } else { 0 };
+            if f64::from(output_q.0) != 1.0 / 256.0 || output_q.1 != zero_point {
                 return Err(unsupported(op));
             }
             |x| 1.0 / (1.0 + crate::math::expf(-x))
