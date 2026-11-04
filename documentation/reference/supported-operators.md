@@ -61,6 +61,9 @@ int64 bias.
 | `CONV_2D` | int8 | `cmsis-nn/conv2d_s8` | — |
 | | 16x8 | `cmsis-nn/conv2d_s16` | int16 |
 | | f32 | `rust/conv_2d_f32` | float |
+| `TRANSPOSE_CONV` | int8, configurations CMSIS-NN computes exactly | `cmsis-nn/transpose_conv_s8` | — |
+| | int8, otherwise | `rust/transpose_conv_s8` | — |
+| | f32 | `rust/transpose_conv_f32` | float |
 | `DEPTHWISE_CONV_2D` | int8 | `cmsis-nn/depthwise_conv2d_s8` | — |
 | | f32 | `rust/depthwise_conv_2d_f32` | float |
 | `FULLY_CONNECTED` | int8 | `cmsis-nn/fully_connected_s8` | — |
@@ -91,6 +94,10 @@ int64 bias.
 | `STRIDED_SLICE` | any type of 1, 2, 4 or 8 bytes | `rust/strided_slice` | — |
 | `GATHER` | f32, f16, bf16, int8, uint8, int16, int32, int64, bool | `rust/gather` | — |
 | `SPLIT`, `SPLIT_V` | f32, int8, uint8, int16, int32, int64 | `rust/split` | — |
+| `ARG_MAX`, `ARG_MIN` | f32, int8, uint8, int16, int32, bool → int32, int64 | `rust/arg_min_max` | — |
+| `RESIZE_NEAREST_NEIGHBOR` | f32, int8, uint8, int16, int32, bool | `rust/resize_nearest_neighbor` | — |
+| `RESIZE_BILINEAR` | f32 | `rust/resize_bilinear_f32` | float |
+| | int8, uint8, int16 | `rust/resize_bilinear_q` | — |
 | `QUANTIZE` | f32 → int8, uint8, int16 | `rust/quantize` | — |
 | | int8, uint8 → int8, uint8, int16; int16 → int8, int16; int32 → int8, int16 | `rust/requantize` | — |
 | `DEQUANTIZE` | int8, uint8, int16, f16 → f32 | `rust/dequantize` | — |
@@ -159,6 +166,38 @@ them.
   outputs in 32 bits before adding the bias), and a requantization shift
   below 8 for every channel.
 - `rust/conv_2d_f32`: grouped convolutions included.
+
+### TRANSPOSE_CONV
+
+All kernels: inputs `output_shape`, weights, input and an optional bias,
+as in TFLite. `output_shape` is a constant int32 vector of four values
+equal to the output tensor's shape; input `[batches, height, width,
+channels]`, weights `[output channels, height, width, input channels]`,
+bias of one value per output channel, every dimension positive. The input
+must have the size the forward convolution computes from the output
+(`SAME` or `VALID`, strides in `1..=32767`), whose padding must fit an
+int16. The fused activation comes from the options (operator version 4;
+absent before). int16 (16x8) transpose convolutions and hybrid ones (f32
+input, int8 weights) are refused.
+
+- `cmsis-nn/transpose_conv_s8`: weights per tensor or per output channel
+  (axis 0), int32 bias with zero point 0, every dimension in `1..=65535`.
+  The fused activation is applied, as in LiteRT's reference kernel
+  (TensorFlow Lite Micro's CMSIS-NN kernel ignores it). CMSIS-NN v8.0.0
+  convolves the upsampled input with the reversed filter for strides up
+  to 2 and more than 16 input channels: every output size, with the
+  upsampled height and width up to 65535. Otherwise it runs
+  `arm_transpose_conv_s8`, claimed only when `in_h × stride_h - pad_h` is
+  between 0 and the output height, `in_h × stride_h + max(filter_h -
+  stride_h, 0) ≥ pad_h + out_h`, and `pad_w + out_w ≤ (in_w - 1) ×
+  stride_w + max(filter_w, stride_w)`: outside these bounds it writes
+  past the output, leaves output rows unwritten or reads past its buffer
+  (for example a `SAME` 2×2 stride 2 transpose to an odd size, or the
+  largest `VALID` output of a filter larger than the stride).
+- `rust/transpose_conv_s8`: what `cmsis-nn/transpose_conv_s8` refuses
+  (or every int8 transpose convolution without the `cmsis-nn` feature),
+  same weights and bias; one `i32` of scratch per output value.
+- `rust/transpose_conv_f32`: f32 weights and bias.
 
 ### DEPTHWISE_CONV_2D
 
@@ -297,6 +336,40 @@ different declared shape is refused).
   int64 sizes, at most one of them -1 (the rest of the axis), the others
   non-negative and summing to the axis.
 
+### ARG_MAX, ARG_MIN
+
+- `rust/arg_min_max`: a constant int32 or int64 axis tensor of one element
+  (negative values wrap) over a non-empty axis; the output has the input
+  dimensions without the axis and the type of the `output_type` option,
+  int32 or int64 (the schema default, float32, is refused like in
+  TFLite). Ties give the first index; f32 NaN values are skipped (an
+  all-NaN slice gives 0), as in the reference comparison. Quantized
+  inputs are compared as raw integers, as in TFLite. TFLite has no int16
+  version; nanoglia compares int16 values the same way.
+
+### RESIZE_NEAREST_NEIGHBOR, RESIZE_BILINEAR
+
+Input and output of rank 4 and of the same type; the size is a constant
+int32 vector of two values, the output height and width, in
+`0..=1048576` like the input's (so that the fixed-point coordinates fit
+an `i32`). The `align_corners` and `half_pixel_centers` options are
+supported. Like LiteRT and TensorFlow Lite Micro, these operators do not
+look at quantization: values are resized as raw integers, so the input and
+the output share their quantization in converted models. An empty input
+with a non-empty output is refused (TFLite would read before the input).
+
+- `rust/resize_nearest_neighbor`: any combination of the options; copies
+  whole pixels.
+- `rust/resize_bilinear_f32`, `rust/resize_bilinear_q`: a size of at least
+  1, and not both options (TFLite refuses them together). f32 and uint8
+  are interpolated in `float` (uint8 adds 0.5 and truncates), int8 and
+  int16 in 1/1024 fixed point (`ResizeBilinearInteger`), as LiteRT's
+  reference registration runs them. The float path reproduces the fused
+  multiply-adds Clang compiles LiteRT with (on AArch64, where the golden
+  data comes from): without them, uint8 results differ by one on some
+  values. TensorFlow Lite Micro compiled by another compiler may fuse
+  differently.
+
 ### QUANTIZE, DEQUANTIZE
 
 - `rust/quantize`: per-tensor output quantization.
@@ -327,9 +400,14 @@ The golden cases of `testdata/` exercise `CONV_2D`, `DEPTHWISE_CONV_2D`,
 `FULLY_CONNECTED`, `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`,
 `SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `LOGISTIC`,
 `TANH`, `RELU`, `RELU6`, `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`,
-`TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`, `SPLIT` and `SPLIT_V`
-against LiteRT (see `testdata/README.md`); the other kernels have unit
-tests in `crates/nanoglia-kernels/src/tests/`. The golden cases also run
+`TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`, `SPLIT`, `SPLIT_V`,
+`ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR` and
+`TRANSPOSE_CONV` against LiteRT (see `testdata/README.md`); the other kernels have unit
+tests in `crates/nanoglia-kernels/src/tests/` (int16 `ARG_MAX` / `ARG_MIN`
+among them: LiteRT has no int16 version to compare with), and
+`crates/nanoglia-cmsis-nn/tests/kernels/` compares every CMSIS-NN kernel,
+`transpose_conv_s8` over a sweep of strides, filters, paddings and output
+sizes, with ports of the reference kernels. The golden cases also run
 with the `esp-nn` backend first (its ANSI C kernels on the host), and
 `crates/nanoglia-esp-nn/tests/kernels/` checks its kernels against a
 TFLite reference. The Arm DSP and Helium code paths of CMSIS-NN and the

@@ -60,15 +60,15 @@ The reference kernels are the plain C++ implementations TFLite
 specifies its operators with, and they compute the same results as
 TensorFlow Lite Micro.
 
-There are 172 cases:
+There are 222 cases:
 
-- 157 single-operator models written by the generator, in int8, 16x8
+- 207 single-operator models written by the generator, in int8, 16x8
   and float32 versions, with weights and output ranges calibrated as a
   converter would;
 - 3 random inputs for each of the 5 MLPerf Tiny models.
 
 `crates/nanoglia/tests/golden.rs` runs every case end to end and
-requires quantized outputs to match exactly. 169 cases pass; the 3
+requires quantized outputs to match exactly. 219 cases pass; the 3
 `ad01_int8` samples are listed in its `PENDING` table (see below). The
 test fails if a pending case starts to pass, so the list stays current.
 The same tests run compiled to WebAssembly under wasmtime (`mise run
@@ -130,6 +130,16 @@ where noted:
 - **int16 `SOFTMAX`.** Here nanoglia follows LiteRT: its lookup tables are
   computed in `f64`, while TensorFlow Lite Micro computes them in `f32`,
   which changes two entries of one table.
+- **int8 `TRANSPOSE_CONV` activation.** TensorFlow Lite Micro's CMSIS-NN
+  kernel passes `kTfLiteActNone` when it computes the activation range,
+  so it ignores the fused activation of the options (operator version
+  4). nanoglia follows LiteRT and applies it, on both backends.
+- **Floating-point contraction.** LiteRT's wheels are compiled by Clang,
+  which fuses `a * b + c` within an expression into one multiply-add on
+  AArch64, where the golden data is generated. nanoglia reproduces these
+  fusions (`mul_add`) in the float convolutions and in `RESIZE_BILINEAR`,
+  whose uint8 results otherwise differ by one on some values. A TensorFlow
+  Lite Micro build by another compiler may fuse differently.
 
 A backend refuses an operator rather than compute it differently from
 TFLite. For example, CMSIS-NN's int16 softmax is not used (it does not

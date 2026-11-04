@@ -1,6 +1,6 @@
 # nanoglia-cmsis-nn
 
-**Arm CMSIS-NN acceleration for TensorFlow Lite models in Rust:** int8 and int16 convolutions, fully-connected layers, pooling and softmax on Cortex-M (DSP, Helium), bit-exact with TensorFlow Lite Micro, `no_std` and allocation-free. Most applications depend on [`nanoglia`](https://crates.io/crates/nanoglia) instead, which enables this crate through its Cargo features.
+**Arm CMSIS-NN acceleration for TensorFlow Lite models in Rust:** int8 and int16 convolutions, int8 transpose convolutions, fully-connected layers, pooling and softmax on Cortex-M (DSP, Helium), bit-exact with TensorFlow Lite Micro, `no_std` and allocation-free. Most applications depend on [`nanoglia`](https://crates.io/crates/nanoglia) instead, which enables this crate through its Cargo features.
 
 The [CMSIS-NN](https://github.com/ARM-software/CMSIS-NN) kernel backend of [nanoglia](https://github.com/AlixANNERAUD/nanoglia).
 
@@ -13,6 +13,7 @@ On Cortex-M4/M7/M33 CMSIS-NN uses the DSP extension, on Armv8.1-M Helium; on oth
 | `CONV_2D` | int8 in/out, int8 weights (per-tensor or per-channel), int32 bias | rank 4, any stride/dilation/padding, grouped convolutions |
 | `CONV_2D` (16x8) | int16 in/out (zero point 0), int8 weights (per-tensor or per-channel), int64 bias | rank 4, no groups, at most 511 filter values per output channel |
 | `DEPTHWISE_CONV_2D` | int8 in/out, int8 weights (per-tensor or per-channel), int32 bias (no int16 variant) | rank 4, any depth multiplier, stride, dilation, padding |
+| `TRANSPOSE_CONV` | int8 in/out, int8 weights (per-tensor or per-channel), optional int32 bias | rank 4, constant output shape, `SAME`/`VALID`; strides up to 2 with more than 16 input channels take any output size, other configurations only those `arm_transpose_conv_s8` computes within its buffers |
 | `FULLY_CONNECTED` | int8 in/out, int8 weights `[out, in]` (zero point 0, per-tensor or per-channel), int32 bias | input flattened to `[batches, in]`, `keep_num_dims` either way, default weight format |
 | `FULLY_CONNECTED` (16x8) | int16 in/out (zero point 0), int8 weights (per-tensor), int64 bias | same |
 | `AVERAGE_POOL_2D`, `MAX_POOL_2D` | int8 | rank 4, same input/output quantization |
