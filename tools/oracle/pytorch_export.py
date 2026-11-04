@@ -84,22 +84,35 @@ class SmallNet(nn.Module):
         return self.fc(x)  # FULLY_CONNECTED
 
 
-class RecurrentNet(nn.Module):
-    """A sequence classifier: one recurrent layer, then a linear head on its last output."""
+class LstmNet(nn.Module):
+    """A sequence classifier: an LSTM layer, then a linear head on its last output."""
 
-    def __init__(self, rnn: type[nn.Module], features: int = 10, hidden: int = 16,
-                 classes: int = 4):
+    def __init__(self, features: int = 10, hidden: int = 16, classes: int = 4):
         super().__init__()
-        self.rnn = rnn(features, hidden, batch_first=True)
+        self.rnn = nn.LSTM(features, hidden, batch_first=True)
         self.fc = nn.Linear(hidden, classes)
-        self.hidden = hidden
-        self.lstm = rnn is nn.LSTM
 
     def forward(self, x):  # [1, frames, features]
-        # An explicit initial state: litert-torch's GRU annotator reads it (#22).
-        h0 = torch.zeros(1, x.shape[0], self.hidden)
-        out, _ = self.rnn(x, (h0, h0) if self.lstm else h0)  # [1, frames, hidden]
+        out, _ = self.rnn(x)  # [1, frames, hidden]
         return self.fc(out[:, -1])  # [1, classes]
+
+
+class StreamingGruNet(nn.Module):
+    """A streaming sequence classifier: the GRU state is an input and an output.
+
+    The caller feeds the returned state back with the next frames, so the model
+    keeps its state without variable tensors. litert-torch's GRU annotator also
+    needs the state as an input and both outputs of the GRU used.
+    """
+
+    def __init__(self, features: int = 10, hidden: int = 16, classes: int = 4):
+        super().__init__()
+        self.rnn = nn.GRU(features, hidden, batch_first=True)
+        self.fc = nn.Linear(hidden, classes)
+
+    def forward(self, x, state):  # [1, frames, features], [1, 1, hidden]
+        out, state = self.rnn(x, state)  # [1, frames, hidden], [1, 1, hidden]
+        return self.fc(out[:, -1]), state
 
 
 def build_smallnet() -> nn.Module:
@@ -114,19 +127,20 @@ def build_smallnet() -> nn.Module:
     return model
 
 
-# Name -> (builder, input shape).
+# Name -> (builder, input shapes).
 MODELS = {
-    "smallnet": (build_smallnet, (1, 3, 16, 16)),
-    "gru": (lambda: RecurrentNet(nn.GRU), (1, 8, 10)),
-    "lstm": (lambda: RecurrentNet(nn.LSTM), (1, 8, 10)),
+    "smallnet": (build_smallnet, [(1, 3, 16, 16)]),
+    "gru": (StreamingGruNet, [(1, 8, 10), (1, 1, 16)]),
+    "lstm": (LstmNet, [(1, 8, 10)]),
 }
 
 
 def export(name: str, out_dir: Path) -> Path:
-    build, input_shape = MODELS[name]
+    build, input_shapes = MODELS[name]
     torch.manual_seed(0)
     model = build().eval()
-    sample_args = (torch.randn(input_shape, generator=torch.Generator().manual_seed(1)),)
+    sample = torch.Generator().manual_seed(1)
+    sample_args = tuple(torch.randn(shape, generator=sample) for shape in input_shapes)
 
     # Static int8 quantization (`is_dynamic=False`, the default) with per-channel weights.
     quantizer = PT2EQuantizer().set_global(
@@ -137,7 +151,7 @@ def export(name: str, out_dir: Path) -> Path:
     calibration = torch.Generator().manual_seed(2)
     with torch.no_grad():
         for _ in range(CALIBRATION_SAMPLES):
-            prepared(torch.randn(input_shape, generator=calibration))
+            prepared(*(torch.randn(shape, generator=calibration) for shape in input_shapes))
     quantized = convert_pt2e(prepared, fold_quantize=False)
 
     edge_model = litert_torch.convert(
