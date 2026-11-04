@@ -16,6 +16,8 @@ workspace:
 | `crates/nanoglia-tflite` | Zero-copy, allocation-free, panic-free `.tflite` verifier and reader (own flatbuffer code, `#![forbid(unsafe_code)]`). |
 | `crates/nanoglia-cmsis-nn-sys` | Vendored CMSIS-NN v8.0.0 integer kernels (`cmsis-nn/`, do not edit; see `VENDORED.md`), built with `cc`, hand-written FFI. |
 | `crates/nanoglia-cmsis-nn` | CMSIS-NN backend: int8/int16 conv, depthwise, FC, pooling, softmax, add, mul, pad, min/max. |
+| `crates/nanoglia-esp-nn-sys` | Vendored ESP-NN v1.4.2 (`esp-nn/`, do not edit; see `VENDORED.md`): ANSI C kernels everywhere, ESP32-S3 optimized ones on `xtensa-esp32s3`; hand-written FFI and the ESP-NN scratch try-lock. |
+| `crates/nanoglia-esp-nn` | ESP-NN backend (facade feature `esp-nn`, tried first): int8 conv, depthwise, FC, pooling, softmax, add, mul; runs the CMSIS-NN kernel when another context holds the ESP-NN lock. |
 | `crates/nanoglia-kernels` | Pure-Rust backend: what CMSIS-NN lacks (reshape, quantize, mean, LUT activations, broadcasting binary ops, int16 softmax/FC...) and float32. |
 
 Other directories: `fuzz/` (cargo-fuzz target `parse`, own workspace), `examples/nano33ble/`
@@ -25,8 +27,8 @@ cases, see `testdata/README.md`).
 
 ## Invariants
 
-- `#![no_std]` everywhere; no HAL, RTOS or SDK dependency. The only C code is CMSIS-NN (and
-  ESP-NN later), pure C compiled with `cc`.
+- `#![no_std]` everywhere; no HAL, RTOS or SDK dependency. The only C code is CMSIS-NN and
+  ESP-NN (built without `ESP_PLATFORM`), pure C/assembly compiled with `cc`.
 - **Every byte of dynamic memory comes from the allocator the caller passes**
   (`allocator_api2::alloc::Allocator`: `Global`, a custom one, or `Arena`). A graph makes one
   allocation, an execution context one, `compute` none. No C `malloc` (`mise run no-malloc`).
@@ -53,8 +55,9 @@ do not run several builds in the same target directory at once.
   int8 and 16x8 FULLY_CONNECTED requantize in floating point, unlike TFLite Micro (issue #1).
 - `mise run test-wasip1` runs the whole suite compiled to wasm32-wasip1 under wasmtime;
   `cross-arm`, `cross-riscv32`, `cross-wasm32` build the libraries without a global allocator.
-- Host tests run CMSIS-NN's portable C code only; the Arm DSP/Helium paths have not run on
-  hardware yet (issue #2). Say what you actually checked.
+- Host tests run CMSIS-NN's portable C code and ESP-NN's ANSI C code only; the Arm DSP/Helium
+  paths and ESP-NN's ESP32-S3 kernels have not run on hardware yet (issue #2). `mise run
+  cross-esp32s3` builds them (toolchain: `mise run install-esp`). Say what you actually checked.
 
 ## CI and releases
 
