@@ -13,7 +13,7 @@
 nanoglia reads TensorFlow Lite (`.tflite`) models straight from flash or RAM, without copying their weights, and runs them with:
 
 - [CMSIS-NN](https://github.com/ARM-software/CMSIS-NN) on Arm Cortex-M (DSP and Helium extensions), and as a portable C fallback everywhere else;
-- [ESP-NN](https://github.com/espressif/esp-nn) on ESP32-S3 and ESP32-P4 (planned);
+- [ESP-NN](https://github.com/espressif/esp-nn) on ESP32-S3 (feature `esp-nn`; ESP32-P4 planned);
 - pure Rust kernels for the operators these libraries lack.
 
 It needs no RTOS, no HAL and no vendor SDK. Every byte it uses comes from the allocator you give it: the Rust global allocator, your own allocator, or a static buffer.
@@ -29,8 +29,10 @@ It needs no RTOS, no HAL and no vendor SDK. Every byte it uses comes from the al
 | [`nanoglia-tflite`](crates/nanoglia-tflite) | Zero-copy, allocation-free, panic-free TFLite model verifier and reader |
 | [`nanoglia-cmsis-nn-sys`](crates/nanoglia-cmsis-nn-sys) | Vendored CMSIS-NN v8.0.0 (integer kernels) built with `cc`, raw FFI bindings |
 | [`nanoglia-cmsis-nn`](crates/nanoglia-cmsis-nn) | CMSIS-NN kernel backend: int8 convolutions, fully-connected layers, pooling, softmax, add and mul, bit-exact with TFLite |
+| [`nanoglia-esp-nn-sys`](crates/nanoglia-esp-nn-sys) | Vendored ESP-NN v1.4.2 built with `cc`: ANSI C kernels everywhere, ESP32-S3 SIMD kernels on Xtensa |
+| [`nanoglia-esp-nn`](crates/nanoglia-esp-nn) | ESP-NN kernel backend (feature `esp-nn`): int8 convolutions, fully-connected layers, pooling, softmax, add and mul |
 | [`nanoglia-kernels`](crates/nanoglia-kernels) | Pure-Rust kernels bit-exact with TFLite's reference kernels: shape and quantization operators, int8 gaps of CMSIS-NN, float32 operators |
 
 ## License
 
-Apache-2.0, see [`LICENSE`](LICENSE). The vendored CMSIS-NN sources are Apache-2.0 as well.
+Apache-2.0, see [`LICENSE`](LICENSE). The vendored CMSIS-NN and ESP-NN sources are Apache-2.0 as well.
