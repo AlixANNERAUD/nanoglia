@@ -204,9 +204,9 @@ jobs:
       - uses: jdx/mr-boxington-action@v1
         with:
           cache-key-suffix: pytorch-export
-      # Converts the model of tools/oracle/pytorch_export.py with the CPU torch of the `torch`
+      # Converts the models of tools/oracle/pytorch_export.py with the CPU torch of the `torch`
       # dependency group, writes golden outputs with LiteRT's reference kernels, then runs them
-      # with nanoglia. The model is not committed: it may change with torch and litert-torch.
+      # with nanoglia. The models are not committed: they may change with torch and litert-torch.
       - run: mise run pytorch-export
       - uses: actions/upload-artifact@v4
         if: always()

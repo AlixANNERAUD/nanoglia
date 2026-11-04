@@ -61,8 +61,8 @@ dir = "{{config_root}}/tools/oracle"
 run = "uv run python -I generate.py"
 
 [tasks.pytorch-export]
-description = "Export a small PyTorch model to a fully int8 LiteRT model with litert-torch, compute its golden outputs with LiteRT's reference kernels and run them with nanoglia (x86_64 Linux or macOS arm64 only: litert-torch has no other wheels)"
-# The model and its cases land in target/pytorch-export, which is not committed.
+description = "Export small PyTorch models (a CNN, an LSTM and a GRU) to int8 LiteRT models with litert-torch, compute their golden outputs with LiteRT's reference kernels and run them with nanoglia (x86_64 Linux or macOS arm64 only: litert-torch has no other wheels)"
+# The models and their cases land in target/pytorch-export/<model>, which is not committed.
 env.RUSTFLAGS = "-D warnings"
 run = [
   "cd tools/oracle && uv run --group torch python -I pytorch_export.py {{config_root}}/target/pytorch-export",

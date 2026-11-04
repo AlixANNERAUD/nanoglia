@@ -1,20 +1,33 @@
-"""Export a small PyTorch model to a fully int8 LiteRT model and write a golden case.
+"""Export small PyTorch models to fully int8 LiteRT models and write golden cases.
 
-The model is a realistic small image classifier: conv / batch norm / ReLU
-blocks, a channel shuffle (`torch.split` and `torch.cat`), max pooling, a
-`permute` and a slice, a flatten and a linear head. It is quantized with
-PyTorch's PT2E flow and litert-torch's quantizer (static int8: per-tensor
-asymmetric activations calibrated on a fixed random set, per-channel
-symmetric weights), converted with `litert_torch.convert`, then run with the
-LiteRT reference kernels (`BUILTIN_REF`) on fixed inputs. The output
-directory receives:
+The models are realistic small networks:
+
+- `smallnet`, an image classifier: conv / batch norm / ReLU blocks, a channel
+  shuffle (`torch.split` and `torch.cat`), max pooling, a `permute` and a
+  slice, a flatten and a linear head;
+- `lstm`, a sequence classifier (8 frames of 10 features, the shape of
+  keyword spotting or IMU gestures): an `nn.LSTM` layer whose last output
+  feeds a linear head;
+- `gru`, the same with an `nn.GRU` layer, in streaming form: its state is a
+  model input and a model output.
+
+litert-torch unrolls recurrent layers over the frames into `FULLY_CONNECTED`,
+`SLICE`, `LOGISTIC`, `TANH`, `MUL`, `ADD` and `SUB` operators, and its
+quantizer quantizes only their inputs and outputs: the cells compute in
+float32, and the reports below list them.
+
+Each is quantized with PyTorch's PT2E flow and litert-torch's quantizer
+(static int8: per-tensor asymmetric activations calibrated on a fixed random
+set, per-channel symmetric weights), converted with `litert_torch.convert`,
+then run with the LiteRT reference kernels (`BUILTIN_REF`) on fixed inputs.
+Each model gets a directory `<name>/` in the output directory, with:
 
 - `model.tflite`, the converted model;
 - `sample_<k>/`, golden cases in the format of `testdata/` (see its README), which
   `crates/nanoglia/tests/golden.rs` runs when `NANOGLIA_GOLDEN_DIR` points at
   the output directory.
 
-It also prints the operators of the model with their tensor types, so a
+It also prints the operators of each model with their tensor types, so a
 failure to load in nanoglia can be traced to an operator.
 
 litert-torch depends on litert-converter, which ships x86_64 Linux and macOS
@@ -50,7 +63,6 @@ from torchao.quantization.pt2e.quantize_pt2e import convert_pt2e, prepare_pt2e
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from generate import REPO, make_interpreter, write_case  # noqa: E402
 
-INPUT_SHAPE = (1, 3, 16, 16)
 CALIBRATION_SAMPLES = 64
 GOLDEN_SAMPLES = 3
 
@@ -79,8 +91,39 @@ class SmallNet(nn.Module):
         return self.fc(x)  # FULLY_CONNECTED
 
 
-def build_model() -> nn.Module:
-    torch.manual_seed(0)
+class LstmNet(nn.Module):
+    """A sequence classifier: an LSTM layer, then a linear head on its last output."""
+
+    def __init__(self, features: int = 10, hidden: int = 16, classes: int = 4):
+        super().__init__()
+        self.rnn = nn.LSTM(features, hidden, batch_first=True)
+        self.fc = nn.Linear(hidden, classes)
+
+    def forward(self, x):  # [1, frames, features]
+        out, _ = self.rnn(x)  # [1, frames, hidden]
+        return self.fc(out[:, -1])  # [1, classes]
+
+
+class StreamingGruNet(nn.Module):
+    """A streaming sequence classifier: the GRU state is an input and an output.
+
+    The caller feeds the returned state back with the next frames, so the model
+    keeps its state without variable tensors. Workaround: litert-torch's GRU
+    annotator also needs the state as an input and both outputs of the GRU
+    used, or the quantizer fails (issue #32).
+    """
+
+    def __init__(self, features: int = 10, hidden: int = 16, classes: int = 4):
+        super().__init__()
+        self.rnn = nn.GRU(features, hidden, batch_first=True)
+        self.fc = nn.Linear(hidden, classes)
+
+    def forward(self, x, state):  # [1, frames, features], [1, 1, hidden]
+        out, state = self.rnn(x, state)  # [1, frames, hidden], [1, 1, hidden]
+        return self.fc(out[:, -1]), state
+
+
+def build_smallnet() -> nn.Module:
     model = SmallNet()
     # Batch norm statistics as a trained model would have them.
     with torch.no_grad():
@@ -89,12 +132,23 @@ def build_model() -> nn.Module:
             bn.running_var.uniform_(0.5, 2.0)
             bn.weight.uniform_(0.5, 1.5)
             bn.bias.uniform_(-0.2, 0.2)
-    return model.eval()
+    return model
 
 
-def export(out_dir: Path) -> Path:
-    model = build_model()
-    sample_args = (torch.randn(INPUT_SHAPE, generator=torch.Generator().manual_seed(1)),)
+# Name -> (builder, input shapes).
+MODELS = {
+    "smallnet": (build_smallnet, [(1, 3, 16, 16)]),
+    "gru": (StreamingGruNet, [(1, 8, 10), (1, 1, 16)]),
+    "lstm": (LstmNet, [(1, 8, 10)]),
+}
+
+
+def export(name: str, out_dir: Path) -> Path:
+    build, input_shapes = MODELS[name]
+    torch.manual_seed(0)
+    model = build().eval()
+    sample = torch.Generator().manual_seed(1)
+    sample_args = tuple(torch.randn(shape, generator=sample) for shape in input_shapes)
 
     # Static int8 quantization (`is_dynamic=False`, the default) with per-channel weights.
     quantizer = PT2EQuantizer().set_global(
@@ -105,7 +159,7 @@ def export(out_dir: Path) -> Path:
     calibration = torch.Generator().manual_seed(2)
     with torch.no_grad():
         for _ in range(CALIBRATION_SAMPLES):
-            prepared(torch.randn(INPUT_SHAPE, generator=calibration))
+            prepared(*(torch.randn(shape, generator=calibration) for shape in input_shapes))
     quantized = convert_pt2e(prepared, fold_quantize=False)
 
     edge_model = litert_torch.convert(
@@ -144,17 +198,9 @@ def report(model_path: Path) -> None:
         print("fully int8 (float only at the QUANTIZE input and DEQUANTIZE output)")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("out_dir", nargs="?", type=Path,
-                        default=REPO / "target" / "pytorch-export",
-                        help="output directory (default: target/pytorch-export)")
-    out_dir = parser.parse_args().out_dir.resolve()
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
+def write_model(name: str, out_dir: Path) -> None:
     out_dir.mkdir(parents=True)
-
-    model_path = export(out_dir)
+    model_path = export(name, out_dir)
     report(model_path)
 
     details = make_interpreter(model_path=model_path).get_input_details()
@@ -171,6 +217,22 @@ def main() -> None:
         # Bit-exact, float outputs included: they dequantize the int8 result.
         write_case(out_dir / f"sample_{sample}", model_path, inputs, 0)
     print(f"{GOLDEN_SAMPLES} golden cases in {out_dir}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("out_dir", nargs="?", type=Path,
+                        default=REPO / "target" / "pytorch-export",
+                        help="output directory (default: target/pytorch-export)")
+    parser.add_argument("--model", action="append", choices=list(MODELS),
+                        help="model to export, repeatable (default: all)")
+    args = parser.parse_args()
+    out_dir = args.out_dir.resolve()
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    for name in args.model or MODELS:
+        print(f"== {name}")
+        write_model(name, out_dir / name)
 
 
 if __name__ == "__main__":

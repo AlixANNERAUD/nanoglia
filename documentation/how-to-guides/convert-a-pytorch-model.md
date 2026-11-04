@@ -100,9 +100,9 @@ Calibrate with real data: the observed ranges set the scales of every
 activation, and random inputs give ranges that real inputs do not have.
 
 `tools/oracle/pytorch_export.py` in the repository is a complete,
-runnable version of this step for a small classifier, which nanoglia's
-CI converts on x86_64 Linux and runs against LiteRT (`mise run
-pytorch-export`).
+runnable version of this step for a small image classifier, an LSTM and
+a GRU, which nanoglia's CI converts on x86_64 Linux and runs against
+LiteRT (`mise run pytorch-export`).
 
 Besides the layers, a PyTorch export contains data-movement operators:
 `TRANSPOSE` (`permute`, and where the converter moves between PyTorch's
@@ -115,6 +115,32 @@ bounds and split sizes; `GATHER` indices may be computed by the model.
 onnx2tf produces the same operators. See
 [Supported operators](../reference/supported-operators.md#transpose-slice-strided_slice-gather-split-split_v)
 for the exact conditions.
+
+### Recurrent layers
+
+litert-torch converts `nn.LSTM` and `nn.GRU` by unrolling them over the
+time steps: each step becomes a `FULLY_CONNECTED`, a few `SLICE`s,
+`LOGISTIC`, `TANH`, `MUL` and `ADD` (and `SUB` for a GRU). Its quantizer
+quantizes only the inputs and outputs of the layer, so the cells compute
+in float32, with float32 weights. nanoglia runs these models with the
+`float` feature, and its CI checks them against LiteRT bit for bit. The
+cells do not use CMSIS-NN, and the number of operators grows with the
+number of time steps: the LSTM of the example has 137 operators for 8
+steps.
+
+- The number of time steps is fixed at export: the sequence length is
+  part of the graph.
+- To process a stream, make the state a model input and output
+  (`forward(self, x, state)` returning `(y, state)`), and copy the
+  output state into the input before the next call. The `gru` model of
+  the example does this.
+- litert-torch 0.10.0's quantizer fails on an `nn.GRU` called without an
+  initial state, or whose final state is unused (issue #32). The
+  streaming form avoids both.
+
+TensorFlow's converter turns Keras recurrent layers into
+`UNIDIRECTIONAL_SEQUENCE_LSTM` or `SVDF` operators with variable tensors
+instead. nanoglia does not support those yet (issue #22).
 
 ## 3. Check that nanoglia runs it
 
