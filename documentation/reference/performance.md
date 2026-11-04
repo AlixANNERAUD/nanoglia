@@ -205,18 +205,20 @@ autoencoder).
   (MicroFlow's requantization, ember-rs's softmax and ADD): differences
   of 5 to 25, the top-1 class unchanged on these samples. Both match
   LiteRT exactly on the autoencoder.
-- **embedded-nn's outputs are wrong** on the three classifiers: its code
+- **embedded-nn's outputs differ** on the three classifiers: its code
   generator emits SOFTMAX with fixed parameters (multiplier 1073741824,
   shift 20, `diff_min` -256, `crates/embedded-nn-codegen/src/emit_rust.rs`
   at `69ea418`) instead of deriving them from the input scale, so the
   scores are far too flat (sample 0 of keyword spotting: -74 for the
   top class where the reference gives 126). The top class still
   matched on these samples.
-- **tract's outputs are wrong** on all three models it loads (the wrong
+- **tract's outputs differ** on all three models it loads (another
   class on every keyword-spotting sample, every value different on the
   autoencoder); the quantization it reports for the keyword-spotting output
-  (zero point 14, scale 0.1447) is not the model's (-128, 1/256).
-  `BENCH_DEBUG=1` prints the outputs, and tract's input and output facts.
+  (zero point 14, scale 0.1447) is not the model's (-128, 1/256). The cause
+  is not established: it may lie in how our harness drives tract rather than
+  in tract itself. `BENCH_DEBUG=1` prints the outputs, and tract's input and
+  output facts; corrections are welcome in an issue.
 
 ### Host time per inference
 
@@ -227,9 +229,9 @@ with the largest difference (Δ); read the section above first.
 | Engine | `kws_ref_model` | `vww_96_int8` | `pretrainedResnet_quant` | `ad01_int8` |
 | --- | ---: | ---: | ---: | ---: |
 | nanoglia | **249.2 µs** (249–250) | **869.9 µs** (869–870) | **779.9 µs** (778–781) | **18.2 µs** (18–18), Δ2 |
-| tract | 1391.5 µs (1389–1392), wrong outputs | 4367.1 µs (4367–4380), wrong outputs | — | 40.2 µs (40–40), wrong outputs |
+| tract | 1391.5 µs (1389–1392), outputs differ | 4367.1 µs (4367–4380), outputs differ | — | 40.2 µs (40–40), outputs differ |
 | MicroFlow | 2355.0 µs (2352–2361), Δ6 | 7057.4 µs (7054–7058), Δ5 | — | 357.1 µs (357–357) |
-| embedded-nn | 1962.2 µs (1960–1965), wrong outputs | 3953.1 µs (3952–3955), wrong outputs | 8223.1 µs (8212–8231), wrong outputs | 69.3 µs (69–70), Δ2 |
+| embedded-nn | 1962.2 µs (1960–1965), outputs differ | 3953.1 µs (3952–3955), outputs differ | 8223.1 µs (8212–8231), outputs differ | 69.3 µs (69–70), Δ2 |
 | ember-rs | 4748.5 µs (4744–4752), Δ6 | 14473.8 µs (14459–14494) | 16021.6 µs (15993–16095), Δ25 | 320.5 µs (320–321) |
 
 On this host, nanoglia is the fastest on all four models: 9.5 and 19
@@ -251,7 +253,7 @@ computed by the firmware under the emulator.
 | nanoglia, int8 only | 164644 | 0 | 23892 | 23892 | 5136 | 29028 | **0** |
 | nanoglia, default features | 191096 | 0 | 23892 | 23892 | 5136 | 29028 | 0 |
 | MicroFlow | 45296 | 0 | 16 | 16 | 90676 | 90692 | 0 |
-| embedded-nn | **36532** | 0 | 16512 | 16512 | 960 | **17472** | 200 (wrong) |
+| embedded-nn | **36532** | 0 | 16512 | 16512 | 960 | **17472** | 200 (differs) |
 | ember-rs | 42592 | 0 | 304 | 304 | 80752 | 81056 | 0 |
 
 - **Flash: nanoglia is 3.6 to 4.5 times larger.** Without the 53936
@@ -269,7 +271,7 @@ computed by the firmware under the emulator.
   generated code: 88.6 and 79.2 KiB, known only by measuring.
   embedded-nn needs the least, 17.1 KiB (its 16.1 KiB arena holds the
   activations only, where nanoglia's also holds the graph and its
-  prepared parameters), but its scores are wrong.
+  prepared parameters), but its scores differ from the reference.
 - Under the emulator, the nanoglia firmware, with CMSIS-NN's DSP
   kernels, gives the reference output of sample 0 byte for byte. This
   is an instruction-set emulator, not the chip: issue #2 stays open.

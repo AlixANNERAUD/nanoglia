@@ -146,13 +146,15 @@ every engine ([method, versions and all four models](documentation/reference/per
 | | Outputs vs TensorFlow Lite (3 classifier models) | Host time | Cortex-M4 firmware: flash | Firmware: RAM |
 | --- | --- | ---: | ---: | ---: |
 | **nanoglia** | Identical on all three | 249 µs | 160.8 KiB | 28.3 KiB |
-| tract (`tract-tflite` 0.23.9) | Wrong; ResNet does not load | 1392 µs | — (needs `std`) | — |
+| tract (`tract-tflite` 0.23.9) | Differ (its output quantization is not the model's in our harness); ResNet does not load | 1392 µs | — (needs `std`) | — |
 | MicroFlow 0.1.3 | Off by up to 6; ResNet not supported (ADD) | 2355 µs | 44.2 KiB | 88.6 KiB |
-| embedded-nn 0.2.3 | Wrong scores (SOFTMAX parameters) | 1962 µs | 35.7 KiB | 17.1 KiB |
+| embedded-nn 0.2.3 | Scores differ by up to 204 (its code generator fixes the SOFTMAX parameters) | 1962 µs | 35.7 KiB | 17.1 KiB |
 | ember-rs 0.1.2 | Off by up to 25 | 4749 µs | 41.6 KiB | 79.2 KiB |
 
 Host times come from a Linux aarch64 virtual machine, not from a microcontroller; the firmware
 (flash includes the model, RAM is static data plus peak stack) ran under a Cortex-M4 emulator.
+The other engines were run through our own harness, as documented by their authors: `mise run
+bench-compare` reproduces everything, and corrections are welcome in an issue.
 
 Pick `nanoglia` when the model must stay a file (updates, several models, user-provided models),
 the firmware must stay a plain Rust binary without a vendor SDK, outputs must match TensorFlow
