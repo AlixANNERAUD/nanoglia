@@ -161,8 +161,11 @@ fn requantize_eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
     let input = in_slice::<u8>(ctx.inputs, 0, len * type_size(p.input_type))?;
     let out = out_slice::<u8>(ctx.outputs, 0, len * type_size(p.output_type))?;
     for i in 0..len {
-        let x = read_int(p.input_type, input, i) - p.input_zero_point;
-        let y = (multiply_by_quantized_multiplier(x, p.multiplier) + p.output_zero_point)
+        // Wrapping, like the two's-complement int32 arithmetic of TFLite: an int32 input at the
+        // end of its range must not panic.
+        let x = read_int(p.input_type, input, i).wrapping_sub(p.input_zero_point);
+        let y = multiply_by_quantized_multiplier(x, p.multiplier)
+            .wrapping_add(p.output_zero_point)
             .clamp(p.min, p.max);
         match type_size(p.output_type) {
             1 => out[i] = y as u8,
