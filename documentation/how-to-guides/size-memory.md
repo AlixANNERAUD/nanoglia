@@ -56,7 +56,7 @@ cargo test --release memory_fits -- --nocapture
 ```
 
 ```text
-MemoryRequirements { graph_bytes: 7616, context_bytes: 16160 }, arena_bytes(1) = 23791
+MemoryRequirements { graph_bytes: 7712, context_bytes: 16160 }, arena_bytes(1) = 23887
 ```
 
 (These are the numbers of the MLPerf Tiny keyword spotting model on a
@@ -90,7 +90,7 @@ and the context's `context_bytes + 15`.
 The host numbers differ from the device's in two ways:
 
 - The graph block holds pointers: a 32-bit microcontroller needs a little
-  less than a 64-bit computer (7552 bytes instead of 7616 for keyword
+  less than a 64-bit computer (7616 bytes instead of 7712 for keyword
   spotting), so the host number is a safe upper bound for this part.
 - On the host, CMSIS-NN compiles its portable C code. On Arm targets
   with the DSP or Helium extension it may ask for a different scratch

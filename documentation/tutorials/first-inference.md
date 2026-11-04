@@ -170,7 +170,7 @@ The first build compiles CMSIS-NN, which takes a little while. Then the
 program prints:
 
 ```text
-13 operators, graph 7616 B, context 16160 B
+13 operators, graph 7712 B, context 16160 B
   operator 0: cmsis-nn/conv2d_s8
   operator 1: cmsis-nn/depthwise_conv2d_s8
   operator 2: cmsis-nn/conv2d_s8
@@ -204,7 +204,7 @@ pooling, fully-connected layer and softmax run on CMSIS-NN, and the
 reshape, which CMSIS-NN does not have, on nanoglia's own Rust kernels.
 With features that do not look like speech, the model answers "unknown".
 The two sizes on the first line are all the memory nanoglia allocated:
-7616 bytes for the graph and 16160 for the execution context. The
+7712 bytes for the graph and 16160 for the execution context. The
 graph sizes are those of a 64-bit computer; a 32-bit microcontroller
 needs slightly less.
 
@@ -255,10 +255,10 @@ cargo run --release
 The scores are the same, and a new line appears:
 
 ```text
-arena: 23783 of 32768 bytes used
+arena: 23879 of 32768 bytes used
 ```
 
-The graph and the context took 23776 bytes from the buffer, plus a few
+The graph and the context took 23872 bytes from the buffer, plus a few
 bytes to start on a 16-byte boundary (up to 15, depending on where the
 linker placed `MEMORY`). nanoglia allocated nothing else. If the buffer is too
 small, `load_in` or `init_execution_context_in` returns an error whose

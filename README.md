@@ -29,7 +29,7 @@ let scores = ctx.output(0)?.as_slice::<i8>()?;
 | --- | --- |
 | Models | TensorFlow Lite / LiteRT `.tflite`, **loaded at run time**: update a model over the air without reflashing the firmware |
 | Accuracy | **Bit-exact with TensorFlow Lite**: 123 of 126 golden cases identical byte for byte, including the [MLPerf Tiny](https://github.com/mlcommons/tiny) keyword-spotting, visual-wake-words and image-classification models ([why the other 3 differ](documentation/explanation/bit-exactness.md)) |
-| Memory | **One allocation per model, one per inference context, none per inference**, all from the allocator you pass: the global allocator, your own, or a static buffer. Keyword spotting needs **23.8 KiB** of RAM in total ([measured](documentation/reference/memory.md)) |
+| Memory | **One allocation per model, one per inference context, none per inference**, all from the allocator you pass: the global allocator, your own, or a static buffer. Keyword spotting needs **23.3 KiB** of RAM in total ([measured](documentation/reference/memory.md)) |
 | Speed | CMSIS-NN (Cortex-M DSP and Helium), ESP-NN (ESP32-S3 SIMD); in WebAssembly, SIMD128 makes the models **2 to 3.3 times faster** ([measured](documentation/reference/performance.md)) |
 | Types | int8 (the TinyML standard), int16 (16x8) and float32, 27 operators ([list](documentation/reference/supported-operators.md)) |
 | Safety | Untrusted models are fully verified before use: errors, never panics. The model reader is `#![forbid(unsafe_code)]` and fuzzed in CI |
@@ -49,6 +49,10 @@ the table. `nanoglia` keeps the model a file and the firmware a plain Rust binar
 - **The best kernels of each chip, no SDK.** CMSIS-NN and ESP-NN ship with the crates and are
   compiled by Cargo with `cc`: no ESP-IDF, no STM32Cube, no CMake. Each operator runs on the fastest
   backend that supports it exactly, and falls back to portable code otherwise.
+- **Your own backends.** A backend of your own, listed before the bundled ones, can claim any
+  operator; its kernels may borrow your drivers (an accelerator, a DMA controller) with no global
+  state. `compute_with` calls an observer around each operator, to time it or check its output
+  ([write a backend](documentation/how-to-guides/write-a-backend.md)).
 - **Your memory, and only yours.** `#![no_std]`, no global allocator needed. A graph takes one block,
   an execution context one more, and `compute` none. Use an `Arena` over a `static` buffer, sized
   ahead of time with `MemoryRequirements`: no fragmentation, no surprises at run time.
@@ -147,7 +151,7 @@ The [documentation](documentation/README.md) follows the [Diátaxis](https://dia
 | | |
 | --- | --- |
 | **Tutorial** | [Run your first inference](documentation/tutorials/first-inference.md) |
-| **How-to guides** | [Size the memory](documentation/how-to-guides/size-memory.md), [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [run in the browser](documentation/how-to-guides/run-in-the-browser.md) |
+| **How-to guides** | [Size the memory](documentation/how-to-guides/size-memory.md), [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [run in the browser](documentation/how-to-guides/run-in-the-browser.md), [write a backend](documentation/how-to-guides/write-a-backend.md) |
 | **Explanation** | [Architecture](documentation/explanation/architecture.md), [bit-exactness with TensorFlow Lite](documentation/explanation/bit-exactness.md) |
 | **Reference** | [Supported operators](documentation/reference/supported-operators.md), [Cargo features](documentation/reference/features.md), [errors](documentation/reference/errors.md), [memory](documentation/reference/memory.md), [performance](documentation/reference/performance.md), [development tasks](documentation/reference/development-tasks.md) |
 
@@ -187,7 +191,7 @@ unsupported operator otherwise.
 be converted with [onnx2tf](https://github.com/PINTO0309/onnx2tf).
 
 **How much RAM and flash does it need?** RAM is exactly what `MemoryRequirements` reports for your
-model: 23.8 KiB for MLPerf Tiny keyword spotting, 94 KiB for visual wake words. The Nano 33 BLE
+model: 23.3 KiB for MLPerf Tiny keyword spotting, 92 KiB for visual wake words. The Nano 33 BLE
 example firmware is 181 KB of flash, 54 KB of which is the model.
 
 **Why TensorFlow Lite and not ONNX?** A `.tflite` file can be read in place, without parsing or

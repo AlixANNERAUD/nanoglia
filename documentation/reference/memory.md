@@ -14,7 +14,7 @@ allocations is fixed:
 | --- | --- | --- |
 | `Graph::load_in` (and `load`, `load_with`) | 1, kept until the graph is dropped | `graph_bytes()` |
 | `Graph::init_execution_context_in` (and `init_execution_context`) | 1 per context, kept until the context is dropped | `context_bytes()` |
-| `ExecutionContext::compute` | none | — |
+| `ExecutionContext::compute` (and `compute_with`) | none (an `Observer` may allocate on its own) | — |
 | `ExecutionContext::set_input`, `input_mut`, `output`, `output_by_name` | none | — |
 | `MemoryRequirements::compute_in` (and `compute`, `compute_with`) | 1, freed before returning | the planner's working memory: 20 bytes per tensor of the model |
 
@@ -65,7 +65,9 @@ so a buffer of that size is enough whatever its own alignment.
 The graph borrows the model (`Graph<'m, A>`): weights and other constant
 tensors are read where they are, in flash or RAM, and never copied. The
 model bytes must outlive the graph, and each execution context borrows
-its graph.
+its graph. A graph loaded with `Graph::load_with` also borrows the
+backends of its `Registry` for the same lifetime `'m` (the default
+registry is `'static`).
 
 Constant buffers are read as typed arrays, so each must be aligned for
 its element type (4 bytes for int32 biases, 8 for int64 ones); loading
@@ -102,9 +104,10 @@ activations and scratch memory, and they share the graph block.
 
 The graph block, in this order (`crates/nanoglia/src/graph.rs`):
 
-1. the operator table: for each operator, its kernel (a reference to a
-   static table of three function pointers), the place of its parameters
-   and of its inputs and outputs;
+1. the operator table: for each operator, its kernel (a `&dyn Kernel`
+   borrowed from its backend, two pointers), the place of its parameters
+   and of its inputs and outputs: 32 bytes per operator on a 64-bit
+   target, 24 on a 32-bit one;
 2. the location of each tensor: constant (offset in the model bytes),
    activation (offset in the context) or unused;
 3. the tensor indices of every operator's inputs and outputs;
@@ -126,27 +129,28 @@ operators: the largest scratch any kernel asks for.
 
 The four int8 reference models of `testdata/mlperf-tiny/`. Graph and
 context sizes measured with `Graph::graph_bytes()` and
-`context_bytes()` on 2026-11-04 at commit `26f1b25` (64-bit numbers checked
-again at `e9f268d`, unchanged), default features:
+`context_bytes()` on 2026-11-04 at commit `28c6f1a`, default features:
 
 - 64-bit: Linux aarch64 host, printed by the test
   `requirements_match_the_loaded_graph` of
   `crates/nanoglia/tests/memory.rs`
   (`cargo test -p nanoglia --test memory -- --nocapture`);
-- 32-bit: the same models built for `wasm32-wasip1` and run under
-  wasmtime 50.0.0 with an `Arena`.
+- 32-bit: the same test built for `wasm32-wasip1` and run under
+  wasmtime 50.0.0 (`cargo test -p nanoglia --test memory --target
+  wasm32-wasip1 --release -- --nocapture`, with the environment of
+  `mise run test-wasip1`).
 
 | Model | File | Operators | Graph, 64-bit | Context, 64-bit | `arena_bytes(1)`, 64-bit | Graph, 32-bit | Context, 32-bit | `arena_bytes(1)`, 32-bit |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `kws_ref_model` (keyword spotting, DS-CNN) | 53936 B | 13 | 7616 B | 16160 B | 23791 B | 7552 B | 16160 B | 23727 B |
-| `vww_96_int8` (visual wake words, MobileNetV1) | 333288 B | 31 | 29280 B | 64624 B | 93919 B | 29152 B | 64624 B | 93791 B |
-| `pretrainedResnet_quant` (image classification, ResNet-8) | 98496 B | 16 | 6064 B | 51456 B | 57535 B | 6000 B | 51456 B | 57471 B |
-| `ad01_int8` (anomaly detection, FC autoencoder) | 276976 B | 10 | 16208 B | 768 B | 16991 B | 16176 B | 768 B | 16959 B |
+| `kws_ref_model` (keyword spotting, DS-CNN) | 53936 B | 13 | 7712 B | 16160 B | 23887 B | 7616 B | 16160 B | 23791 B |
+| `vww_96_int8` (visual wake words, MobileNetV1) | 333288 B | 31 | 29520 B | 64624 B | 94159 B | 29280 B | 64624 B | 93919 B |
+| `pretrainedResnet_quant` (image classification, ResNet-8) | 98496 B | 16 | 6192 B | 51456 B | 57663 B | 6064 B | 51456 B | 57535 B |
+| `ad01_int8` (anomaly detection, FC autoencoder) | 276976 B | 10 | 16288 B | 768 B | 17071 B | 16208 B | 768 B | 16991 B |
 
 The 32-bit `arena_bytes(1)` column is computed with the formula above.
 With an `Arena` whose buffer starts on a 16-byte boundary, `Arena::used()`
 after loading and creating one context is `graph_bytes + context_bytes`
-(23712 B for keyword spotting on 32-bit).
+(23776 B for keyword spotting on 32-bit).
 
 With feature `esp-nn`, each operator ESP-NN runs keeps the parameters of
 both ESP-NN and its CMSIS-NN fallback in the graph block, and the scratch
@@ -155,10 +159,10 @@ plus `esp-nn` (ESP-NN's ANSI C kernels):
 
 | Model | Graph | Context | `arena_bytes(1)` |
 | --- | ---: | ---: | ---: |
-| `kws_ref_model` | 13568 B | 16160 B | 29743 B |
-| `vww_96_int8` | 54816 B | 64624 B | 119455 B |
-| `pretrainedResnet_quant` | 10336 B | 51456 B | 61807 B |
-| `ad01_int8` | 16848 B | 768 B | 17631 B |
+| `kws_ref_model` | 13664 B | 16160 B | 29839 B |
+| `vww_96_int8` | 55056 B | 64624 B | 119695 B |
+| `pretrainedResnet_quant` | 10464 B | 51456 B | 61935 B |
+| `ad01_int8` | 16928 B | 768 B | 17711 B |
 
 (`cargo test -p nanoglia --features esp-nn --test memory -- --nocapture`.)
 On the ESP32-S3, ESP-NN's optimized kernels may ask for other scratch

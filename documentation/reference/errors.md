@@ -11,7 +11,7 @@ pub struct Error {
 }
 ```
 
-`Error` is `Copy`, `PartialEq`, `Eq` and `Debug`, never allocates, and
+`Error` is `Copy`, `PartialEq`, `Eq`, `Hash` and `Debug`, never allocates, and
 implements `Display` and `core::error::Error`. `Display` prints the code,
 then the detail when there is one: `too large: OutOfMemory { requested:
 16160 }`. With feature `defmt`, `Error`, `ErrorCode` and `Detail`
@@ -39,7 +39,8 @@ host built on nanoglia can forward them unchanged. `ErrorCode` is
 ## Detail
 
 The precise reason, with the indices that locate it in the model.
-`Detail` is `#[non_exhaustive]`: match it with a `_` arm.
+`Detail` is `Copy`, `Eq` and `Hash`, and `#[non_exhaustive]`: match it
+with a `_` arm.
 
 | Variant | Usual code | Meaning |
 | --- | --- | --- |
@@ -81,6 +82,11 @@ A kernel's `prepare` can also fail while loading (for example
 shape says). `MemoryRequirements::compute*` does not run `prepare`, so only
 `load*` reports these.
 
+Loading selects the kernels twice. A backend of your own that selects or
+plans differently the second time (a kernel asking for more scratch
+memory or more parameter bytes than in the first pass) makes `load*`
+fail with `Unknown` / `None`; `select` and `plan` must be deterministic.
+
 ### Creating a context: `Graph::init_execution_context`, `init_execution_context_in`
 
 | Error | When |
@@ -102,8 +108,17 @@ shape says). `MemoryRequirements::compute*` does not run `prepare`, so only
 | `set_input` | as `input_mut`, and `InvalidArgument` / `SizeMismatch` | The data length differs from the tensor size in bytes. |
 | `output` | `InvalidArgument` / `IndexOutOfRange` | No such output. |
 | `output_by_name` | `NotFound` / `TensorNotFound` | No output has this name. |
-| `compute` | `RuntimeError` / `Backend` | CMSIS-NN returned a failure status. |
-| `compute` | `InvalidArgument` / `SizeMismatch`, `Misaligned` | A kernel found buffers that do not match its prepared parameters. This does not happen with buffers laid out by `Graph`. |
+| `compute`, `compute_with` | `RuntimeError` / `Backend` | CMSIS-NN returned a failure status. |
+| `compute`, `compute_with` | `InvalidArgument` / `SizeMismatch`, `Misaligned` | A kernel found buffers that do not match its prepared parameters. This does not happen with buffers laid out by `Graph`. |
+| `compute`, `compute_with` | any | A kernel of your own failed. `compute_with` passes the error to `Observer::after`, then returns it. |
+
+### Observed operators: `OpInfo`
+
+| Function | Error | When |
+| --- | --- | --- |
+| `OpInfo::input`, `OpInfo::output` | `InvalidArgument` / `IndexOutOfRange` | `i` is not below `input_count()` / `output_count()`. |
+| `OpInfo::input` | `NotFound` / `TensorNotFound` | The input is an omitted optional input. |
+| `OpInfo::opcode` | as `Graph::load` | Never on a loaded graph: loading decoded every operator from the same bytes. |
 
 ### Tensor views: `TensorRef::as_slice`, `TensorMut::as_mut_slice`
 

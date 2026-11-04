@@ -11,7 +11,7 @@ workspace:
 
 | Crate | Role |
 | --- | --- |
-| `crates/nanoglia` | The library: `Graph` (load, select kernels, plan memory), `ExecutionContext` (arena, `compute`), `Registry`. |
+| `crates/nanoglia` | The library: `Graph` (load, select kernels, plan memory), `ExecutionContext` (arena, `compute`, `compute_with` and its `Observer`), `Registry`. |
 | `crates/nanoglia-core` | Shared types (`TensorDesc`, `OpDesc`, `Error`/`ErrorCode`/`Detail`), the `Backend`/`Kernel` interface, TFLite-exact quantization math (`quant`), `Arena`, `Block`. |
 | `crates/nanoglia-tflite` | Zero-copy, allocation-free, panic-free `.tflite` verifier and reader (own flatbuffer code, `#![forbid(unsafe_code)]`). |
 | `crates/nanoglia-cmsis-nn-sys` | CMSIS-NN v8.0.0 as a git submodule (`cmsis-nn/`, do not edit; pin and bump procedure in the crate's README): integer kernels only, built with `cc`, hand-written FFI. |
@@ -40,8 +40,11 @@ cases, see `testdata/README.md`).
   eval) faithfully, including whether scales are multiplied in `f32` or `f64`. Requantization
   uses double rounding by default (TFLite Micro, CMSIS-NN); the `single-rounding` feature
   switches every crate to `TFLITE_SINGLE_ROUNDING`.
-- A backend's `select` returns a kernel only if it fully supports the operator; `prepare`
-  computes everything from the model, `eval` never reads the model and never allocates.
+- A backend's `select` returns a kernel only if it fully supports the operator, and the same
+  kernel each time (loading selects twice); the kernel is a `&dyn Kernel` borrowed from the
+  backend (the bundled backends lend `FnKernel` statics), and `Sync`: contexts may run it at the
+  same time. `prepare` computes everything from the model, `eval` never reads the model and never
+  allocates.
 
 ## Testing
 

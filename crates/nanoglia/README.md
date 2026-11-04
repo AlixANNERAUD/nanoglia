@@ -38,6 +38,10 @@ let scores = ctx.output(0)?.as_slice::<i8>()?;
   everywhere else, WebAssembly included.
 - **Bit-exact with TensorFlow Lite:** the outputs match the model run in Python, checked on every
   commit against golden outputs, including the MLPerf Tiny models.
+- **Extensible:** a [`Registry`](https://docs.rs/nanoglia/latest/nanoglia/struct.Registry.html)
+  of your own puts your backends first; their kernels may borrow your drivers. An
+  [`Observer`](https://docs.rs/nanoglia/latest/nanoglia/trait.Observer.html) passed to
+  `compute_with` sees each operator, to time it or read its output.
 - **Safe on untrusted models:** the flatbuffer is fully verified before use; errors carry a
   wasi-nn [`ErrorCode`](https://docs.rs/nanoglia/latest/nanoglia/enum.ErrorCode.html) and a
   precise [`Detail`](https://docs.rs/nanoglia/latest/nanoglia/enum.Detail.html), never a panic.
@@ -58,7 +62,8 @@ An int8-only firmware can use `default-features = false, features = ["cmsis-nn",
 **Learn more:** the [repository](https://github.com/AlixANNERAUD/nanoglia), the
 [first-inference tutorial](https://github.com/AlixANNERAUD/nanoglia/blob/main/documentation/tutorials/first-inference.md),
 [supported operators](https://github.com/AlixANNERAUD/nanoglia/blob/main/documentation/reference/supported-operators.md),
-[sizing the memory](https://github.com/AlixANNERAUD/nanoglia/blob/main/documentation/how-to-guides/size-memory.md)
-and [running on a microcontroller](https://github.com/AlixANNERAUD/nanoglia/blob/main/documentation/how-to-guides/run-on-a-microcontroller.md).
+[sizing the memory](https://github.com/AlixANNERAUD/nanoglia/blob/main/documentation/how-to-guides/size-memory.md),
+[running on a microcontroller](https://github.com/AlixANNERAUD/nanoglia/blob/main/documentation/how-to-guides/run-on-a-microcontroller.md)
+and [writing a backend](https://github.com/AlixANNERAUD/nanoglia/blob/main/documentation/how-to-guides/write-a-backend.md).
 
 Licensed under Apache-2.0.

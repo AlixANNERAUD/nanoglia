@@ -9,7 +9,7 @@ the pieces fit and why they are built this way.
 
 | Crate | Role | Depends on |
 | --- | --- | --- |
-| `nanoglia` | The API your application uses: `Graph`, `ExecutionContext`, `Registry`, `MemoryRequirements`, tensor views. Loads, plans, computes. | all the others |
+| `nanoglia` | The API your application uses: `Graph`, `ExecutionContext`, `Registry`, `MemoryRequirements`, tensor views, `Observer`. Loads, plans, computes. | all the others |
 | `nanoglia-core` | The shared vocabulary: tensors (`TensorDesc`, `DataType`, `Dims`, `Quantization`), operators (`OpDesc`, `BuiltinOp`, `OpOptions`), errors, the `Backend` / `Kernel` interface, TFLite-exact quantization math (`quant`), `Arena` and `Block`. | `allocator-api2` |
 | `nanoglia-tflite` | Verifies a `.tflite` flatbuffer once, then reads it in place: zero-copy, allocation-free, panic-free, `#![forbid(unsafe_code)]`, its own small flatbuffer reader. | `nanoglia-core` |
 | `nanoglia-cmsis-nn-sys` | CMSIS-NN v8.0.0 (integer kernels; a git submodule in the repository, its sources shipped in the package) compiled with `cc`, hand-written FFI bindings. | — (build: `cc`) |
@@ -57,7 +57,8 @@ these steps (`crates/nanoglia/src/graph.rs`):
    builds an `OpDesc` on the stack (its code, options and the
    descriptions of its tensors, borrowed from the model) and asks the
    backends of the registry in order; the first `select` that returns a
-   kernel wins. The kernel's `plan` reports how many bytes of persistent
+   kernel wins. Loading runs this selection twice (here, then again in
+   step 6), so a backend must answer the same way both times. The kernel's `plan` reports how many bytes of persistent
    parameters and of scratch memory it needs. The sum of the
    parameters, the tables and the planner's working memory gives the
    size of the graph block; the largest scratch gives the size of the
@@ -90,9 +91,16 @@ anything ([Size the memory](../how-to-guides/size-memory.md)).
 input and output byte slices from the recorded locations (constants in
 the model, activations in the arena), then calls the kernel's `eval`
 with them, its prepared parameters and the scratch area. `eval` reads
-only these and never allocates. A kernel is three plain function
-pointers (`plan`, `prepare`, `eval`) in a `static`, so the operator
-table holds a reference per operator and no trait object.
+only these and never allocates. The operator table holds one
+`&dyn Kernel` per operator: one indirect call per operator, nothing
+allocated.
+
+`compute_with(observer)` runs the same loop and calls an `Observer`
+before and after each operator, with an `OpInfo`: the operator index,
+its kernel name and opcode, and views of its inputs and outputs, built
+only when the observer asks. `compute` is `compute_with(&mut ())`: the
+observer methods of `()` are empty and inlined, so nothing remains of
+them.
 
 ## Backends and the registry
 
@@ -101,6 +109,21 @@ A backend implements `nanoglia::core::backend::Backend`: a name, a kind
 supports the operator with its types, shapes and options. A backend
 never claims an operator it would compute differently from TFLite; it
 leaves it to the next one.
+
+A kernel implements `nanoglia::core::backend::Kernel`: `plan`, `prepare`
+and `eval`, plus a name for diagnostics. `select` returns a
+`&dyn Kernel` borrowed from the backend, and the graph keeps it in its
+operator table, so the graph borrows the backend. This is what lets a
+backend hold state its kernels use (a driver handle for an accelerator,
+a pool of DMA buffers, counters) without globals: the kernel reaches it
+through `&self`. The borrow uses the lifetime that already ties the
+graph to the model bytes, so `Graph` has no extra lifetime parameter,
+and the default registry, `'static`, works with any graph. Kernels are
+`Sync`, because several execution contexts may run the same graph at
+once. The bundled backends are stateless: their kernels are
+`FnKernel`s, three plain functions (`plan`, `prepare`, `eval`) in a
+`static`. [Write a backend](../how-to-guides/write-a-backend.md) shows a
+stateful one.
 
 `Registry::default()` holds the backends enabled by the Cargo features,
 fastest first: ESP-NN (feature `esp-nn`, off by default), CMSIS-NN, then
@@ -119,7 +142,9 @@ kernels and their preparation code.
 
 ESP-NN keeps its scratch buffers in global variables, so only one
 context may run it at a time. The `esp-nn` backend takes a lock (an
-atomic flag that never blocks) around each call; when another thread,
+atomic flag that never blocks) around each call. The lock is a global
+too, not state of the backend: the C globals it guards exist once per
+program, whatever the number of backend values. When another thread,
 task, interrupt handler or core holds it, the operator runs the CMSIS-NN
 kernel instead, which computes the same result. For this, the backend
 claims an operator only if CMSIS-NN supports it too, and prepares both
