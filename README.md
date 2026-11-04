@@ -33,6 +33,17 @@ It needs no RTOS, no HAL and no vendor SDK. Every byte it uses comes from the al
 | [`nanoglia-esp-nn`](crates/nanoglia-esp-nn) | ESP-NN kernel backend (feature `esp-nn`): int8 convolutions, fully-connected layers, pooling, softmax, add and mul |
 | [`nanoglia-kernels`](crates/nanoglia-kernels) | Pure-Rust kernels bit-exact with TFLite's reference kernels: shape and quantization operators, int8 gaps of CMSIS-NN, float32 operators |
 
+## Documentation
+
+The [documentation](documentation/README.md) follows [Diátaxis](https://diataxis.fr):
+
+| Kind | Pages |
+|---|---|
+| Tutorial | [Your first inference](documentation/tutorials/first-inference.md) |
+| How-to guides | [Size the memory](documentation/how-to-guides/size-memory.md), [Convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [Run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [Run in the browser](documentation/how-to-guides/run-in-the-browser.md) |
+| Explanation | [Architecture](documentation/explanation/architecture.md), [Bit-exactness](documentation/explanation/bit-exactness.md) |
+| Reference | [Supported operators](documentation/reference/supported-operators.md), [Cargo features](documentation/reference/features.md), [Errors](documentation/reference/errors.md), [Memory](documentation/reference/memory.md), [Performance](documentation/reference/performance.md), [Development tasks](documentation/reference/development-tasks.md) |
+
 ## License
 
 Apache-2.0, see [`LICENSE`](LICENSE). The vendored CMSIS-NN and ESP-NN sources are Apache-2.0 as well.
