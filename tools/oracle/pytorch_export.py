@@ -5,9 +5,16 @@ The models are realistic small networks:
 - `smallnet`, an image classifier: conv / batch norm / ReLU blocks, a channel
   shuffle (`torch.split` and `torch.cat`), max pooling, a `permute` and a
   slice, a flatten and a linear head;
-- `gru` and `lstm`, sequence classifiers (keyword spotting or IMU gestures
-  shape: 8 frames of 10 features): one `nn.GRU` or `nn.LSTM` layer whose last
-  output feeds a linear head.
+- `lstm`, a sequence classifier (8 frames of 10 features, the shape of
+  keyword spotting or IMU gestures): an `nn.LSTM` layer whose last output
+  feeds a linear head;
+- `gru`, the same with an `nn.GRU` layer, in streaming form: its state is a
+  model input and a model output.
+
+litert-torch unrolls recurrent layers over the frames into `FULLY_CONNECTED`,
+`SLICE`, `LOGISTIC`, `TANH`, `MUL`, `ADD` and `SUB` operators, and its
+quantizer quantizes only their inputs and outputs: the cells compute in
+float32, and the reports below list them.
 
 Each is quantized with PyTorch's PT2E flow and litert-torch's quantizer
 (static int8: per-tensor asymmetric activations calibrated on a fixed random
@@ -101,8 +108,9 @@ class StreamingGruNet(nn.Module):
     """A streaming sequence classifier: the GRU state is an input and an output.
 
     The caller feeds the returned state back with the next frames, so the model
-    keeps its state without variable tensors. litert-torch's GRU annotator also
-    needs the state as an input and both outputs of the GRU used.
+    keeps its state without variable tensors. Workaround: litert-torch's GRU
+    annotator also needs the state as an input and both outputs of the GRU
+    used, or the quantizer fails (issue #32).
     """
 
     def __init__(self, features: int = 10, hidden: int = 16, classes: int = 4):

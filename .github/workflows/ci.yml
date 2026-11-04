@@ -204,27 +204,13 @@ jobs:
       - uses: jdx/mr-boxington-action@v1
         with:
           cache-key-suffix: pytorch-export
-      # Converts the model of tools/oracle/pytorch_export.py with the CPU torch of the `torch`
+      # Converts the models of tools/oracle/pytorch_export.py with the CPU torch of the `torch`
       # dependency group, writes golden outputs with LiteRT's reference kernels, then runs them
-      # with nanoglia. The model is not committed: it may change with torch and litert-torch.
-      - name: Experiment, one model at a time
-        shell: bash
-        run: |
-          status=0
-          for m in smallnet gru lstm; do
-            echo "::group::$m"
-            out=$PWD/target/pytorch-export
-            if (cd tools/oracle && uv run --group torch python -I pytorch_export.py "$out-$m" --model "$m"); then
-              NANOGLIA_GOLDEN_DIR="$out-$m" cargo test -p nanoglia --test golden -- --nocapture || { echo "RESULT $m: nanoglia FAILED"; status=1; }
-            else
-              echo "RESULT $m: export FAILED"; status=1
-            fi
-            echo "::endgroup::"
-          done
-          exit $status
+      # with nanoglia. The models are not committed: they may change with torch and litert-torch.
+      - run: mise run pytorch-export
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: pytorch-export
-          path: target/pytorch-export*
+          path: target/pytorch-export
           if-no-files-found: ignore
