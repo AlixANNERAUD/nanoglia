@@ -4,7 +4,7 @@
 
 Pure-Rust kernels of [nanoglia](https://github.com/AlixANNERAUD/nanoglia), exposed as the `"rust"` [`Backend`](nanoglia_core::backend::Backend) ([`BACKEND`]).
 
-They cover what the optimized C libraries lack: shape and quantization operators, a few int8 operators, and `f32` versions of the main operators. Each kernel ports the TensorFlow Lite reference kernel (`BUILTIN_REF` resolver) and its preparation code, including how multipliers and lookup tables are computed, so that results are bit-exact.
+They cover what the optimized C libraries lack: shape, data-movement and quantization operators, a few int8 operators, and `f32` versions of the main operators. Each kernel ports the TensorFlow Lite reference kernel (`BUILTIN_REF` resolver) and its preparation code, including how multipliers and lookup tables are computed, so that results are bit-exact.
 
 | Operator | Types |
 |---|---|
@@ -18,6 +18,9 @@ They cover what the optimized C libraries lack: shape and quantization operators
 | `HARD_SWISH` | `f32`, `i8`, `u8` |
 | `PAD`, `PADV2` | any |
 | `CONCATENATION` | any (quantized inputs must share the output's parameters) |
+| `TRANSPOSE`, `SLICE`, `STRIDED_SLICE` | any type of 1, 2, 4 or 8 bytes, rank up to 6, constant indices |
+| `GATHER` | `f32`, `f16`, `bf16`, `i8`, `u8`, `i16`, `i32`, `i64`, `bool`; `i16`/`i32`/`i64` indices, possibly computed at run time |
+| `SPLIT`, `SPLIT_V` | `f32`, `i8`, `u8`, `i16`, `i32`, `i64`, constant axis and sizes, up to 8 outputs |
 | `MAXIMUM`, `MINIMUM` | `f32`, `i8`, `u8`, `i16`, `i32`, `i64` (broadcasting) |
 | `ADD`, `SUB`, `MUL` | `f32`, `i8`, `i16` (broadcasting; int16 `ADD`/`SUB` not with power-of-two scales) |
 | `CONV_2D`, `DEPTHWISE_CONV_2D` | `f32` |

@@ -86,6 +86,11 @@ int64 bias.
 | | any whole-byte type | `rust/pad` | — |
 | `RESHAPE`, `SQUEEZE`, `EXPAND_DIMS` | any type | `rust/reshape` | — |
 | `CONCATENATION` | any whole-byte type | `rust/concatenation` | — |
+| `TRANSPOSE` | any type of 1, 2, 4 or 8 bytes | `rust/transpose` | — |
+| `SLICE` | any type of 1, 2, 4 or 8 bytes | `rust/slice` | — |
+| `STRIDED_SLICE` | any type of 1, 2, 4 or 8 bytes | `rust/strided_slice` | — |
+| `GATHER` | f32, f16, bf16, int8, uint8, int16, int32, int64, bool | `rust/gather` | — |
+| `SPLIT`, `SPLIT_V` | f32, int8, uint8, int16, int32, int64 | `rust/split` | — |
 | `QUANTIZE` | f32 → int8, uint8, int16 | `rust/quantize` | — |
 | | int8, uint8 → int8, uint8, int16; int16 → int8, int16; int32 → int8, int16 | `rust/requantize` | — |
 | `DEQUANTIZE` | int8, uint8, int16, f16 → f32 | `rust/dequantize` | — |
@@ -254,6 +259,44 @@ concatenation axis, no fused activation. Quantized inputs must have the
 output's scale and zero point (the reference kernel refuses the other
 case too).
 
+### TRANSPOSE, SLICE, STRIDED_SLICE, GATHER, SPLIT, SPLIT_V
+
+These operators only move bytes. Neither LiteRT nor TensorFlow Lite Micro
+checks the quantization of their tensors, and nanoglia does not either:
+quantized values are copied unchanged (converters give the input and the
+outputs the same quantization). Ranks go up to 6, and every output tensor
+must have the shape TFLite computes from the inputs and options (TFLite
+resizes the output; nanoglia plans its memory from the model, so a
+different declared shape is refused).
+
+- `rust/transpose`: a constant int32 permutation with one value per input
+  dimension, in `-rank..rank` (negative values wrap). Each axis must appear
+  once: TFLite does not check it and reads outside the input otherwise.
+  Rank 1 or more.
+- `rust/slice`: constant `begin` and `size` vectors, both int32 or both
+  int64, one value per dimension; `begin` in `0..=dim`, `size` -1 (to the
+  end of the axis) or at most `dim - begin`.
+- `rust/strided_slice`: constant int32 `begin`, `end` and `strides` of the
+  same length (at most 31), with the `begin_mask`, `end_mask`,
+  `ellipsis_mask`, `new_axis_mask`, `shrink_axis_mask` and `offset`
+  options, negative indices and strides. Refused: a zero or `INT32_MIN`
+  stride, several ellipsis bits, a shrunk axis that selects no element
+  (TFLite would leave the output unwritten), and an `offset` slice whose
+  output shape TFLite computes differently from what its loop writes (sizes
+  overrunning the input, or an ellipsis, new axes or fewer indices than
+  dimensions, where TFLite reads `end` at another index).
+- `rust/gather`: the `axis` and `batch_dims` options (negative values
+  wrap; TFLite's range checks), int16, int32 or int64 indices, constant or
+  computed at run time. An index that is negative or not below the size of
+  the gathered axis makes `compute` fail with `InvalidArgument` /
+  `IndexOutOfRange` (`index` is its position in the indices tensor), as
+  TFLite fails; nothing is copied then.
+- `rust/split`: a constant int32 axis tensor of one element (negative
+  values wrap), `num_splits` equal to the number of outputs, at most 8.
+  `SPLIT` divides the axis evenly; `SPLIT_V` takes constant int32 or
+  int64 sizes, at most one of them -1 (the rest of the axis), the others
+  non-negative and summing to the axis.
+
 ### QUANTIZE, DEQUANTIZE
 
 - `rust/quantize`: per-tensor output quantization.
@@ -283,7 +326,8 @@ zero points 0.
 The golden cases of `testdata/` exercise `CONV_2D`, `DEPTHWISE_CONV_2D`,
 `FULLY_CONNECTED`, `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`,
 `SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `LOGISTIC`,
-`TANH`, `RELU`, `RELU6`, `CONCATENATION`, `QUANTIZE` and `DEQUANTIZE`
+`TANH`, `RELU`, `RELU6`, `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`,
+`TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`, `SPLIT` and `SPLIT_V`
 against LiteRT (see `testdata/README.md`); the other kernels have unit
 tests in `crates/nanoglia-kernels/src/tests/`. The golden cases also run
 with the `esp-nn` backend first (its ANSI C kernels on the host), and

@@ -99,6 +99,23 @@ weights symmetric (`-127..127`), per channel along axis 0 with
 Calibrate with real data: the observed ranges set the scales of every
 activation, and random inputs give ranges that real inputs do not have.
 
+`tools/oracle/pytorch_export.py` in the repository is a complete,
+runnable version of this step for a small classifier, which nanoglia's
+CI converts on x86_64 Linux and runs against LiteRT (`mise run
+pytorch-export`).
+
+Besides the layers, a PyTorch export contains data-movement operators:
+`TRANSPOSE` (`permute`, and where the converter moves between PyTorch's
+channels-first layout and LiteRT's channels-last one), `SLICE` or
+`STRIDED_SLICE` (indexing, `narrow`), `GATHER` (`index_select`,
+embeddings), `SPLIT` or `SPLIT_V` (`split`, `chunk`), `CONCATENATION`
+(`cat`) and `RESHAPE` (`view`, `flatten`). nanoglia runs all of them, on
+int8 tensors as on the other types, with constant permutations, slice
+bounds and split sizes; `GATHER` indices may be computed by the model.
+onnx2tf produces the same operators. See
+[Supported operators](../reference/supported-operators.md#transpose-slice-strided_slice-gather-split-split_v)
+for the exact conditions.
+
 ## 3. Check that nanoglia runs it
 
 Load the model with the features your firmware will use, and list the

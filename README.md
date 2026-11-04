@@ -31,7 +31,7 @@ let scores = ctx.output(0)?.as_slice::<i8>()?;
 | Accuracy | **Bit-exact with TensorFlow Lite**: 123 of 126 golden cases identical byte for byte, including the [MLPerf Tiny](https://github.com/mlcommons/tiny) keyword-spotting, visual-wake-words and image-classification models ([why the other 3 differ](documentation/explanation/bit-exactness.md)) |
 | Memory | **One allocation per model, one per inference context, none per inference**, all from the allocator you pass: the global allocator, your own, or a static buffer. Keyword spotting needs **23.3 KiB** for the model ([measured](documentation/reference/memory.md)), 28.3 KiB with the stack in a Cortex-M4 firmware ([measured](documentation/reference/performance.md#keyword-spotting-firmware)) |
 | Speed | CMSIS-NN (Cortex-M DSP and Helium), ESP-NN (ESP32-S3 SIMD); in WebAssembly, SIMD128 makes the models **2 to 3.3 times faster** ([measured](documentation/reference/performance.md)). On a laptop CPU (Linux virtual machine), the fastest of the five Rust engines compared on the four MLPerf Tiny models ([compared](documentation/reference/performance.md#compared-with-other-rust-engines)) |
-| Types | int8 (the TinyML standard), int16 (16x8) and float32, 27 operators ([list](documentation/reference/supported-operators.md)) |
+| Types | int8 (the TinyML standard), int16 (16x8) and float32, 33 operators ([list](documentation/reference/supported-operators.md)) |
 | Safety | Untrusted models are fully verified before use: errors, never panics. The model reader is `#![forbid(unsafe_code)]` and fuzzed in CI |
 | Targets | Cortex-M0+, M4F, M33, ESP32-S3 (Xtensa), RISC-V, WebAssembly and desktops, each built in CI ([see below](#supported-platforms)) |
 | Languages | Rust, and C or C++ through a static library, a header and a CMake project ([see below](#c-and-c)) |
@@ -239,13 +239,14 @@ load it.
 **Which models work?** Fully quantized int8 models (the usual TinyML export), 16x8 models and float32
 models, using the [supported operators](documentation/reference/supported-operators.md): convolutions,
 depthwise convolutions, fully-connected layers, pooling, softmax, element-wise operations,
-activations, reshapes, padding, means, quantization... Loading fails with the index of the first
-unsupported operator otherwise.
+activations, reshapes, transposes, slices, gathers, splits, padding, means, quantization... Loading
+fails with the index of the first unsupported operator otherwise.
 
 **I train in PyTorch. Can I use nanoglia?** Yes: export to `.tflite` with Google's
 [`litert-torch`](https://github.com/google-ai-edge/litert-torch), see
 [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md). ONNX models can
-be converted with [onnx2tf](https://github.com/PINTO0309/onnx2tf).
+be converted with [onnx2tf](https://github.com/PINTO0309/onnx2tf). The data-movement operators these
+exports produce (`TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`, `SPLIT`, `SPLIT_V`) are supported.
 
 **How much RAM and flash does it need?** RAM is exactly what `MemoryRequirements` reports for your
 model: 23.3 KiB for MLPerf Tiny keyword spotting, 92 KiB for visual wake words. The Nano 33 BLE
