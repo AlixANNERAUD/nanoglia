@@ -1,0 +1,16 @@
+[package]
+name = "fw-embedded-nn"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+build = "../build.rs"
+description = "Keyword-spotting firmware with embedded-nn: the model is compiled ahead of time by its macro, activations in a static arena."
+
+[dependencies]
+fw-common = { path = "../common" }
+embedded-nn = { workspace = true }
+embedded-nn-macros = { workspace = true }
+cortex-m = { workspace = true, features = ["critical-section-single-core"] }
+cortex-m-rt = { workspace = true }
+panic-halt = { workspace = true }

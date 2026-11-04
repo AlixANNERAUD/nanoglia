@@ -1,0 +1,20 @@
+[package]
+name = "bench-embedded-nn"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Host benchmark of embedded-nn: models compiled ahead of time by `embedded_nn_model` (its TFLite importer and Rust code generator)."
+
+[features]
+# One feature per model: the macro fails the build on a model it cannot compile.
+default = ["kws", "vww", "resnet", "ad"]
+kws = []
+vww = []
+resnet = []
+ad = []
+
+[dependencies]
+harness = { workspace = true }
+embedded-nn = { workspace = true }
+embedded-nn-macros = { workspace = true }

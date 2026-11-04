@@ -1,0 +1,3 @@
+[target.thumbv7em-none-eabihf]
+# cortex-m-rt's linker script; each firmware crate puts firmware/memory.x on the search path.
+rustflags = ["-C", "link-arg=-Tlink.x", "-C", "target-cpu=cortex-m4"]

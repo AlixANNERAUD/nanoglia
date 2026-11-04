@@ -1,0 +1,12 @@
+[package]
+name = "bench-nanoglia"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Host benchmark of nanoglia (default features: CMSIS-NN portable C and Rust kernels)."
+
+[dependencies]
+harness = { workspace = true }
+# The default features (cmsis-nn, kernels, float, int16), plus `alloc` for the global allocator.
+nanoglia = { workspace = true, features = ["cmsis-nn", "kernels", "float", "int16", "alloc"] }

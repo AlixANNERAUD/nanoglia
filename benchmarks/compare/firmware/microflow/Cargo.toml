@@ -1,0 +1,16 @@
+[package]
+name = "fw-microflow"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+build = "../build.rs"
+description = "Keyword-spotting firmware with MicroFlow: the model is compiled into the firmware by its macro."
+
+[dependencies]
+fw-common = { path = "../common" }
+microflow = { workspace = true }
+nalgebra = { workspace = true, features = ["macros"] }
+cortex-m = { workspace = true, features = ["critical-section-single-core"] }
+cortex-m-rt = { workspace = true }
+panic-halt = { workspace = true }

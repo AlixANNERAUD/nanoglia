@@ -1,0 +1,22 @@
+[package]
+name = "bench-microflow"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Host benchmark of MicroFlow: each model is compiled into Rust code by its `model` macro."
+
+[features]
+# One feature per model: the macro aborts the build on a model it cannot compile, so the models it
+# rejects are left out of the default set (see documentation/reference/performance.md).
+default = ["kws", "vww", "ad"]
+kws = []
+vww = []
+resnet = []
+ad = []
+
+[dependencies]
+harness = { workspace = true }
+microflow = { workspace = true }
+# The generated code uses nalgebra's `matrix!` macro.
+nalgebra = { workspace = true, features = ["macros"] }

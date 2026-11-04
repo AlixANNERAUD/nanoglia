@@ -1,8 +1,9 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
-# The cargo-fuzz crate needs a nightly toolchain and has its own workspace.
-exclude = ["fuzz"]
+# The cargo-fuzz crate needs a nightly toolchain and has its own workspace; the engine comparison
+# of benchmarks/compare has its own too (large dependency trees, firmware).
+exclude = ["fuzz", "benchmarks/compare"]
 
 [workspace.package]
 edition = "2024"

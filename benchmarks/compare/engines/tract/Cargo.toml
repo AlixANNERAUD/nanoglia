@@ -1,0 +1,11 @@
+[package]
+name = "bench-tract"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Host benchmark of tract (tract-tflite): models loaded at run time, optimized, then run."
+
+[dependencies]
+harness = { workspace = true }
+tract-tflite = { workspace = true }

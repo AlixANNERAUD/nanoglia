@@ -1,0 +1,58 @@
+# Comparison of nanoglia with other Rust inference engines on the MLPerf Tiny models.
+# A workspace of its own, outside the library workspace: it pulls large dependency trees
+# (tract) and crates that need build-time model compilation. `mise run bench-compare` runs it;
+# see documentation/reference/performance.md.
+
+[workspace]
+resolver = "3"
+members = [
+    "harness",
+    "engines/*",
+    "firmware/common",
+    "firmware/baseline",
+    "firmware/nanoglia",
+    "firmware/microflow",
+    "firmware/embedded-nn",
+    "firmware/ember",
+]
+# The firmware crates only build for thumbv7em-none-eabihf (`--profile firmware`).
+default-members = ["harness", "engines/*"]
+
+[workspace.package]
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+
+[workspace.dependencies]
+harness = { path = "harness" }
+nanoglia = { path = "../../crates/nanoglia", default-features = false }
+# Exact versions: the results are published with them.
+tract-tflite = "=0.23.9"
+microflow = "=0.1.3"
+nalgebra = { version = "0.32", default-features = false }
+ember-infer-core = "=0.1.2"
+ember-infer-macros = "=0.1.2"
+ember-infer-ref = "=0.1.2"
+# The TFLite importer and the macro of embedded-nn are not on crates.io: the runtime and the
+# macro come from the same commit of its repository, so the generated code matches the runtime.
+embedded-nn = { git = "https://github.com/leftger/embedded-nn", rev = "69ea4187a298431fcaa313c3ab2a2ec1c473c4c7", default-features = false, features = ["libm"] }
+embedded-nn-macros = { git = "https://github.com/leftger/embedded-nn", rev = "69ea4187a298431fcaa313c3ab2a2ec1c473c4c7" }
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+panic-halt = "1"
+
+# Host benchmarks: the same optimized profile for every engine.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+debug = false
+
+# Firmware for thumbv7em-none-eabihf: the same size-optimized profile for every engine.
+[profile.firmware]
+inherits = "release"
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = false

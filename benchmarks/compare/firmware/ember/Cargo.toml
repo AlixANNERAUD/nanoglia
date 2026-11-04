@@ -1,0 +1,19 @@
+[package]
+name = "fw-ember"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+build = "../build.rs"
+description = "Keyword-spotting firmware with ember-rs: the model is compiled into the firmware by its macro and run with the reference backend."
+
+[dependencies]
+fw-common = { path = "../common" }
+ember-infer-core = { workspace = true }
+ember-infer-macros = { workspace = true }
+ember-infer-ref = { workspace = true }
+# ember-infer-ref uses `alloc` (its softmax collects into a Vec): a heap is needed.
+embedded-alloc = "=0.7.0"
+cortex-m = { workspace = true, features = ["critical-section-single-core"] }
+cortex-m-rt = { workspace = true }
+panic-halt = { workspace = true }

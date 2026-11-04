@@ -1,0 +1,20 @@
+[package]
+name = "fw-nanoglia"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+build = "../build.rs"
+description = "Keyword-spotting firmware with nanoglia: the model is loaded at run time from flash, graph and context in a static arena."
+
+[features]
+# nanoglia's default features (float32 and int16 kernels too) instead of the int8-only build.
+full = ["nanoglia/float", "nanoglia/int16"]
+
+[dependencies]
+fw-common = { path = "../common" }
+# int8 only, as in examples/nano33ble.
+nanoglia = { workspace = true, features = ["cmsis-nn", "kernels"] }
+cortex-m = { workspace = true, features = ["critical-section-single-core"] }
+cortex-m-rt = { workspace = true }
+panic-halt = { workspace = true }

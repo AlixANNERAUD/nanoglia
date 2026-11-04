@@ -1,0 +1,21 @@
+[package]
+name = "bench-ember"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Host benchmark of ember-rs: models compiled by its `model` macro, run with its pure Rust reference backend."
+
+[features]
+# One feature per model: the macro aborts the build on a model it cannot compile.
+default = ["kws", "vww", "resnet", "ad"]
+kws = []
+vww = []
+resnet = []
+ad = []
+
+[dependencies]
+harness = { workspace = true }
+ember-infer-core = { workspace = true }
+ember-infer-macros = { workspace = true }
+ember-infer-ref = { workspace = true }

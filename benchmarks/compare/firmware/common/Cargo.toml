@@ -1,0 +1,10 @@
+[package]
+name = "fw-common"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Static input and result symbols shared by the comparison firmware."
+
+[dependencies]
+cortex-m = { workspace = true }
