@@ -44,9 +44,12 @@ run = [
 ]
 
 [tasks.test]
-description = "Run the host test suite"
+description = "Run the host test suite, then the golden cases with the ESP-NN backend (ANSI C kernels)"
 env.RUSTFLAGS = "-D warnings"
-run = "cargo test --workspace"
+run = [
+  "cargo test --workspace",
+  "cargo test -p nanoglia --features esp-nn --test golden",
+]
 
 [tasks.oracle]
 description = "Regenerate the test models and golden outputs of testdata/ with the LiteRT reference kernels"
@@ -87,6 +90,29 @@ run = [
 description = "Build the libraries for riscv32imc-unknown-none-elf (ESP32-C3 class), without any global allocator"
 env.RUSTFLAGS = "-D warnings"
 run = "cargo build --workspace --lib --target riscv32imc-unknown-none-elf"
+
+[tasks.install-esp]
+description = "Install the Xtensa Rust toolchain (`esp`) and Espressif's GCC with espup, for `cross-esp32s3`"
+tools = { "github:esp-rs/espup" = "0.19.0" }
+run = "espup install --targets esp32s3"
+
+[tasks.cross-esp32s3]
+description = "Build the libraries for the ESP32-S3 (xtensa-esp32s3-none-elf) with ESP-NN's optimized kernels, without any global allocator, and check that no C library references the C heap"
+# Needs the Xtensa Rust fork and Espressif's GCC: `mise run install-esp` (espup) installs the `esp`
+# rustup toolchain and writes the environment script `$HOME/export-esp.sh` (`ESP_EXPORT`
+# overrides its path). CMSIS-NN compiles its portable C code there.
+env.RUSTFLAGS = "-D warnings"
+env.CARGO_TARGET_DIR = "target/esp"
+run = """
+. "${ESP_EXPORT:-$HOME/export-esp.sh}"
+# The `esp` toolchain through the environment, and mbx called directly: mise's `cargo` wrapper
+# would probe the workspace with the stable toolchain, which refuses `-Z` flags.
+export RUSTUP_TOOLCHAIN=esp
+export CC_xtensa_esp32s3_none_elf=xtensa-esp32s3-elf-gcc AR_xtensa_esp32s3_none_elf=xtensa-esp32s3-elf-ar
+mbx build --workspace --lib --target xtensa-esp32s3-none-elf -Zbuild-std=core
+mbx build -p nanoglia --lib --target xtensa-esp32s3-none-elf -Zbuild-std=core --features esp-nn
+tools/check-no-malloc.sh target/esp
+"""
 
 [tasks.cross-wasm32]
 description = "Build the libraries for wasm32-unknown-unknown (browsers), without any global allocator"

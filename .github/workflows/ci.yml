@@ -54,6 +54,10 @@ jobs:
           - name: int8 only
             key: int8-only
             args: -p nanoglia --no-default-features --features cmsis-nn,kernels --lib --test memory
+          # The golden cases with the ESP-NN backend first (its ANSI C kernels on the host).
+          - name: ESP-NN
+            key: esp-nn
+            args: -p nanoglia --features esp-nn --test golden
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4
@@ -93,6 +97,22 @@ jobs:
         with:
           cache-key-suffix: cross-${{ matrix.task }}
       - run: mise run ${{ matrix.task }}
+
+  esp32s3:
+    name: Cross (ESP32-S3, ESP-NN optimized)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v4
+      # The Xtensa Rust toolchain and Espressif's GCC, from espup.
+      - run: mise run install-esp
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: cross-esp32s3
+      # Builds the libraries with ESP-NN's ESP32-S3 kernels, then checks none references the C heap.
+      - run: mise run cross-esp32s3
 
   deny:
     name: Dependencies (cargo-deny)
