@@ -19,6 +19,10 @@ They cover what the optimized C libraries lack: shape, data-movement and quantiz
 | `RELU`, `RELU6`, `RELU_N1_TO_1` | `f32`, `i8`, `u8`, `i16` |
 | `LEAKY_RELU` | `f32`, `i8`, `u8`, `i16` |
 | `PRELU` | `f32`, `i8`, `u8`, `i16` (`i8` alpha), broadcasting |
+| `ABS` | `f32`, `i8`, `i16`, `i32` |
+| `NEG` | `f32`, `i32`, `i64` |
+| `SQRT`, `EXP`, `LOG` | `f32` |
+| `RSQRT` | `f32`, `i8` |
 | `LOGISTIC`, `TANH` | `f32`, `i8`, `u8`, `i16` (TFLite's interpolated sigmoid table) |
 | `HARD_SWISH` | `f32`, `i8`, `u8` |
 | `PAD`, `PADV2` | any |

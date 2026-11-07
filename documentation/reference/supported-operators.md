@@ -115,6 +115,11 @@ int64 bias.
 | `BATCH_TO_SPACE_ND` | f32, int8, uint8, int16, int32, int64 | `rust/batch_to_space_nd` | — |
 | `PRELU` | f32 | `rust/prelu_f32` | float |
 | | int8, uint8, int16 (int8 `alpha`) | `rust/prelu_q` | — |
+| `ABS`, `NEG`, `SQRT`, `RSQRT`, `EXP`, `LOG` | f32 | `rust/unary_f32` | float |
+| `ABS` | int8, int16 | `rust/unary_q` | — |
+| | int32, int16 without quantization | `rust/unary_int` | — |
+| `NEG` | int32, int64 | `rust/unary_int` | — |
+| `RSQRT` | int8 | `rust/unary_q` | — |
 | `RELU`, `RELU6`, `RELU_N1_TO_1` | f32 | `rust/relu_f32` | float |
 | | int8, uint8, int16 | `rust/relu_q` | — |
 | `LEAKY_RELU` | f32 | `rust/leaky_relu_f32` | float |
@@ -495,6 +500,28 @@ has; `alpha` may be a constant or computed at run time.
   shifts left by more than 30 bits.
 - `rust/prelu_f32`: `x >= 0 ? x : x * alpha`.
 
+### ABS, NEG, SQRT, RSQRT, EXP, LOG
+
+Input and output of the same type and shape.
+
+- `rust/unary_f32`: `EXP` matches glibc's `expf` bit for bit; `LOG` uses
+  `libm`'s `logf`, within the float tolerance of glibc's; `SQRT` and
+  `RSQRT` (`1 / sqrt(x)`) are correctly rounded square roots.
+- `rust/unary_q`: zero points in the range of their type, 0 for int16.
+  `ABS` (int8, int16) rescales `|x - input_zero_point|` with
+  `input_scale / output_scale` when the scales differ. `RSQRT` (int8)
+  computes `1 / sqrt(x - input_zero_point)` with TFLite's fixed-point
+  `GetInvSqrtQuantizedMultiplierExp` and requantizes with
+  `1 / (sqrt(input_scale) × output_scale)`; an input equal to the zero
+  point gives 127, and an input below it (a negative value) makes
+  `compute` fail with `InvalidArgument` ([Errors](errors.md)), as TFLite
+  fails. Multipliers are computed in `f64` as in TensorFlow Lite Micro
+  (LiteRT computes the ratios in `f32`), and refused when they would
+  shift by more than 30 bits left or 31 right.
+- `rust/unary_int`: LiteRT's `ABS` on int32 and on int16 tensors without
+  quantization, `NEG` on int32 and int64; the most negative value maps to
+  itself. TensorFlow Lite Micro has none of them.
+
 ### Activations
 
 - `rust/relu_q`: int16 needs zero points 0 and is not supported for
@@ -522,7 +549,8 @@ The golden cases of `testdata/` exercise `CONV_2D`, `DEPTHWISE_CONV_2D`,
 `FULLY_CONNECTED`, `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`,
 `SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `SUM`,
 `REDUCE_MAX`, `REDUCE_MIN`, `PACK`, `UNPACK`, `SPACE_TO_DEPTH`,
-`DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `PRELU`, `LOGISTIC`,
+`DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `PRELU`, `ABS`, `NEG`, `SQRT`, `RSQRT`, `EXP`, `LOG`,
+`LOGISTIC`,
 `TANH`, `RELU`, `RELU6`, `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`,
 `TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`, `SPLIT`, `SPLIT_V`,
 `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR` and

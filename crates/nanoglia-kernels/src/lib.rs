@@ -28,6 +28,7 @@ mod split;
 mod strided;
 mod transpose;
 mod transpose_conv;
+mod unary;
 mod util;
 
 #[cfg(test)]
@@ -110,6 +111,17 @@ impl RustKernels {
                 #[cfg(feature = "float")]
                 prelu::PRELU_F32,
                 prelu::PRELU_Q
+            ),
+            BuiltinOp::ABS
+            | BuiltinOp::NEG
+            | BuiltinOp::SQRT
+            | BuiltinOp::RSQRT
+            | BuiltinOp::EXP
+            | BuiltinOp::LOG => kernels!(
+                #[cfg(feature = "float")]
+                unary::UNARY_F32,
+                unary::UNARY_INT,
+                unary::UNARY_Q
             ),
             BuiltinOp::PAD | BuiltinOp::PADV2 => kernels!(pad::PAD),
             BuiltinOp::CONCATENATION => kernels!(concat::CONCATENATION),
