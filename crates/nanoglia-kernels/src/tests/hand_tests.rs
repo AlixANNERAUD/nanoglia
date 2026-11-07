@@ -187,7 +187,7 @@ fn logistic_tanh_i16() {
         assert!(name(code, x(0.001, 0), y(2.0 * one, 0)).is_none());
         assert!(name(code, x(0.001, 0), y(0.0001, 0)).is_none());
         // Input scales whose multiplier TFLite cannot represent: above 65535 / 12288 the
-        // product overflows an `int32_t`, below 4e-14 the multiplier truncates to 0.
+        // product overflows an `int32_t`, below about 3.8e-14 the multiplier truncates to 0.
         assert!(name(code, x(5.0, 0), y(one, 0)).is_some());
         assert!(name(code, x(6.0, 0), y(one, 0)).is_none());
         assert!(name(code, x(1e-12, 0), y(one, 0)).is_some());

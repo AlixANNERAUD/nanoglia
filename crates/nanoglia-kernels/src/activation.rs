@@ -477,7 +477,7 @@ fn sigmoid_i16_params(op: &OpDesc<'_, '_>) -> Result<SigmoidI16Params> {
             input_shift += 1;
             multiplier *= 2.0;
         }
-        // TFLite truncates to `int32_t`. A multiplier of 0 (scales below 4e-14) would be taken
+        // TFLite truncates to `int32_t`. A multiplier of 0 (scales below about 3.8e-14) would be taken
         // for the power-of-two case and shift 3 by 31 bits; one of 65536 or more (scales above
         // 5.33) overflows the `int32_t` product `input × multiplier`: both are undefined in C.
         if !(1.0..65536.0).contains(&multiplier) {
