@@ -140,7 +140,12 @@ impl RustKernels {
             BuiltinOp::ADD | BuiltinOp::SUB | BuiltinOp::MUL => {
                 kernels!(elementwise::BINARY, elementwise::QUANTIZED_BINARY)
             }
-            BuiltinOp::MAXIMUM | BuiltinOp::MINIMUM => kernels!(elementwise::BINARY),
+            BuiltinOp::MAXIMUM | BuiltinOp::MINIMUM | BuiltinOp::DIV => {
+                kernels!(elementwise::BINARY)
+            }
+            BuiltinOp::SQUARED_DIFFERENCE => {
+                kernels!(elementwise::BINARY, elementwise::QUANTIZED_BINARY)
+            }
             BuiltinOp::CONV_2D => kernels!(
                 #[cfg(feature = "float")]
                 conv::CONV_2D_F32

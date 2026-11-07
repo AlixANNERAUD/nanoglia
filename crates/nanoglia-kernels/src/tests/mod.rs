@@ -14,6 +14,7 @@ use std::vec;
 use std::vec::Vec;
 
 mod arg_min_max_tests;
+mod binary_tests;
 mod gather_tests;
 mod golden;
 mod golden_tests;

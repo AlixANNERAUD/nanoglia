@@ -24,16 +24,20 @@ code that is no longer reachable is dropped by the linker. Some f32 and
 int16 operators stay available without them, because they share a
 kernel with other types:
 
-- without `float`: f32 `ADD`, `SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `MEAN`,
-  `SUM`, `REDUCE_MAX`, `REDUCE_MIN`, `PAD`, the layout operators (`PACK`,
-  `UNPACK`, `SPACE_TO_DEPTH`, `DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`,
-  `BATCH_TO_SPACE_ND`), `CONCATENATION`, `RESHAPE`, `ARG_MAX`, `ARG_MIN`,
-  `RESIZE_NEAREST_NEIGHBOR` and the `QUANTIZE` / `DEQUANTIZE` conversions;
-- without `int16`: int16 `ADD`, `SUB` and `MUL` (Rust kernel, with
-  broadcasting), `MEAN`, `SUM`, `REDUCE_MAX`, `REDUCE_MIN`, `PACK`,
-  `UNPACK`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `RELU`, `RELU6`,
-  `LEAKY_RELU`, `PRELU`, `ABS`, `MAXIMUM`, `MINIMUM`, `PAD`, `ARG_MAX`, `ARG_MIN`,
-  `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR` and `QUANTIZE` / `DEQUANTIZE`.
+- without `float`: f32 `ADD`, `SUB`, `MUL`, `DIV`, `SQUARED_DIFFERENCE`,
+  `MAXIMUM`, `MINIMUM`, `MEAN`, `SUM`, `REDUCE_MAX`, `REDUCE_MIN`,
+  `PAD`, the layout operators (`PACK`, `UNPACK`, `SPACE_TO_DEPTH`,
+  `DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`),
+  `CONCATENATION`, `RESHAPE`, `ARG_MAX`, `ARG_MIN`,
+  `RESIZE_NEAREST_NEIGHBOR` and the `QUANTIZE` / `DEQUANTIZE`
+  conversions;
+- without `int16`: int16 `ADD`, `SUB`, `MUL` and `SQUARED_DIFFERENCE`
+  (Rust kernel, with broadcasting), `MEAN`, `SUM`, `REDUCE_MAX`,
+  `REDUCE_MIN`, `PACK`, `UNPACK`, `SPACE_TO_BATCH_ND`,
+  `BATCH_TO_SPACE_ND`, `RELU`, `RELU6`, `LEAKY_RELU`, `PRELU`, `ABS`,
+  `MAXIMUM`, `MINIMUM`, `PAD`, `ARG_MAX`, `ARG_MIN`,
+  `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR` and `QUANTIZE` /
+  `DEQUANTIZE`.
 
 The full matrix is in [Supported operators](supported-operators.md).
 

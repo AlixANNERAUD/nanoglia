@@ -120,6 +120,9 @@ int64 bias.
 | | int32, int16 without quantization | `rust/unary_int` | — |
 | `NEG` | int32, int64 | `rust/unary_int` | — |
 | `RSQRT` | int8 | `rust/unary_q` | — |
+| `DIV` | f32, int32 | `rust/binary` | — |
+| `SQUARED_DIFFERENCE` | f32, int32 | `rust/binary` | — |
+| | int8, int16 | `rust/binary_q` | — |
 | `RELU`, `RELU6`, `RELU_N1_TO_1` | f32 | `rust/relu_f32` | float |
 | | int8, uint8, int16 | `rust/relu_q` | — |
 | `LEAKY_RELU` | f32 | `rust/leaky_relu_f32` | float |
@@ -522,6 +525,27 @@ Input and output of the same type and shape.
   quantization, `NEG` on int32 and int64; the most negative value maps to
   itself. TensorFlow Lite Micro has none of them.
 
+### DIV, SQUARED_DIFFERENCE
+
+Two inputs of the output's type, broadcasting up to rank 6.
+
+- `rust/binary`: f32 `DIV` with an optional fused activation (a zero
+  denominator gives an infinity or NaN, which the activation range clamps
+  as in TFLite: `x / 0` becomes the largest finite float of its sign);
+  int32 `DIV` without quantization, truncating like C++, where any zero in
+  the second input makes `compute` fail with `InvalidArgument`
+  ([Errors](errors.md)), as TFLite fails; `SQUARED_DIFFERENCE` on f32 and
+  int32 (wrapping around), without activation.
+- `rust/binary_q`: `SQUARED_DIFFERENCE` as TensorFlow Lite Micro computes
+  it: both inputs rescaled to twice the larger input scale with
+  `left_shift = 7` (int8) or `0` (int16), the difference squared in
+  `i32`, then requantized. LiteRT has no int16 version (unit tests cover
+  it).
+- Quantized `DIV` is refused: TensorFlow Lite Micro's `DivElementwise`
+  shifts right by more than 31 bits when the quotient is small, which
+  C++ leaves undefined and Cortex-M, AArch64 and x86 compute differently,
+  so no result is bit-exact with "TFLite" there.
+
 ### Activations
 
 - `rust/relu_q`: int16 needs zero points 0 and is not supported for
@@ -550,7 +574,7 @@ The golden cases of `testdata/` exercise `CONV_2D`, `DEPTHWISE_CONV_2D`,
 `SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `SUM`,
 `REDUCE_MAX`, `REDUCE_MIN`, `PACK`, `UNPACK`, `SPACE_TO_DEPTH`,
 `DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `PRELU`, `ABS`, `NEG`, `SQRT`, `RSQRT`, `EXP`, `LOG`,
-`LOGISTIC`,
+`DIV`, `SQUARED_DIFFERENCE`, `LOGISTIC`,
 `TANH`, `RELU`, `RELU6`, `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`,
 `TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`, `SPLIT`, `SPLIT_V`,
 `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR` and

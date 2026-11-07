@@ -23,6 +23,8 @@ They cover what the optimized C libraries lack: shape, data-movement and quantiz
 | `NEG` | `f32`, `i32`, `i64` |
 | `SQRT`, `EXP`, `LOG` | `f32` |
 | `RSQRT` | `f32`, `i8` |
+| `DIV` | `f32`, `i32` (broadcasting) |
+| `SQUARED_DIFFERENCE` | `f32`, `i32`, `i8`, `i16` (broadcasting) |
 | `LOGISTIC`, `TANH` | `f32`, `i8`, `u8`, `i16` (TFLite's interpolated sigmoid table) |
 | `HARD_SWISH` | `f32`, `i8`, `u8` |
 | `PAD`, `PADV2` | any |
