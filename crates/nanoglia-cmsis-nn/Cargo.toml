@@ -14,7 +14,7 @@ categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
 
 [features]
 default = ["int16"]
-## int16 (16x8) kernels: convolution, fully-connected, add and mul.
+## int16 (16x8) kernels: convolution, depthwise convolution, fully-connected, pooling, add and mul.
 int16 = []
 ## Single-rounding requantization (`TFLITE_SINGLE_ROUNDING`).
 single-rounding = ["nanoglia-cmsis-nn-sys/single-rounding", "nanoglia-core/single-rounding"]

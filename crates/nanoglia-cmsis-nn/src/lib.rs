@@ -71,10 +71,9 @@ fn select(op: &OpDesc<'_, '_>) -> Option<&'static FnKernel> {
     let (kernel, supported): (&'static FnKernel, fn(&OpDesc<'_, '_>) -> bool) =
         match op.builtin()? {
             BuiltinOp::CONV_2D => return conv::select(op),
-            BuiltinOp::DEPTHWISE_CONV_2D => (&depthwise::KERNEL, depthwise::supports),
+            BuiltinOp::DEPTHWISE_CONV_2D => return depthwise::select(op),
             BuiltinOp::FULLY_CONNECTED => return fully_connected::select(op),
-            BuiltinOp::AVERAGE_POOL_2D => (&pooling::AVERAGE, pooling::supports),
-            BuiltinOp::MAX_POOL_2D => (&pooling::MAX, pooling::supports),
+            BuiltinOp::AVERAGE_POOL_2D | BuiltinOp::MAX_POOL_2D => return pooling::select(op),
             BuiltinOp::SOFTMAX => (&softmax::KERNEL, softmax::supports),
             BuiltinOp::ADD | BuiltinOp::MUL => return elementwise::select(op),
             BuiltinOp::MAXIMUM => (&minmax::MAXIMUM, minmax::supports),

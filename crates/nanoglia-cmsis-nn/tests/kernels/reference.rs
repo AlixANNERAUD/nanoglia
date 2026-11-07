@@ -710,3 +710,110 @@ pub fn transpose_conv_per_channel(
         })
         .collect()
 }
+
+/// `reference_integer_ops::DepthwiseConvPerChannel` for int16 activations, int8 weights and an
+/// int64 bias (16x8, zero points 0): a 64-bit accumulator and the 64-bit
+/// `MultiplyByQuantizedMultiplier`.
+#[allow(clippy::too_many_arguments)]
+pub fn depthwise_conv_per_channel_16x8(
+    p: &ConvParams,
+    depth_multiplier: i32,
+    multipliers: &[Multiplier],
+    input_dims: [i32; 4],
+    input: &[i16],
+    filter_dims: [i32; 4],
+    filter: &[i8],
+    bias: Option<&[i64]>,
+    output_dims: [i32; 4],
+) -> Vec<i16> {
+    let mut output = vec![0i16; output_dims.iter().product::<i32>() as usize];
+    let [batches, in_h, in_w, in_c] = input_dims;
+    let [_, filter_h, filter_w, _] = filter_dims;
+    let [_, out_h, out_w, _] = output_dims;
+    for b in 0..batches {
+        for oy in 0..out_h {
+            for ox in 0..out_w {
+                for ic in 0..in_c {
+                    for m in 0..depth_multiplier {
+                        let oc = m + ic * depth_multiplier;
+                        let in_x0 = ox * p.stride.1 - p.padding.1;
+                        let in_y0 = oy * p.stride.0 - p.padding.0;
+                        let mut acc: i64 = 0;
+                        for fy in 0..filter_h {
+                            for fx in 0..filter_w {
+                                let in_x = in_x0 + p.dilation.1 * fx;
+                                let in_y = in_y0 + p.dilation.0 * fy;
+                                if in_x >= 0 && in_x < in_w && in_y >= 0 && in_y < in_h {
+                                    let iv = input[offset(input_dims, b, in_y, in_x, ic)] as i64;
+                                    let fv = filter[offset(filter_dims, 0, fy, fx, oc)] as i64;
+                                    acc += fv * iv;
+                                }
+                            }
+                        }
+                        if let Some(bias) = bias {
+                            acc += bias[oc as usize];
+                        }
+                        let v = quant::multiply_by_quantized_multiplier_i64(
+                            acc,
+                            multipliers[oc as usize],
+                        );
+                        output[offset(output_dims, b, oy, ox, oc)] =
+                            v.clamp(p.activation.0, p.activation.1) as i16;
+                    }
+                }
+            }
+        }
+    }
+    output
+}
+
+/// `reference_integer_ops::AveragePool` and `MaxPool` for `int16_t`.
+pub fn pool_i16(
+    p: &PoolParams,
+    average: bool,
+    input_dims: [i32; 4],
+    input: &[i16],
+    output_dims: [i32; 4],
+) -> Vec<i16> {
+    let mut output = vec![0i16; output_dims.iter().product::<i32>() as usize];
+    let [batches, in_h, in_w, depth] = input_dims;
+    let [_, out_h, out_w, _] = output_dims;
+    for b in 0..batches {
+        for oy in 0..out_h {
+            for ox in 0..out_w {
+                for c in 0..depth {
+                    let in_x0 = ox * p.stride.1 - p.padding.1;
+                    let in_y0 = oy * p.stride.0 - p.padding.0;
+                    let fx_start = 0.max(-in_x0);
+                    let fx_end = p.filter.1.min(in_w - in_x0);
+                    let fy_start = 0.max(-in_y0);
+                    let fy_end = p.filter.0.min(in_h - in_y0);
+                    let mut sum: i32 = 0;
+                    let mut count: i32 = 0;
+                    let mut max = i16::MIN as i32;
+                    for fy in fy_start..fy_end {
+                        for fx in fx_start..fx_end {
+                            let v = input[offset(input_dims, b, in_y0 + fy, in_x0 + fx, c)] as i32;
+                            sum += v;
+                            max = max.max(v);
+                            count += 1;
+                        }
+                    }
+                    let v = if average {
+                        assert!(count > 0, "empty pooling window");
+                        if sum > 0 {
+                            (sum + count / 2) / count
+                        } else {
+                            (sum - count / 2) / count
+                        }
+                    } else {
+                        max
+                    };
+                    output[offset(output_dims, b, oy, ox, c)] =
+                        v.clamp(p.activation.0, p.activation.1) as i16;
+                }
+            }
+        }
+    }
+    output
+}
