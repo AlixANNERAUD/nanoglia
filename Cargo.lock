@@ -81,7 +81,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "nanoglia"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "nanoglia-cmsis-nn",
  "nanoglia-core",
@@ -93,14 +93,14 @@ dependencies = [
 
 [[package]]
 name = "nanoglia-c"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "nanoglia",
 ]
 
 [[package]]
 name = "nanoglia-cmsis-nn"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "nanoglia-cmsis-nn-sys",
  "nanoglia-core",
@@ -108,14 +108,14 @@ dependencies = [
 
 [[package]]
 name = "nanoglia-cmsis-nn-sys"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cc",
 ]
 
 [[package]]
 name = "nanoglia-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "allocator-api2",
  "defmt",
@@ -123,7 +123,7 @@ dependencies = [
 
 [[package]]
 name = "nanoglia-esp-nn"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "nanoglia-cmsis-nn",
  "nanoglia-core",
@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "nanoglia-kernels"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "libm",
  "nanoglia-core",
@@ -147,7 +147,7 @@ dependencies = [
 
 [[package]]
 name = "nanoglia-tflite"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "nanoglia-core",
 ]
