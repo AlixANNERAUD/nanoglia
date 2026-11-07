@@ -63,7 +63,11 @@ Every case directory holds:
   `input_scale * weight_scale`. Output ranges are calibrated on the float model,
   as a converter would.
 - `_int16`: 16x8 quantization: int16 activations with zero point 0, int8
-  weights, int64 biases.
+  weights, int64 biases. The int16 `LOGISTIC` and `TANH` cases fix the input
+  scale instead of calibrating it, to take each path of TFLite's prepare step
+  (power-of-two scales, a multiplier doubled up to the table's scale, scales
+  above 16383.5 / 12288 without a shift, a tiny scale) on inputs that cover the
+  whole int16 range; their output scale is 2^-15.
 - `_f32`: float32 everything.
 
 The variants of a case share their float data: `conv2d_3x3_same_int8` is the

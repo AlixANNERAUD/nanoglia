@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/average_pool2d_3x3_same_relu6_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int16",
+      "shape": [
+        1,
+        5,
+        7,
+        6
+      ],
+      "scale": 9.129358659265563e-05,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int16",
+      "shape": [
+        1,
+        5,
+        7,
+        6
+      ],
+      "scale": 9.129358659265563e-05,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

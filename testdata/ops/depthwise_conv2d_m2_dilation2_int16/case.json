@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/depthwise_conv2d_m2_dilation2_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int16",
+      "shape": [
+        1,
+        8,
+        8,
+        3
+      ],
+      "scale": 9.108110680244863e-05,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int16",
+      "shape": [
+        1,
+        8,
+        8,
+        6
+      ],
+      "scale": 0.00015808508032932878,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

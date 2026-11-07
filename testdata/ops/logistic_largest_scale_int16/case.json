@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/logistic_largest_scale_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int16",
+      "shape": [
+        4,
+        128
+      ],
+      "scale": 5.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int16",
+      "shape": [
+        4,
+        128
+      ],
+      "scale": 3.0517578125e-05,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

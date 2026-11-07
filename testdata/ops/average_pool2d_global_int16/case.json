@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/average_pool2d_global_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int16",
+      "shape": [
+        1,
+        5,
+        5,
+        16
+      ],
+      "scale": 9.101200703298673e-05,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int16",
+      "shape": [
+        1,
+        1,
+        1,
+        16
+      ],
+      "scale": 9.101200703298673e-05,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/max_pool2d_4x4_stride3_valid_relu_n1_to_1_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int16",
+      "shape": [
+        1,
+        10,
+        9,
+        3
+      ],
+      "scale": 9.14921474759467e-05,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int16",
+      "shape": [
+        1,
+        3,
+        2,
+        3
+      ],
+      "scale": 9.14921474759467e-05,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}
