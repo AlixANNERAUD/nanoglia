@@ -138,6 +138,11 @@ quantized `ABS` and `RSQRT` ratios in float, TensorFlow Lite Micro in double:
 these cases use scales whose ratios both compute to the same multiplier (the
 oracle checks it), so that the golden data holds for both.
 
+`DIV` (`_f32` with broadcasting, a fused activation, zero denominators and
+`0 / 0`; `_int32` with and without activation) and `SQUARED_DIFFERENCE`
+(`_f32`, `_int32`, `_int8`, with broadcasting). LiteRT 2.3 has no int16
+`SQUARED_DIFFERENCE`, and quantized `DIV` is not supported by nanoglia.
+
 Operators covered: `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`,
 `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`, `SUB`, `MUL`, `MAXIMUM`,
 `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `LOGISTIC`, `TANH`, `RELU`, `RELU6`,
@@ -145,7 +150,7 @@ Operators covered: `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`,
 `GATHER`, `SPLIT`, `SPLIT_V`, `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`,
 `RESIZE_BILINEAR`, `TRANSPOSE_CONV`, `SUM`, `REDUCE_MAX`, `REDUCE_MIN`, `PACK`, `UNPACK`,
 `SPACE_TO_DEPTH`, `DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `PRELU`, `ABS`, `NEG`, `SQRT`,
-`RSQRT`, `EXP`, `LOG`.
+`RSQRT`, `EXP`, `LOG`, `DIV`, `SQUARED_DIFFERENCE`.
 
 Not covered: int8 `CONCATENATION` with different input and output
 quantization, which the reference kernel rejects (as TensorFlow Lite Micro does).

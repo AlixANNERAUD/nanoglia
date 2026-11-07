@@ -1601,11 +1601,79 @@ def unary_cases():
     rsqrt_q("rsqrt_offset_int8", [2, 9], 1 / 64, -100, 3 / 128, -120)
 
 
+def binary_case(name, op, specs, out_spec, values, options, ver=1):
+    """A one-operator case with two model inputs `values` (already of the
+    specs' types) and an output of their broadcast shape."""
+    b = ModelBuilder()
+    ins = [add_act(b, f"input_{i}", s, list(v.shape)) for i, (s, v) in
+           enumerate(zip(specs, values))]
+    out_shape = list(np.broadcast_shapes(*(v.shape for v in values)))
+    y = add_act(b, "output", out_spec, out_shape)
+    b.add_operator(op, ins, [y], options, version=ver)
+    save_op_case(name, b.build(ins, [y]), list(values))
+
+
+def div_f32(name, shape_a, shape_b, act=Act.NONE, zeros=False):
+    """f32 DIV; with `zeros`, some denominators are 0 (TFLite clamps the
+    infinities to the activation range, here the largest finite floats) and
+    one numerator too (0 / 0 is NaN)."""
+    rng = rng_for(name)
+    a = uniform(rng, shape_a, -3.0, 3.0)
+    b = uniform(rng, shape_b, 0.5, 2.0) * rng.choice([-1, 1], size=shape_b).astype(np.float32)
+    if zeros:
+        b.flat[0] = 0.0
+        a.flat[0] = 0.0
+    binary_case(name, Op.DIV, [FLOAT, FLOAT], FLOAT, [a, b],
+                schema.DivOptionsT(fusedActivationFunction=act))
+
+
+def div_int32(name, shape_a, shape_b, act=Act.NONE):
+    rng = rng_for(name)
+    a = rng.integers(-1000, 1000, size=shape_a, dtype=np.int32)
+    b = rng.integers(1, 50, size=shape_b, dtype=np.int32) * rng.choice([-1, 1], size=shape_b)
+    i32_ = Spec("int32")
+    binary_case(name, Op.DIV, [i32_, i32_], i32_, [a, b.astype(np.int32)],
+                schema.DivOptionsT(fusedActivationFunction=act), ver=2)
+
+
+def squared_difference(name, mode, shape_a, shape_b):
+    rng = rng_for(name)
+    opts = schema.SquaredDifferenceOptionsT()
+    if mode == "int32":
+        i32_ = Spec("int32")
+        a = rng.integers(-1000, 1000, size=shape_a, dtype=np.int32)
+        b = rng.integers(-1000, 1000, size=shape_b, dtype=np.int32)
+        binary_case(name, Op.SQUARED_DIFFERENCE, [i32_, i32_], i32_, [a, b], opts)
+        return
+    a = uniform(rng, shape_a, -1.0, 3.0)
+    b = uniform(rng, shape_b, -2.0, 1.5)
+    if mode == F32:
+        binary_case(name, Op.SQUARED_DIFFERENCE, [FLOAT, FLOAT], FLOAT, [a, b], opts)
+        return
+    sa, sb = range_spec(mode, a), range_spec(mode, b)
+    sy = range_spec(mode, np.square(a - b))
+    binary_case(name, Op.SQUARED_DIFFERENCE, [sa, sb], sy, [sa.quantize(a), sb.quantize(b)],
+                opts, ver=2)
+
+
+def binary_cases():
+    div_f32("div_broadcast_f32", [2, 3, 4], [4])
+    div_f32("div_by_zero_f32", [3, 5], [3, 5], zeros=True)
+    div_f32("div_relu6_f32", [2, 1, 5], [3, 1], act=Act.RELU6)
+    div_int32("div_int32", [2, 6], [6])
+    div_int32("div_relu_int32", [3, 4], [3, 4], act=Act.RELU)
+    squared_difference("squared_difference_broadcast_f32", F32, [2, 3, 4], [3, 1])
+    squared_difference("squared_difference_int32", "int32", [5], [5])
+    squared_difference("squared_difference_broadcast_int8", I8, [1, 4, 4, 3], [3])
+    squared_difference("squared_difference_int8", I8, [2, 8], [2, 8])
+
+
 def extra_cases():
     reduce_cases()
     layout_cases()
     prelu_cases()
     unary_cases()
+    binary_cases()
 
 
 def op_cases():
