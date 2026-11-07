@@ -1,0 +1,26 @@
+{
+  "model": "testdata/ops/neg_int64/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int64",
+      "shape": [
+        7
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int64",
+      "shape": [
+        7
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

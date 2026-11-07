@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/abs_same_scale_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        3,
+        6
+      ],
+      "scale": 0.019999999552965164,
+      "zero_point": 5
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        3,
+        6
+      ],
+      "scale": 0.019999999552965164,
+      "zero_point": -128
+    }
+  ],
+  "tolerance": 0
+}

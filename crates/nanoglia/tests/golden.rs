@@ -92,7 +92,15 @@ fn max_diff(dtype: &str, actual: &[u8], expected: &[u8]) -> f64 {
                     f32::from_le_bytes(a.try_into().unwrap()),
                     f32::from_le_bytes(e.try_into().unwrap()),
                 );
-                ((a - e).abs() / e.abs().max(1.0)) as f64
+                if a == e || (a.is_nan() && e.is_nan()) {
+                    0.0
+                } else if !a.is_finite() || !e.is_finite() {
+                    // Infinities and NaN must match exactly (`f64::max` would drop a NaN
+                    // difference).
+                    f64::INFINITY
+                } else {
+                    ((a - e).abs() / e.abs().max(1.0)) as f64
+                }
             }
             _ => f64::INFINITY,
         })

@@ -1531,10 +1531,81 @@ def prelu_cases():
     prelu("prelu_int16", I16, [1, 3, 3, 2], [2])
 
 
+def same_multiplier(name, litert_real: float, tflm_real: float):
+    """Fail unless LiteRT's and TensorFlow Lite Micro's ratios give the same
+    `QuantizeMultiplier`: where the rest of the kernel is the same code, the
+    case then holds for both."""
+    if quantize_multiplier(litert_real) != quantize_multiplier(tflm_real):
+        raise AssertionError(f"{name}: LiteRT and TFLM multipliers differ")
+
+
+def unary_case(name, op, spec_in, spec_out, x, ver=1):
+    """A one-operator unary case on the quantized (or raw) values `x`."""
+    b = ModelBuilder()
+    xi = add_act(b, "input", spec_in, list(x.shape))
+    y = add_act(b, "output", spec_out, list(x.shape))
+    b.add_operator(op, [xi], [y], version=ver)
+    save_op_case(name, b.build([xi], [y]), [x])
+
+
+def float_unary(name, op, shape, lo, hi, special=()):
+    x = uniform(rng_for(name), shape, lo, hi)
+    x.flat[:len(special)] = special
+    unary_case(name, op, FLOAT, FLOAT, x)
+
+
+def abs_q(name, dtype, shape, s_in, z_in, s_out, z_out):
+    f32 = np.float32
+    same_multiplier(name, float(f32(s_in) / f32(s_out)), s_in / s_out)
+    xs, ys = Spec(dtype, s_in, z_in), Spec(dtype, s_out, z_out)
+    x = xs.quantize(uniform(rng_for(name), shape, -2.0, 1.5))
+    unary_case(name, Op.ABS, xs, ys, x, ver={I8: 2, I16: 3}[dtype])
+
+
+def rsqrt_q(name, shape, s_in, z_in, s_out, z_out):
+    """int8 RSQRT on non-negative values (TFLite fails on negative ones), one
+    of them exactly zero (the output is then 127)."""
+    f32 = np.float32
+    same_multiplier(name, 1.0 / float(np.sqrt(f32(s_in)) * f32(s_out)),
+                    1.0 / (math.sqrt(s_in) * s_out))
+    xs, ys = Spec(I8, s_in, z_in), Spec(I8, s_out, z_out)
+    x = xs.quantize(uniform(rng_for(name), shape, 0.0, 3.0))
+    x.flat[0] = z_in
+    unary_case(name, Op.RSQRT, xs, ys, x, ver=2)
+
+
+def unary_cases():
+    float_unary("abs_f32", Op.ABS, [2, 3, 4], -3.0, 3.0, [-0.0, np.inf, -np.inf])
+    float_unary("neg_f32", Op.NEG, [3, 5], -3.0, 3.0, [0.0, -0.0])
+    float_unary("sqrt_f32", Op.SQRT, [2, 7], 0.0, 9.0, [0.0, 1.0, 4.0])
+    float_unary("rsqrt_f32", Op.RSQRT, [2, 7], 0.01, 9.0, [1.0, 4.0, 0.25])
+    float_unary("exp_f32", Op.EXP, [4, 6], -10.0, 10.0, [0.0, -100.0, 1.0])
+    float_unary("log_f32", Op.LOG, [4, 6], 0.001, 100.0, [1.0, np.e, 0.0])
+    rng = rng_for("abs_int32")
+    unary_case("abs_int32", Op.ABS, Spec("int32"), Spec("int32"),
+               rng.integers(-100000, 100000, size=[3, 4], dtype=np.int32))
+    rng = rng_for("abs_raw_int16")
+    unary_case("abs_raw_int16", Op.ABS, Spec(I16), Spec(I16),
+               rng.integers(-30000, 30000, size=[10], dtype=np.int16))
+    rng = rng_for("neg_int32")
+    unary_case("neg_int32", Op.NEG, Spec("int32"), Spec("int32"),
+               rng.integers(-100000, 100000, size=[2, 5], dtype=np.int32))
+    rng = rng_for("neg_int64")
+    unary_case("neg_int64", Op.NEG, Spec("int64"), Spec("int64"),
+               rng.integers(-10**12, 10**12, size=[7], dtype=np.int64))
+    # Scales whose ratios f32 and f64 compute alike (see `same_multiplier`).
+    abs_q("abs_rescaled_int8", I8, [2, 4, 5], 3 / 256, -10, 1 / 64, -128)
+    abs_q("abs_same_scale_int8", I8, [3, 6], 0.02, 5, 0.02, -128)
+    abs_q("abs_int16", I16, [4, 5], 5 / 4096, 0, 1 / 256, 0)
+    rsqrt_q("rsqrt_int8", [3, 7], 9 / 1024, -128, 5 / 128, -128)
+    rsqrt_q("rsqrt_offset_int8", [2, 9], 1 / 64, -100, 3 / 128, -120)
+
+
 def extra_cases():
     reduce_cases()
     layout_cases()
     prelu_cases()
+    unary_cases()
 
 
 def op_cases():
