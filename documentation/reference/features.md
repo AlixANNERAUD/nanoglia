@@ -29,15 +29,16 @@ kernel with other types:
   `PAD`, the layout operators (`PACK`, `UNPACK`, `SPACE_TO_DEPTH`,
   `DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`),
   `CONCATENATION`, `RESHAPE`, `ARG_MAX`, `ARG_MIN`,
-  `RESIZE_NEAREST_NEIGHBOR` and the `QUANTIZE` / `DEQUANTIZE`
-  conversions;
+  `RESIZE_NEAREST_NEIGHBOR`, the comparisons (`EQUAL`, `NOT_EQUAL`,
+  `LESS`, `LESS_EQUAL`, `GREATER`, `GREATER_EQUAL`), `SELECT_V2`, `CAST`
+  and the `QUANTIZE` / `DEQUANTIZE` conversions;
 - without `int16`: int16 `ADD`, `SUB`, `MUL` and `SQUARED_DIFFERENCE`
   (Rust kernel, with broadcasting), `MEAN`, `SUM`, `REDUCE_MAX`,
   `REDUCE_MIN`, `PACK`, `UNPACK`, `SPACE_TO_BATCH_ND`,
   `BATCH_TO_SPACE_ND`, `RELU`, `RELU6`, `LEAKY_RELU`, `PRELU`, `ABS`,
   `MAXIMUM`, `MINIMUM`, `PAD`, `ARG_MAX`, `ARG_MIN`,
-  `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR` and `QUANTIZE` /
-  `DEQUANTIZE`.
+  `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR`, `SELECT_V2`, `CAST` and
+  `QUANTIZE` / `DEQUANTIZE`.
 
 The full matrix is in [Supported operators](supported-operators.md).
 

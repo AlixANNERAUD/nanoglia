@@ -503,8 +503,10 @@ has; `alpha` may be a constant or computed at run time.
   `input_scale / output_scale`, negative ones (times `alpha`) with
   `input_scale × alpha_scale / output_scale`, both computed in `f64` as
   in TensorFlow Lite Micro (LiteRT divides in `f32` first; the golden
-  cases check that both agree on their data). Refused when a multiplier
-  shifts left by more than 30 bits.
+  cases check that both agree on their data). TensorFlow Lite Micro has
+  no uint8 `PRELU`: uint8 uses the same `f64` formula, so on a rounding
+  tie its output can differ by 1 from LiteRT's, the only uint8 reference.
+  Refused when a multiplier shifts left by more than 30 bits.
 - `rust/prelu_f32`: `x >= 0 ? x : x * alpha`.
 
 ### ABS, NEG, SQRT, RSQRT, EXP, LOG
