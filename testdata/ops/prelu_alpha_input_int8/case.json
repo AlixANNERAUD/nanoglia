@@ -1,0 +1,40 @@
+{
+  "model": "testdata/ops/prelu_alpha_input_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        2,
+        3,
+        4
+      ],
+      "scale": 0.01610398106276989,
+      "zero_point": 57
+    },
+    {
+      "name": "alpha",
+      "dtype": "int8",
+      "shape": [
+        3,
+        4
+      ],
+      "scale": 0.0030097095295786858,
+      "zero_point": -52
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        2,
+        3,
+        4
+      ],
+      "scale": 0.010713043622672558,
+      "zero_point": 21
+    }
+  ],
+  "tolerance": 0
+}

@@ -122,13 +122,21 @@ the oracle checks them against NumPy. LiteRT 2.3's reference resolver
 registers `DEPTH_TO_SPACE` version 1 only: its int8 case declares version 1
 instead of 2.
 
+`PRELU` (`_f32`, `_int8`, `_uint8`, `_int16` with an int8 `alpha`) covers a
+per-channel `alpha`, an `alpha` of the input's shape fed at run time, and a
+saturated output. LiteRT computes the two requantization ratios in float,
+TensorFlow Lite Micro in double: the oracle checks each quantized output
+against TFLM's formula (a Python port of its fixed-point requantization), so
+that the golden data holds for both. LiteRT 2.3's reference resolver registers
+`PRELU` version 1 only, which every case declares.
+
 Operators covered: `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`,
 `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`, `SUB`, `MUL`, `MAXIMUM`,
 `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `LOGISTIC`, `TANH`, `RELU`, `RELU6`,
 `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`, `TRANSPOSE`, `SLICE`, `STRIDED_SLICE`,
 `GATHER`, `SPLIT`, `SPLIT_V`, `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`,
 `RESIZE_BILINEAR`, `TRANSPOSE_CONV`, `SUM`, `REDUCE_MAX`, `REDUCE_MIN`, `PACK`, `UNPACK`,
-`SPACE_TO_DEPTH`, `DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`.
+`SPACE_TO_DEPTH`, `DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `PRELU`.
 
 Not covered: int8 `CONCATENATION` with different input and output
 quantization, which the reference kernel rejects (as TensorFlow Lite Micro does).

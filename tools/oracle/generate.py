@@ -20,6 +20,7 @@ Run with `mise run oracle`, or `uv run python -I generate.py` from this director
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import sys
 import zlib
@@ -1428,9 +1429,112 @@ def layout_cases():
                 [[2, 1], [1, 2]])
 
 
+# TensorFlow Lite Micro's fixed-point requantization (double rounding), to
+# check that LiteRT's outputs are also TFLM's where their preparation differs.
+
+
+def quantize_multiplier(real: float) -> tuple[int, int]:
+    """TFLite `QuantizeMultiplier` (`real` is a Python float, i.e. a double)."""
+    if real == 0.0:
+        return 0, 0
+    mantissa, shift = math.frexp(real)
+    q = int(math.floor(abs(mantissa) * (1 << 31) + 0.5)) * (1 if mantissa > 0 else -1)
+    if q == 1 << 31:
+        q //= 2
+        shift += 1
+    if shift < -31:
+        return 0, 0
+    return q, shift
+
+
+def multiply_by_quantized_multiplier(x: int, multiplier: int, shift: int) -> int:
+    """TFLite `MultiplyByQuantizedMultiplier` without `TFLITE_SINGLE_ROUNDING`."""
+    a = x * (1 << max(shift, 0))
+    a = (a + (1 << 31)) % (1 << 32) - (1 << 31)  # int32 wrap-around
+    if a == multiplier == -(1 << 31):
+        high = (1 << 31) - 1
+    else:
+        ab = a * multiplier
+        n = ab + ((1 << 30) if ab >= 0 else 1 - (1 << 30))
+        high = (abs(n) >> 31) * (1 if n >= 0 else -1)  # C division truncates
+    exponent = max(-shift, 0)
+    mask = (1 << exponent) - 1
+    remainder = high & mask
+    threshold = (mask >> 1) + (1 if high < 0 else 0)
+    return (high >> exponent) + (1 if remainder > threshold else 0)
+
+
+def tflm_prelu(x, alpha, xs: Spec, as_: Spec, ys: Spec):
+    """TensorFlow Lite Micro's quantized PRELU (multipliers in double)."""
+    m1 = quantize_multiplier(float(xs.scale) / float(ys.scale))
+    m2 = quantize_multiplier(float(xs.scale) * float(as_.scale) / float(ys.scale))
+    info = np.iinfo(ys.dtype)
+    alpha = np.broadcast_to(alpha, x.shape)
+    out = np.empty(x.shape, dtype=ys.dtype)
+    for i in np.ndindex(x.shape):
+        v = int(x[i]) - xs.zero_point
+        if v >= 0:
+            r = multiply_by_quantized_multiplier(v, *m1)
+        else:
+            r = multiply_by_quantized_multiplier(v * (int(alpha[i]) - as_.zero_point), *m2)
+        out[i] = min(max(r + ys.zero_point, info.min), info.max)
+    return out
+
+
+def prelu(name, mode, shape, alpha_shape, const_alpha=True, out_range=None):
+    """PRELU. Quantized cases are checked against TensorFlow Lite Micro's
+    formula: LiteRT computes the multiplier ratios in float, TFLM in double,
+    which may round a multiplier differently (a case where the outputs differ
+    would be refused here)."""
+    rng = rng_for(name)
+    x = uniform(rng, shape, -3.0, 2.0)
+    a = uniform(rng, alpha_shape, -0.3, 0.6)
+    yf = np.where(x >= 0, x, x * a)
+    if out_range is not None:
+        yf = np.array(out_range, dtype=np.float32)
+    if mode == F32:
+        xs = as_ = ys = FLOAT
+    elif mode == "uint8":
+        xs, as_, ys = (to_uint8_spec(range_spec(I8, v)) for v in (x, a, yf))
+    else:
+        xs, ys = range_spec(mode, x), range_spec(mode, yf)
+        as_ = range_spec(I8, a)
+    xq, aq = xs.quantize(x), as_.quantize(a)
+    b = ModelBuilder()
+    xi = add_act(b, "input", xs, shape)
+    if const_alpha:
+        ai = b.add_tensor("alpha", aq.dtype, alpha_shape, data=aq, scale=as_.scale,
+                          zero_point=as_.zero_point)
+        inputs, feeds = [xi], [xq]
+    else:
+        ai = add_act(b, "alpha", as_, alpha_shape)
+        inputs, feeds = [xi, ai], [xq, aq]
+    y = add_act(b, "output", ys, shape)
+    # LiteRT 2.3's BUILTIN_REF resolver registers PRELU version 1 only, with
+    # the same kernel for every type.
+    b.add_operator(Op.PRELU, [xi, ai], [y], version=1)
+    model = b.build(inputs, [y])
+    if mode != F32:
+        got = run(model, feeds)[0]
+        if not np.array_equal(got, tflm_prelu(xq, aq, xs, as_, ys)):
+            raise AssertionError(f"{name}: LiteRT and TensorFlow Lite Micro disagree")
+    save_op_case(name, model, feeds)
+
+
+def prelu_cases():
+    prelu("prelu_channel_alpha_f32", F32, [1, 4, 4, 3], [3])
+    prelu("prelu_same_shape_alpha_input_f32", F32, [2, 5], [2, 5], const_alpha=False)
+    prelu("prelu_channel_alpha_int8", I8, [1, 4, 4, 3], [1, 1, 3])
+    prelu("prelu_alpha_input_int8", I8, [2, 3, 4], [3, 4], const_alpha=False)
+    prelu("prelu_saturated_int8", I8, [2, 8], [8], out_range=[-0.2, 0.3])
+    prelu("prelu_uint8", "uint8", [2, 6], [6])
+    prelu("prelu_int16", I16, [1, 3, 3, 2], [2])
+
+
 def extra_cases():
     reduce_cases()
     layout_cases()
+    prelu_cases()
 
 
 def op_cases():
