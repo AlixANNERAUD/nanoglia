@@ -1,0 +1,59 @@
+{
+  "model": "testdata/ops/pack_negative_axis_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int16",
+      "shape": [
+        3,
+        2
+      ],
+      "scale": 0.00024399999529123306,
+      "zero_point": 0
+    },
+    {
+      "name": "input_1",
+      "dtype": "int16",
+      "shape": [
+        3,
+        2
+      ],
+      "scale": 0.00024399999529123306,
+      "zero_point": 0
+    },
+    {
+      "name": "input_2",
+      "dtype": "int16",
+      "shape": [
+        3,
+        2
+      ],
+      "scale": 0.00024399999529123306,
+      "zero_point": 0
+    },
+    {
+      "name": "input_3",
+      "dtype": "int16",
+      "shape": [
+        3,
+        2
+      ],
+      "scale": 0.00024399999529123306,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "int16",
+      "shape": [
+        3,
+        2,
+        4
+      ],
+      "scale": 0.00024399999529123306,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

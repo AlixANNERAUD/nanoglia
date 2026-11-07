@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/space_to_depth_int64/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int64",
+      "shape": [
+        2,
+        2,
+        4,
+        1
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "int64",
+      "shape": [
+        2,
+        1,
+        2,
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

@@ -1290,8 +1290,147 @@ def reduce_cases():
         reduce_min_max(f"{opname}_axis1_int32", op, "int32", [4, 6, 3], [1], keep_dims=True)
 
 
+LAYOUT_SPECS = {**MOVE_SPECS, "int64": Spec("int64")}
+
+
+def pack(name, t, shape, n, axis):
+    spec = LAYOUT_SPECS[t]
+    ver = {"int8": 2, "int16": 3}.get(t, 1)
+    out = list(np.stack([np.zeros(shape)] * n, axis=axis).shape)
+    move_case(name, spec, Op.PACK, ver, [("data", shape)] * n, [out],
+              schema.PackOptionsT(valuesCount=n, axis=axis),
+              lambda *xs: np.stack(xs, axis=axis))
+
+
+def unpack(name, t, shape, axis):
+    spec = LAYOUT_SPECS[t]
+    ver = {"int8": 2, "uint8": 2, "int16": 4}.get(t, 1)
+    n = shape[axis]
+    out = [d for i, d in enumerate(shape) if i != axis % len(shape)]
+    move_case(name, spec, Op.UNPACK, ver, [("data", shape)], [out] * n,
+              schema.UnpackOptionsT(num=n, axis=axis),
+              lambda x: [np.take(x, i, axis=axis) for i in range(n)])
+
+
+def space_to_depth_ref(x, bs):
+    b, h, w, d = x.shape
+    y = x.reshape(b, h // bs, bs, w // bs, bs, d).transpose(0, 1, 3, 2, 4, 5)
+    return y.reshape(b, h // bs, w // bs, bs * bs * d)
+
+
+def depth_to_space_ref(x, bs):
+    b, h, w, d = x.shape
+    y = x.reshape(b, h, w, bs, bs, d // (bs * bs)).transpose(0, 1, 3, 2, 4, 5)
+    return y.reshape(b, h * bs, w * bs, d // (bs * bs))
+
+
+def depth_space(name, op, t, shape, bs):
+    spec = LAYOUT_SPECS[t]
+    ref = space_to_depth_ref if op == Op.SPACE_TO_DEPTH else depth_to_space_ref
+    out = list(ref(np.zeros(shape), bs).shape)
+    options = (schema.SpaceToDepthOptionsT if op == Op.SPACE_TO_DEPTH
+               else schema.DepthToSpaceOptionsT)()
+    options.blockSize = bs
+    # LiteRT 2.3's BUILTIN_REF resolver registers DEPTH_TO_SPACE version 1 only
+    # (op_version.cc asks for 2 on int8), with the same kernel for every type.
+    ver = 2 if t == "int8" and op == Op.SPACE_TO_DEPTH else 1
+    move_case(name, spec, op, ver, [("data", shape)], [out], options, lambda x: ref(x, bs))
+
+
+def as_4d(shape):
+    """TFLite's 4D view of a rank 3 shape: [b, h, d] is [b, h, 1, d]."""
+    return list(shape) if len(shape) == 4 else [shape[0], shape[1], 1, shape[2]]
+
+
+def space_to_batch_ref(x, block, pads, pad_value):
+    b, h, w, d = as_4d(x.shape)
+    block = list(block) + [1] * (2 - len(block))
+    pads = [list(p) for p in pads] + [[0, 0]] * (2 - len(pads))
+    xp = np.pad(x.reshape(b, h, w, d), [(0, 0), *map(tuple, pads), (0, 0)],
+                constant_values=pad_value)
+    (bh, bw), (_, hp, wp, _) = block, xp.shape
+    y = xp.reshape(b, hp // bh, bh, wp // bw, bw, d).transpose(2, 4, 0, 1, 3, 5)
+    y = y.reshape(bh * bw * b, hp // bh, wp // bw, d)
+    return y if x.ndim == 4 else y.reshape(y.shape[0], y.shape[1], d)
+
+
+def batch_to_space_ref(x, block, crops):
+    b, h, w, d = as_4d(x.shape)
+    block = list(block) + [1] * (2 - len(block))
+    crops = [list(c) for c in crops] + [[0, 0]] * (2 - len(crops))
+    (bh, bw), ob = block, b // (block[0] * block[1])
+    y = x.reshape(bh, bw, ob, h, w, d).transpose(2, 3, 0, 4, 1, 5)
+    y = y.reshape(ob, h * bh, w * bw, d)
+    y = y[:, crops[0][0]:h * bh - crops[0][1], crops[1][0]:w * bw - crops[1][1], :]
+    return y if x.ndim == 4 else y.reshape(y.shape[0], y.shape[1], d)
+
+
+def space_batch(name, op, t, shape, block, pads):
+    """SPACE_TO_BATCH_ND (`pads` are paddings) or BATCH_TO_SPACE_ND (`pads` are
+    crops). Quantized padding is the zero point, as in TFLite."""
+    spec = LAYOUT_SPECS[t]
+    ver = {"int8": 2, "uint8": 2, "int16": 4}.get(t, 3 if len(shape) == 3 else 1)
+    if op == Op.SPACE_TO_BATCH_ND:
+        pad_value = spec.zero_point if spec.zero_point is not None else 0
+        ref = lambda x, *_: space_to_batch_ref(x, block, pads, pad_value)  # noqa: E731
+        options = schema.SpaceToBatchNDOptionsT()
+    else:
+        ref = lambda x, *_: batch_to_space_ref(x, block, pads)  # noqa: E731
+        options = schema.BatchToSpaceNDOptionsT()
+    out = list(ref(np.zeros(shape, dtype=np.float32)).shape)
+    move_case(name, spec, op, ver,
+              [("data", shape), ("const", i32(block)), ("const", i32(pads))], [out],
+              options, ref)
+
+
+def layout_cases():
+    # PACK
+    pack("pack_axis0_f32", "f32", [2, 3], 3, 0)
+    pack("pack_axis1_int8", "int8", [2, 3, 4], 2, 1)
+    pack("pack_negative_axis_int16", "int16", [3, 2], 4, -1)
+    pack("pack_scalars_uint8", "uint8", [], 5, 0)
+    pack("pack_last_axis_int32", "int32", [2, 2, 3], 2, 3)
+    pack("pack_int64", "int64", [4], 3, 1)
+    # UNPACK
+    unpack("unpack_axis0_f32", "f32", [3, 2, 4], 0)
+    unpack("unpack_axis1_int8", "int8", [2, 4, 3], 1)
+    unpack("unpack_negative_axis_int16", "int16", [2, 3, 5], -1)
+    unpack("unpack_to_scalars_uint8", "uint8", [6], 0)
+    unpack("unpack_int32", "int32", [2, 3], 1)
+    # SPACE_TO_DEPTH, DEPTH_TO_SPACE
+    S2D, D2S = Op.SPACE_TO_DEPTH, Op.DEPTH_TO_SPACE
+    depth_space("space_to_depth_2_f32", S2D, "f32", [1, 4, 6, 3], 2)
+    depth_space("space_to_depth_3_int8", S2D, "int8", [2, 6, 6, 2], 3)
+    depth_space("space_to_depth_uint8", S2D, "uint8", [1, 2, 2, 1], 2)
+    depth_space("space_to_depth_whole_int32", S2D, "int32", [1, 4, 4, 5], 4)
+    depth_space("space_to_depth_int64", S2D, "int64", [2, 2, 4, 1], 2)
+    depth_space("depth_to_space_2_f32", D2S, "f32", [1, 2, 3, 12], 2)
+    depth_space("depth_to_space_3_int8", D2S, "int8", [2, 2, 2, 18], 3)
+    depth_space("depth_to_space_uint8", D2S, "uint8", [1, 3, 1, 4], 2)
+    depth_space("depth_to_space_whole_int32", D2S, "int32", [1, 1, 1, 16], 4)
+    # SPACE_TO_BATCH_ND, BATCH_TO_SPACE_ND
+    S2B, B2S = Op.SPACE_TO_BATCH_ND, Op.BATCH_TO_SPACE_ND
+    space_batch("space_to_batch_nd_f32", S2B, "f32", [1, 4, 4, 3], [2, 2], [[0, 0], [0, 0]])
+    space_batch("space_to_batch_nd_padded_int8", S2B, "int8", [2, 5, 3, 2], [2, 2],
+                [[1, 0], [0, 1]])
+    space_batch("space_to_batch_nd_rank3_uint8", S2B, "uint8", [2, 5, 3], [3], [[1, 0]])
+    space_batch("space_to_batch_nd_int16", S2B, "int16", [1, 3, 4, 2], [3, 2],
+                [[0, 0], [1, 1]])
+    space_batch("space_to_batch_nd_padding_only_f32", S2B, "f32", [1, 2, 2, 1], [1, 1],
+                [[1, 1], [0, 2]])
+    space_batch("batch_to_space_nd_f32", B2S, "f32", [4, 2, 2, 3], [2, 2], [[0, 0], [0, 0]])
+    space_batch("batch_to_space_nd_cropped_int8", B2S, "int8", [8, 3, 2, 2], [2, 2],
+                [[1, 0], [0, 1]])
+    space_batch("batch_to_space_nd_rank3_uint8", B2S, "uint8", [6, 2, 3], [3], [[1, 0]])
+    space_batch("batch_to_space_nd_int16", B2S, "int16", [6, 1, 3, 2], [3, 2],
+                [[0, 0], [1, 1]])
+    space_batch("batch_to_space_nd_large_crops_f32", B2S, "f32", [4, 3, 3, 1], [2, 2],
+                [[2, 1], [1, 2]])
+
+
 def extra_cases():
     reduce_cases()
+    layout_cases()
 
 
 def op_cases():
