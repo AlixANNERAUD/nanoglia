@@ -39,6 +39,7 @@ _TENSOR_TYPES = {
     np.dtype(np.uint8): schema.TensorType.UINT8,
     np.dtype(np.int16): schema.TensorType.INT16,
     np.dtype(np.int32): schema.TensorType.INT32,
+    np.dtype(np.uint32): schema.TensorType.UINT32,
     np.dtype(np.int64): schema.TensorType.INT64,
     np.dtype(np.bool_): schema.TensorType.BOOL,
 }

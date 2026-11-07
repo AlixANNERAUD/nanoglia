@@ -59,7 +59,7 @@ fn dtype_size(dtype: &str) -> usize {
     match dtype {
         "int8" | "uint8" | "bool" => 1,
         "int16" => 2,
-        "int32" | "float32" => 4,
+        "int32" | "uint32" | "float32" => 4,
         "int64" => 8,
         other => panic!("unknown dtype {other}"),
     }
@@ -79,6 +79,9 @@ fn max_diff(dtype: &str, actual: &[u8], expected: &[u8]) -> f64 {
                 .abs(),
             "int32" => (i32::from_le_bytes(a.try_into().unwrap()) as f64
                 - i32::from_le_bytes(e.try_into().unwrap()) as f64)
+                .abs(),
+            "uint32" => (u32::from_le_bytes(a.try_into().unwrap()) as f64
+                - u32::from_le_bytes(e.try_into().unwrap()) as f64)
                 .abs(),
             "int64" => {
                 let (a, e) = (

@@ -1,0 +1,45 @@
+{
+  "model": "testdata/ops/select_v2_scalar_condition_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "bool",
+      "shape": [],
+      "scale": 0.0,
+      "zero_point": 0
+    },
+    {
+      "name": "input_1",
+      "dtype": "int16",
+      "shape": [
+        2,
+        3
+      ],
+      "scale": 0.00024399999529123306,
+      "zero_point": 0
+    },
+    {
+      "name": "input_2",
+      "dtype": "int16",
+      "shape": [
+        2,
+        3
+      ],
+      "scale": 0.00024399999529123306,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "int16",
+      "shape": [
+        2,
+        3
+      ],
+      "scale": 0.00024399999529123306,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

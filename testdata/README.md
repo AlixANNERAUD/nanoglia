@@ -41,8 +41,9 @@ Every case directory holds:
   ```
 
   - `model`: path of the model, relative to the repository root;
-  - `dtype`: one of `int8`, `int16`, `uint8`, `int32`, `int64` (indices fed
-    to `GATHER`, indices computed by `ARG_MAX` / `ARG_MIN`), `float32`;
+  - `dtype`: one of `int8`, `int16`, `uint8`, `int32`, `uint32`, `int64`
+    (indices fed to `GATHER`, indices computed by `ARG_MAX` / `ARG_MIN`),
+    `bool` (comparisons, `SELECT_V2`, `CAST`), `float32`;
   - `scale`, `zero_point`: per-tensor quantization of the tensor; `0.0` and `0`
     for a tensor that is not quantized (float);
   - `tolerance`: how far an output may be from the golden one. For quantized
@@ -143,6 +144,16 @@ oracle checks it), so that the golden data holds for both.
 (`_f32`, `_int32`, `_int8`, with broadcasting). LiteRT 2.3 has no int16
 `SQUARED_DIFFERENCE`, and quantized `DIV` is not supported by nanoglia.
 
+The comparisons (`_f32`, `_int32`, `_int64`, `_bool`, and quantized `_int8`
+and `_uint8` inputs of different scales, with broadcasting) draw their values
+from a few levels so that ties are frequent; `SELECT_V2` (`_f32`, `_int8`,
+`_int16`, `_int32`) broadcasts its three inputs, one case with a scalar
+condition; `CAST` covers every conversion family (float to integer with
+truncation and saturation, integer narrowing and widening, bool, uint32), with
+no NaN input (TensorFlow Lite Micro converts NaN to 0, LiteRT 2.3 to the
+largest value). The oracle checks them against NumPy, except the rescaled
+quantized comparisons and the saturating casts.
+
 Operators covered: `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`,
 `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`, `SUB`, `MUL`, `MAXIMUM`,
 `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `LOGISTIC`, `TANH`, `RELU`, `RELU6`,
@@ -150,7 +161,8 @@ Operators covered: `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`,
 `GATHER`, `SPLIT`, `SPLIT_V`, `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`,
 `RESIZE_BILINEAR`, `TRANSPOSE_CONV`, `SUM`, `REDUCE_MAX`, `REDUCE_MIN`, `PACK`, `UNPACK`,
 `SPACE_TO_DEPTH`, `DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `PRELU`, `ABS`, `NEG`, `SQRT`,
-`RSQRT`, `EXP`, `LOG`, `DIV`, `SQUARED_DIFFERENCE`.
+`RSQRT`, `EXP`, `LOG`, `DIV`, `SQUARED_DIFFERENCE`, `EQUAL`, `NOT_EQUAL`, `LESS`,
+`LESS_EQUAL`, `GREATER`, `GREATER_EQUAL`, `SELECT_V2`, `CAST`.
 
 Not covered: int8 `CONCATENATION` with different input and output
 quantization, which the reference kernel rejects (as TensorFlow Lite Micro does).

@@ -1668,12 +1668,138 @@ def binary_cases():
     squared_difference("squared_difference_int8", I8, [2, 8], [2, 8])
 
 
+def checked_case(name, op, specs, out_specs, values, out_shapes, options, expected, ver=1):
+    """A one-operator case whose LiteRT outputs must equal `expected` (NumPy),
+    when it is not None."""
+    b = ModelBuilder()
+    ins = [add_act(b, f"input_{i}", s, list(v.shape)) for i, (s, v) in
+           enumerate(zip(specs, values))]
+    outs = [add_act(b, f"output_{i}", s, shp) for i, (s, shp) in
+            enumerate(zip(out_specs, out_shapes))]
+    b.add_operator(op, ins, outs, options, version=ver)
+    model = b.build(ins, outs)
+    if expected is not None:
+        got = run(model, list(values))
+        for g, w in zip(got, expected, strict=True):
+            if g.shape != w.shape or not np.array_equal(g, w):
+                raise AssertionError(f"{name}: LiteRT and NumPy disagree")
+    save_op_case(name, model, list(values), tolerance=0)
+
+
+COMPARISONS = {
+    Op.EQUAL: ("equal", np.equal, schema.EqualOptionsT),
+    Op.NOT_EQUAL: ("not_equal", np.not_equal, schema.NotEqualOptionsT),
+    Op.LESS: ("less", np.less, schema.LessOptionsT),
+    Op.LESS_EQUAL: ("less_equal", np.less_equal, schema.LessEqualOptionsT),
+    Op.GREATER: ("greater", np.greater, schema.GreaterOptionsT),
+    Op.GREATER_EQUAL: ("greater_equal", np.greater_equal, schema.GreaterEqualOptionsT),
+}
+
+
+def levels(rng, shape, dtype, step=0.5):
+    """Values on a few levels, so that ties are frequent."""
+    return (rng.integers(-3, 4, size=shape) * step).astype(dtype)
+
+
+def comparison(name, op, t, shape_a, shape_b, specs=None):
+    """A comparison. Quantized inputs (`specs`) hold the same real levels at
+    different scales; their results are TFLite's rescaled comparison, which
+    LiteRT computes (not checked against NumPy)."""
+    rng = rng_for(name)
+    fn, options = COMPARISONS[op][1], COMPARISONS[op][2]()
+    out_shape = list(np.broadcast_shapes(tuple(shape_a), tuple(shape_b)))
+    if specs is not None:
+        a = specs[0].quantize(levels(rng, shape_a, np.float32, 0.3))
+        b = specs[1].quantize(levels(rng, shape_b, np.float32, 0.3))
+        checked_case(name, op, specs, [Spec("bool")], [a, b], [out_shape], options, None,
+                     ver=2)
+        return
+    if t == "bool":
+        a = rng.integers(0, 2, size=shape_a).astype(np.bool_)
+        b = rng.integers(0, 2, size=shape_b).astype(np.bool_)
+    else:
+        a, b = levels(rng, shape_a, t), levels(rng, shape_b, t)
+    spec = Spec(np.dtype(t).name)
+    checked_case(name, op, [spec, spec], [Spec("bool")], [a, b], [out_shape], options,
+                 [fn(a, b)])
+
+
+def select_v2(name, t, shape_c, shape_x, shape_y):
+    rng = rng_for(name)
+    spec = LAYOUT_SPECS[t]
+    c = rng.integers(0, 2, size=shape_c).astype(np.bool_)
+    x, y = move_data(rng, spec, shape_x), move_data(rng, spec, shape_y)
+    out_shape = list(np.broadcast_shapes(tuple(shape_c), tuple(shape_x), tuple(shape_y)))
+    checked_case(name, Op.SELECT_V2, [Spec("bool"), spec, spec], [spec], [c, x, y],
+                 [out_shape], schema.SelectV2OptionsT(), [np.where(c, x, y)])
+
+
+def cast(name, x, to, expected=True):
+    """CAST of `x` to dtype `to`; checked against NumPy's conversion unless
+    `expected` is False (float values out of the integer range, which TFLite
+    saturates)."""
+    to = np.dtype(to)
+    options = schema.CastOptionsT()
+    options.inDataType = tensor_type(x.dtype)
+    options.outDataType = tensor_type(to)
+    want = None
+    if expected:
+        want = [x.astype(to) if x.dtype != np.float32 or to.kind != "i" else np.trunc(x).astype(to)]
+    checked_case(name, Op.CAST, [Spec(x.dtype.name)], [Spec(to.name)], [x], [list(x.shape)],
+                 options, want)
+
+
+def logic_cases():
+    for op, (opname, _, _) in COMPARISONS.items():
+        comparison(f"{opname}_broadcast_f32", op, np.float32, [2, 3, 4], [4])
+        comparison(f"{opname}_int8", op, I8, [3, 5], [3, 5],
+                   specs=[Spec(I8, 0.05, -3), Spec(I8, 0.1, 10)])
+    comparison("equal_int32", Op.EQUAL, np.int32, [4, 3], [4, 1])
+    comparison("less_int64", Op.LESS, np.int64, [2, 6], [6])
+    comparison("greater_equal_int32", Op.GREATER_EQUAL, np.int32, [3, 1, 2], [4, 1])
+    comparison("equal_bool", Op.EQUAL, "bool", [2, 5], [5])
+    comparison("not_equal_bool", Op.NOT_EQUAL, "bool", [3, 4], [3, 4])
+    comparison("less_broadcast_uint8", Op.LESS, "uint8", [2, 3, 4], [3, 1],
+               specs=[Spec("uint8", 0.02, 128), Spec("uint8", 0.07, 100)])
+    comparison("greater_broadcast_int8", Op.GREATER, I8, [2, 3, 4], [4],
+                specs=[Spec(I8, 0.031, 0), Spec(I8, 0.017, -50)])
+
+    select_v2("select_v2_broadcast_f32", "f32", [2, 1, 4], [3, 1], [1])
+    select_v2("select_v2_int8", "int8", [3, 5], [3, 5], [3, 5])
+    select_v2("select_v2_scalar_condition_int16", "int16", [], [2, 3], [2, 3])
+    select_v2("select_v2_int32", "int32", [4, 1], [1, 3], [4, 3])
+
+    rng = rng_for("cast")
+    floats = uniform(rng, [3, 8], -300.0, 300.0)
+    floats.flat[:4] = [0.0, -0.0, -1.5, 2.5]
+    cast("cast_f32_to_int32", floats, np.int32)
+    cast("cast_f32_to_int8_saturated", floats, np.int8, expected=False)
+    cast("cast_f32_to_bool", floats, np.bool_)
+    cast("cast_f32_to_uint8_saturated", floats, np.uint8, expected=False)
+    ints = rng.integers(-2**31, 2**31, size=[20], dtype=np.int64).astype(np.int32)
+    cast("cast_int32_to_f32", ints, np.float32)
+    cast("cast_int32_to_int8", ints, np.int8)
+    cast("cast_int32_to_uint32", ints, np.uint32)
+    cast("cast_int32_to_bool", np.array([0, 1, -1, 7, 0], dtype=np.int32), np.bool_)
+    cast("cast_int64_to_int32", rng.integers(-2**40, 2**40, size=[9], dtype=np.int64),
+         np.int32)
+    cast("cast_int8_to_f32", rng.integers(-128, 128, size=[2, 5], dtype=np.int8), np.float32)
+    cast("cast_uint8_to_int32", rng.integers(0, 256, size=[7], dtype=np.uint8), np.int32)
+    cast("cast_int16_to_int32", rng.integers(-2**15, 2**15, size=[7], dtype=np.int16),
+         np.int32)
+    cast("cast_uint32_to_f32", rng.integers(0, 2**32, size=[8], dtype=np.uint32),
+         np.float32)
+    cast("cast_bool_to_f32", rng.integers(0, 2, size=[6]).astype(np.bool_), np.float32)
+    cast("cast_bool_to_int32", rng.integers(0, 2, size=[6]).astype(np.bool_), np.int32)
+
+
 def extra_cases():
     reduce_cases()
     layout_cases()
     prelu_cases()
     unary_cases()
     binary_cases()
+    logic_cases()
 
 
 def op_cases():

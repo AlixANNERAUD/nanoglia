@@ -1,0 +1,39 @@
+{
+  "model": "testdata/ops/not_equal_broadcast_f32/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "float32",
+      "shape": [
+        2,
+        3,
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    },
+    {
+      "name": "input_1",
+      "dtype": "float32",
+      "shape": [
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "bool",
+      "shape": [
+        2,
+        3,
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}
