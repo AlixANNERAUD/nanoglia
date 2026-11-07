@@ -1,0 +1,26 @@
+{
+  "model": "testdata/ops/cast_bool_to_int32/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "bool",
+      "shape": [
+        6
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "int32",
+      "shape": [
+        6
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

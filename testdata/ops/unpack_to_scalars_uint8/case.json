@@ -1,0 +1,59 @@
+{
+  "model": "testdata/ops/unpack_to_scalars_uint8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "uint8",
+      "shape": [
+        6
+      ],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "uint8",
+      "shape": [],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    },
+    {
+      "name": "output_1",
+      "dtype": "uint8",
+      "shape": [],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    },
+    {
+      "name": "output_2",
+      "dtype": "uint8",
+      "shape": [],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    },
+    {
+      "name": "output_3",
+      "dtype": "uint8",
+      "shape": [],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    },
+    {
+      "name": "output_4",
+      "dtype": "uint8",
+      "shape": [],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    },
+    {
+      "name": "output_5",
+      "dtype": "uint8",
+      "shape": [],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    }
+  ],
+  "tolerance": 0
+}

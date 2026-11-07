@@ -1,0 +1,29 @@
+{
+  "model": "testdata/ops/sum_negative_axis_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        2,
+        3,
+        7
+      ],
+      "scale": 0.015509098768234253,
+      "zero_point": -66
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        2,
+        3
+      ],
+      "scale": 0.0533890500664711,
+      "zero_point": -128
+    }
+  ],
+  "tolerance": 0
+}

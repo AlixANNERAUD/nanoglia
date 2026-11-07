@@ -1,0 +1,29 @@
+{
+  "model": "testdata/ops/sum_axis1_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int16",
+      "shape": [
+        3,
+        6,
+        4
+      ],
+      "scale": 0.007577978074550629,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int16",
+      "shape": [
+        3,
+        4
+      ],
+      "scale": 0.028188472613692284,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

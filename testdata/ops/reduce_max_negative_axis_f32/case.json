@@ -1,0 +1,29 @@
+{
+  "model": "testdata/ops/reduce_max_negative_axis_f32/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "float32",
+      "shape": [
+        2,
+        3,
+        7
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "float32",
+      "shape": [
+        2,
+        3
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

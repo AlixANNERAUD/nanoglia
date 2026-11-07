@@ -1,0 +1,49 @@
+{
+  "model": "testdata/ops/unpack_axis0_f32/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "float32",
+      "shape": [
+        3,
+        2,
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "float32",
+      "shape": [
+        2,
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    },
+    {
+      "name": "output_1",
+      "dtype": "float32",
+      "shape": [
+        2,
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    },
+    {
+      "name": "output_2",
+      "dtype": "float32",
+      "shape": [
+        2,
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

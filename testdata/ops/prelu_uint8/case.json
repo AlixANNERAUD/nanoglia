@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/prelu_uint8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "uint8",
+      "shape": [
+        2,
+        6
+      ],
+      "scale": 0.01831279881298542,
+      "zero_point": 146
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "uint8",
+      "shape": [
+        2,
+        6
+      ],
+      "scale": 0.009234613738954067,
+      "zero_point": 39
+    }
+  ],
+  "tolerance": 0
+}

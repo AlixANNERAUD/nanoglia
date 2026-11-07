@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/prelu_channel_alpha_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        3
+      ],
+      "scale": 0.019014034420251846,
+      "zero_point": 24
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        3
+      ],
+      "scale": 0.013041427358984947,
+      "zero_point": -23
+    }
+  ],
+  "tolerance": 0
+}

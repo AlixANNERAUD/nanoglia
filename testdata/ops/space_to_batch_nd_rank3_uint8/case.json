@@ -1,0 +1,30 @@
+{
+  "model": "testdata/ops/space_to_batch_nd_rank3_uint8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "uint8",
+      "shape": [
+        2,
+        5,
+        3
+      ],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "uint8",
+      "shape": [
+        6,
+        2,
+        3
+      ],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    }
+  ],
+  "tolerance": 0
+}

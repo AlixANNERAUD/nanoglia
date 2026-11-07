@@ -105,6 +105,28 @@ int64 bias.
 | | int8, uint8 → int8, uint8, int16; int16 → int8, int16; int32 → int8, int16 | `rust/requantize` | — |
 | `DEQUANTIZE` | int8, uint8, int16, f16 → f32 | `rust/dequantize` | — |
 | `MEAN` | f32, int8, uint8, int16 | `rust/mean` | — |
+| `SUM` | f32, int8, uint8, int16, int32, int64 | `rust/sum` | — |
+| `REDUCE_MAX`, `REDUCE_MIN` | f32, int8, uint8, int16, int32, int64 | `rust/reduce_min_max` | — |
+| `PACK` | f32, int8, uint8, int16, int32, uint32, int64 | `rust/pack` | — |
+| `UNPACK` | f32, f16, bf16, int8, uint8, int16, int32, bool | `rust/unpack` | — |
+| `SPACE_TO_DEPTH` | f32, int8, uint8, int32, int64 | `rust/space_to_depth` | — |
+| `DEPTH_TO_SPACE` | f32, int8, uint8, int32, int64 | `rust/depth_to_space` | — |
+| `SPACE_TO_BATCH_ND` | f32, int8, uint8, int16, int32, int64 | `rust/space_to_batch_nd` | — |
+| `BATCH_TO_SPACE_ND` | f32, int8, uint8, int16, int32, int64 | `rust/batch_to_space_nd` | — |
+| `PRELU` | f32 | `rust/prelu_f32` | float |
+| | int8, uint8, int16 (int8 `alpha`) | `rust/prelu_q` | — |
+| `ABS`, `NEG`, `SQRT`, `RSQRT`, `EXP`, `LOG` | f32 | `rust/unary_f32` | float |
+| `ABS` | int8, int16 | `rust/unary_q` | — |
+| | int32, int16 without quantization | `rust/unary_int` | — |
+| `NEG` | int32, int64 | `rust/unary_int` | — |
+| `RSQRT` | int8 | `rust/unary_q` | — |
+| `DIV` | f32, int32 | `rust/binary` | — |
+| `SQUARED_DIFFERENCE` | f32, int32 | `rust/binary` | — |
+| | int8, int16 | `rust/binary_q` | — |
+| `EQUAL`, `NOT_EQUAL` | f32, int32, int64, bool; int8, uint8 (rescaled) → bool | `rust/comparison` | — |
+| `LESS`, `LESS_EQUAL`, `GREATER`, `GREATER_EQUAL` | f32, int32, int64; int8, uint8 (rescaled) → bool | `rust/comparison` | — |
+| `SELECT_V2` | f32, bool, int8, uint8, int16, int32, uint32, int64 | `rust/select_v2` | — |
+| `CAST` | between bool, int8, uint8, int16, int32, uint32, int64, f32 | `rust/cast` | — |
 | `RELU`, `RELU6`, `RELU_N1_TO_1` | f32 | `rust/relu_f32` | float |
 | | int8, uint8, int16 | `rust/relu_q` | — |
 | `LEAKY_RELU` | f32 | `rust/leaky_relu_f32` | float |
@@ -411,11 +433,146 @@ with a non-empty output is refused (TFLite would read before the input).
 - `rust/dequantize`: int8 and uint8 per tensor or per channel, int16 per
   tensor with zero point 0, f16.
 
-### MEAN
+### MEAN, SUM, REDUCE_MAX, REDUCE_MIN
 
 The axes are a constant int32 or int64 tensor (negative axes wrap,
-duplicates are ignored); input and output of the same type; int16 needs
-zero points 0.
+duplicates are ignored); input and output of the same type, a non-empty
+input, an output with the element count of the kept dimensions
+(`keep_dims` either way); int16 needs zero points 0.
+
+- `rust/mean`, `rust/sum`: quantized inputs are summed in an `i32` minus
+  their zero point, then requantized in fixed point with
+  `QuantizeMultiplier(input_scale / output_scale)` (computed in `f64`;
+  `MEAN` folds the division by the element count into it), as TensorFlow
+  Lite Micro does. Refused when that multiplier shifts left by more than
+  30 bits. f32, int32 and int64 sums add the inputs in order; integer sums
+  wrap around. TensorFlow Lite Micro has `SUM` on f32, int8 and int16
+  only; the uint8, int32 and int64 versions follow LiteRT's reference
+  kernel.
+- `rust/reduce_min_max`: quantized inputs and output must share their
+  scale and zero point (values are compared as integers, as TensorFlow
+  Lite Micro requires). Each output starts from the lowest (highest)
+  finite value of the type and takes the next input only if it compares
+  greater (smaller): f32 NaN inputs are skipped, and a slice of `-inf`
+  (`+inf`) gives the lowest (highest) finite f32, as in TensorFlow Lite
+  Micro (LiteRT's reference kernel starts a reduction over every axis from
+  the first input instead). TensorFlow Lite Micro has f32 and int8 only;
+  the other types follow LiteRT's reference kernel.
+
+### PACK, UNPACK
+
+`PACK` stacks `values_count` inputs of the same shape along a new axis
+of the output (`axis` in `-rank - 1..=rank` of the inputs, negative values
+wrap), at most 16 inputs; `UNPACK` splits the `num` slices of an input
+axis into as many outputs, which drop that axis, at most 8 outputs; the
+input must not be empty. Every tensor has the same type, scale and zero
+point (LiteRT refuses the other cases), and the declared output shapes
+must be the ones TFLite computes. TensorFlow Lite Micro has f32, int8,
+int16, int32 and int64 `PACK`, f32, int8, int16 and int32 `UNPACK`; the
+other types follow LiteRT's reference kernels.
+
+### SPACE_TO_DEPTH, DEPTH_TO_SPACE, SPACE_TO_BATCH_ND, BATCH_TO_SPACE_ND
+
+These operators only move bytes; the declared output shape must be the
+one TFLite computes. TensorFlow Lite Micro has f32 and int8 only; the
+other types follow LiteRT's reference kernels.
+
+- `rust/space_to_depth`, `rust/depth_to_space`: rank 4, a `block_size`
+  of at least 1 that divides the input height and width
+  (`SPACE_TO_DEPTH`), or whose square divides the input depth
+  (`DEPTH_TO_SPACE`). As in TFLite, quantization is not checked: values
+  are copied unchanged.
+- `rust/space_to_batch_nd`, `rust/batch_to_space_nd`: rank 3 or 4 (a
+  rank 3 tensor has one spatial dimension), a constant int32 block shape
+  of one value per spatial dimension, each at least 1, and constant int32
+  paddings or crops of shape `[spatial dimensions, 2]`, non-negative.
+  Padded (uncropped) sizes must fit an `i32`, and the crops must leave a
+  non-negative size. Quantized inputs and outputs share their scale and
+  zero point (int16: zero point 0). `SPACE_TO_BATCH_ND` pads 8-bit
+  tensors with the byte of the output zero point and other types with
+  zeros, as the reference kernel's `memset` does.
+
+### PRELU
+
+`alpha` broadcasts to the input (up to rank 6), whose shape the output
+has; `alpha` may be a constant or computed at run time.
+
+- `rust/prelu_q`: int8 and uint8 take an `alpha` of their type, int16 an
+  int8 one; zero points in the range of their type, 0 for int16
+  activations. Non-negative inputs are requantized with
+  `input_scale / output_scale`, negative ones (times `alpha`) with
+  `input_scale × alpha_scale / output_scale`, both computed in `f64` as
+  in TensorFlow Lite Micro (LiteRT divides in `f32` first; the golden
+  cases check that both agree on their data). TensorFlow Lite Micro has
+  no uint8 `PRELU`: uint8 uses the same `f64` formula, so on a rounding
+  tie its output can differ by 1 from LiteRT's, the only uint8 reference.
+  Refused when a multiplier shifts left by more than 30 bits.
+- `rust/prelu_f32`: `x >= 0 ? x : x * alpha`.
+
+### ABS, NEG, SQRT, RSQRT, EXP, LOG
+
+Input and output of the same type and shape.
+
+- `rust/unary_f32`: `EXP` matches glibc's `expf` bit for bit; `LOG` uses
+  `libm`'s `logf`, within the float tolerance of glibc's; `SQRT` and
+  `RSQRT` (`1 / sqrt(x)`) are correctly rounded square roots.
+- `rust/unary_q`: zero points in the range of their type, 0 for int16.
+  `ABS` (int8, int16) rescales `|x - input_zero_point|` with
+  `input_scale / output_scale` when the scales differ. `RSQRT` (int8)
+  computes `1 / sqrt(x - input_zero_point)` with TFLite's fixed-point
+  `GetInvSqrtQuantizedMultiplierExp` and requantizes with
+  `1 / (sqrt(input_scale) × output_scale)`; an input equal to the zero
+  point gives 127, and an input below it (a negative value) makes
+  `compute` fail with `InvalidArgument` ([Errors](errors.md)), as TFLite
+  fails. Multipliers are computed in `f64` as in TensorFlow Lite Micro
+  (LiteRT computes the ratios in `f32`), and refused when they would
+  shift by more than 30 bits left or 31 right.
+- `rust/unary_int`: LiteRT's `ABS` on int32 and on int16 tensors without
+  quantization, `NEG` on int32 and int64; the most negative value maps to
+  itself. TensorFlow Lite Micro has none of them.
+
+### DIV, SQUARED_DIFFERENCE
+
+Two inputs of the output's type, broadcasting up to rank 6.
+
+- `rust/binary`: f32 `DIV` with an optional fused activation (a zero
+  denominator gives an infinity or NaN, which the activation range clamps
+  as in TFLite: `x / 0` becomes the largest finite float of its sign);
+  int32 `DIV` without quantization, truncating like C++, where any zero in
+  the second input makes `compute` fail with `InvalidArgument`
+  ([Errors](errors.md)), as TFLite fails; `SQUARED_DIFFERENCE` on f32 and
+  int32 (wrapping around), without activation.
+- `rust/binary_q`: `SQUARED_DIFFERENCE` as TensorFlow Lite Micro computes
+  it: both inputs rescaled to twice the larger input scale with
+  `left_shift = 7` (int8) or `0` (int16), the difference squared in
+  `i32`, then requantized. LiteRT has no int16 version (unit tests cover
+  it).
+- Quantized `DIV` is refused: TensorFlow Lite Micro's `DivElementwise`
+  shifts right by more than 31 bits when the quotient is small, which
+  C++ leaves undefined and Cortex-M, AArch64 and x86 compute differently,
+  so no result is bit-exact with "TFLite" there.
+
+### EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, SELECT_V2, CAST
+
+- `rust/comparison`: two inputs of the same type, broadcasting up to
+  rank 6, a bool output. int8 and uint8 inputs are rescaled to their own
+  scale before comparing, as in TFLite: `(x - zero_point) << 8` times
+  `QuantizeMultiplierSmallerThanOneExp(scale)`, so each scale must be
+  below 1 (TensorFlow Lite Micro requires it) and each zero point in the
+  range of its type. bool supports `EQUAL` and `NOT_EQUAL` only. int16 is
+  refused: TensorFlow Lite Micro computes int16 `GREATER` without its
+  rescaling parameters, and LiteRT compares int16 raw or rescaled
+  depending on the operator. TensorFlow Lite Micro has no uint8 version.
+- `rust/select_v2`: a bool condition and two value inputs of the
+  output's type, all three broadcast to the output's shape (up to rank
+  6). Values are copied unchanged, whatever their quantization, as in
+  TFLite. `SELECT` (version 1, with its row semantics) is not supported.
+- `rust/cast`: input and output of the same shape. Integers convert like
+  C++'s `static_cast` (narrowing keeps the low bits), to bool as `x != 0`;
+  f32 converts to integers with TensorFlow Lite Micro's `SafeCast`
+  (truncation toward zero, saturation, NaN to 0; LiteRT 2.3 maps NaN to
+  the largest value instead). Quantization is not looked at: raw values
+  are converted. TensorFlow Lite Micro has no uint8 or int64 version.
 
 ### Activations
 
@@ -442,7 +599,11 @@ zero points 0.
 
 The golden cases of `testdata/` exercise `CONV_2D`, `DEPTHWISE_CONV_2D`,
 `FULLY_CONNECTED`, `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`,
-`SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `LOGISTIC`,
+`SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `SUM`,
+`REDUCE_MAX`, `REDUCE_MIN`, `PACK`, `UNPACK`, `SPACE_TO_DEPTH`,
+`DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `PRELU`, `ABS`, `NEG`, `SQRT`, `RSQRT`, `EXP`, `LOG`,
+`DIV`, `SQUARED_DIFFERENCE`, `EQUAL`, `NOT_EQUAL`, `LESS`, `LESS_EQUAL`, `GREATER`,
+`GREATER_EQUAL`, `SELECT_V2`, `CAST`, `LOGISTIC`,
 `TANH`, `RELU`, `RELU6`, `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`,
 `TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`, `SPLIT`, `SPLIT_V`,
 `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR` and

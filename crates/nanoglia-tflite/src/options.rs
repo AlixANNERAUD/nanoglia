@@ -13,6 +13,7 @@ use crate::schema::{
     fully_connected, gather, leaky_relu, operator, pool_2d, reducer, resize_bilinear,
     resize_nearest_neighbor, softmax, split, squeeze, strided_slice, transpose_conv,
 };
+use crate::schema::{block_size, pack, unpack};
 
 /// The `BuiltinOptions` union type carried by `op`, for the operators whose options are decoded.
 pub(crate) fn expected_type(op: BuiltinOp) -> Option<u8> {
@@ -43,6 +44,10 @@ pub(crate) fn expected_type(op: BuiltinOp) -> Option<u8> {
         BuiltinOp::RESIZE_BILINEAR => ty::RESIZE_BILINEAR,
         BuiltinOp::RESIZE_NEAREST_NEIGHBOR => ty::RESIZE_NEAREST_NEIGHBOR,
         BuiltinOp::TRANSPOSE_CONV => ty::TRANSPOSE_CONV,
+        BuiltinOp::PACK => ty::PACK,
+        BuiltinOp::UNPACK => ty::UNPACK,
+        BuiltinOp::SPACE_TO_DEPTH => ty::SPACE_TO_DEPTH,
+        BuiltinOp::DEPTH_TO_SPACE => ty::DEPTH_TO_SPACE,
         _ => return None,
     })
 }
@@ -125,6 +130,9 @@ pub(crate) fn verify(ty: u8, table: &Table<'_>) -> Result<()> {
             (transpose_conv::FUSED_ACTIVATION_FUNCTION, BYTE),
             (transpose_conv::QUANTIZED_BIAS_TYPE, BYTE),
         ],
+        ty::PACK => &[(pack::VALUES_COUNT, INT), (pack::AXIS, INT)],
+        ty::UNPACK => &[(unpack::NUM, INT), (unpack::AXIS, INT)],
+        ty::SPACE_TO_DEPTH | ty::DEPTH_TO_SPACE => &[(block_size::BLOCK_SIZE, INT)],
         _ => &[],
     };
     for &(id, size) in scalars {
@@ -300,6 +308,17 @@ pub(crate) fn decode<'m>(
             stride_h: f.scalar(transpose_conv::STRIDE_H, 0)?,
             activation: f.activation(transpose_conv::FUSED_ACTIVATION_FUNCTION)?,
         }),
+        ty::PACK => OpOptions::Pack {
+            values_count: f.scalar(pack::VALUES_COUNT, 0)?,
+            axis: f.scalar(pack::AXIS, 0)?,
+        },
+        ty::UNPACK => OpOptions::Unpack {
+            num: f.scalar(unpack::NUM, 0)?,
+            axis: f.scalar(unpack::AXIS, 0)?,
+        },
+        ty::SPACE_TO_DEPTH | ty::DEPTH_TO_SPACE => OpOptions::BlockSize {
+            block_size: f.scalar(block_size::BLOCK_SIZE, 0)?,
+        },
         _ => OpOptions::None,
     })
 }

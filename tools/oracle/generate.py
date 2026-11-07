@@ -20,6 +20,7 @@ Run with `mise run oracle`, or `uv run python -I generate.py` from this director
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import sys
 import zlib
@@ -251,11 +252,21 @@ def tensor_json(d) -> dict:
     }
 
 
-def write_case(case_dir: Path, model_path: Path, inputs, tolerance: float) -> None:
-    """Run `model_path` on `inputs` and write the case files into `case_dir`."""
+def write_case(case_dir: Path, model_path: Path, inputs, tolerance: float,
+               expected=None) -> None:
+    """Run `model_path` on `inputs` and write the case files into `case_dir`.
+
+    `expected` replaces LiteRT's outputs, for the few cases its reference
+    kernels compute wrongly (see `quantized_sum`).
+    """
     case_dir.mkdir(parents=True, exist_ok=True)
     it = make_interpreter(model_path=model_path)
     outputs = invoke(it, inputs)
+    if expected is not None:
+        for got, want in zip(outputs, expected, strict=True):
+            if got.shape != want.shape or got.dtype != want.dtype:
+                raise ValueError(f"{case_dir.name}: expected {want.dtype}{want.shape}")
+        outputs = expected
     for i, x in enumerate(inputs):
         (case_dir / f"input_{i}.bin").write_bytes(x.astype(x.dtype.newbyteorder("<")).tobytes())
     for i, y in enumerate(outputs):
@@ -274,7 +285,7 @@ def write_case(case_dir: Path, model_path: Path, inputs, tolerance: float) -> No
 CASES: list[str] = []
 
 
-def save_op_case(name: str, model: bytes, inputs, tolerance=None) -> None:
+def save_op_case(name: str, model: bytes, inputs, tolerance=None, expected=None) -> None:
     if name in CASES:
         raise ValueError(f"duplicate case {name}")
     CASES.append(name)
@@ -285,7 +296,7 @@ def save_op_case(name: str, model: bytes, inputs, tolerance=None) -> None:
     if tolerance is None:
         outputs = make_interpreter(model_content=model).get_output_details()
         tolerance = FLOAT_TOLERANCE if any(d["dtype"] == np.float32 for d in outputs) else 0
-    write_case(case_dir, model_path, inputs, tolerance)
+    write_case(case_dir, model_path, inputs, tolerance, expected)
 
 
 def single_op(op, in_specs, in_shapes, out_spec, out_shape, options=None, consts=(), ver_spec=None):
@@ -1147,6 +1158,650 @@ def vision_cases():
                    act=Act.RELU)
 
 
+# --------------------------------------------------------------------------
+# Reductions, layout, PRELU, element-wise and comparison cases
+# --------------------------------------------------------------------------
+
+
+def to_uint8_spec(spec: Spec) -> Spec:
+    """The uint8 quantization whose values are those of int8 `spec` plus 128."""
+    return Spec("uint8", spec.scale, spec.zero_point + 128)
+
+
+def reduce_out_shape(shape, axis, keep_dims):
+    axes = {a % len(shape) for a in axis}
+    if keep_dims:
+        return [1 if i in axes else d for i, d in enumerate(shape)]
+    return [d for i, d in enumerate(shape) if i not in axes]
+
+
+def reduce_model(op, in_spec, shape, axis, axis_type, keep_dims, out_spec, version):
+    b = ModelBuilder()
+    xi = add_act(b, "input", in_spec, shape)
+    ai = b.add_tensor("axis", axis_type, [len(axis)], data=np.array(axis, dtype=axis_type))
+    y = add_act(b, "output", out_spec, reduce_out_shape(shape, axis, keep_dims))
+    b.add_operator(op, [xi, ai], [y], schema.ReducerOptionsT(keepDims=keep_dims),
+                   version=version)
+    return b.build([xi], [y])
+
+
+def reduce_min_max(name, op, t, shape, axis, keep_dims=False):
+    """REDUCE_MAX / REDUCE_MIN: the output keeps the input quantization (TFLite
+    requires it); checked against NumPy."""
+    spec = MOVE_SPECS[t]
+    x = move_data(rng_for(name), spec, shape)
+    ver = {"f32": 1, "int32": 1, "uint8": 1, "int8": 2, "int16": 3}[t]
+    model = reduce_model(op, spec, shape, axis, np.int32, keep_dims, spec, ver)
+    axes = tuple(a % len(shape) for a in axis)
+    want = (np.max if op == Op.REDUCE_MAX else np.min)(x, axis=axes, keepdims=keep_dims)
+    got = run(model, [x])[0]
+    if got.shape != want.shape or not np.array_equal(got, want):
+        raise AssertionError(f"{name}: LiteRT and NumPy disagree")
+    save_op_case(name, model, [x], tolerance=0)
+
+
+def quantized_sum(name, t, shape, axis, keep_dims=False, out_scale=None):
+    """Quantized SUM, its output range calibrated on the float sum (or
+    `out_scale`, to saturate).
+
+    Workaround (issue #27): LiteRT 2.3's reference SUM reads int8 (and int16)
+    data as uint8 bytes (tflite/kernels/reduce.cc, `QuantizedMeanOrSum` calls
+    the reference kernel with `GetTensorData<uint8_t>` for every type; fixed
+    on LiteRT's main branch). Its uint8 path is right, and computes exactly
+    what the int8 path should once the data and both zero points are shifted
+    by 128: the int8 golden outputs come from the equivalent uint8 model,
+    shifted back. Drop this (and `expected`) with a LiteRT release that
+    passes `GetTensorData<T>`.
+    """
+    rng = rng_for(name)
+    xf = uniform(rng, shape, -1.0, 3.0)
+    axes = tuple(a % len(shape) for a in axis)
+    yf = np.sum(xf, axis=axes, keepdims=keep_dims)
+    in8, out8 = range_spec(I8, xf), range_spec(I8, yf)
+    if out_scale is not None:
+        out8 = Spec(I8, out_scale, out8.zero_point)
+    in_u8, out_u8 = to_uint8_spec(in8), to_uint8_spec(out8)
+    xu = in_u8.quantize(xf)
+    model_u8 = reduce_model(Op.SUM, in_u8, shape, axis, np.int32, keep_dims, out_u8, 1)
+    if t == "uint8":
+        save_op_case(name, model_u8, [xu], tolerance=0)
+        return
+    yu = run(model_u8, [xu])[0]
+    model = reduce_model(Op.SUM, in8, shape, axis, np.int32, keep_dims, out8, 2)
+    x8 = (xu.astype(np.int16) - 128).astype(np.int8)
+    y8 = (yu.astype(np.int16) - 128).astype(np.int8)
+    save_op_case(name, model, [x8], tolerance=0, expected=[y8])
+
+
+def int16_sum(name, shape, axis, keep_dims=False):
+    """int16 SUM (zero points 0, as TFLite requires). LiteRT 2.3 reads int16
+    data as uint8 bytes too (see `quantized_sum`); the golden outputs come from
+    the uint8 model with zero points 128, whose values are those of the int16
+    model plus 128. Inputs stay in int8 range and outputs must not saturate in
+    uint8, so that both models compute the same sums and products."""
+    rng = rng_for(name)
+    xf = uniform(rng, shape, -1.0, 1.0)
+    axes = tuple(a % len(shape) for a in axis)
+    yf = np.sum(xf, axis=axes, keepdims=keep_dims)
+    in_scale = float(np.float32(np.abs(xf).max() / 127.0))
+    out_scale = float(np.float32(np.abs(yf).max() / 100.0))
+    in_u8, out_u8 = Spec("uint8", in_scale, 128), Spec("uint8", out_scale, 128)
+    xu = in_u8.quantize(xf)
+    model_u8 = reduce_model(Op.SUM, in_u8, shape, axis, np.int32, keep_dims, out_u8, 1)
+    yu = run(model_u8, [xu])[0]
+    if yu.min() == 0 or yu.max() == 255:
+        raise AssertionError(f"{name}: the uint8 sum saturates")
+    in16, out16 = Spec(I16, in_scale, 0), Spec(I16, out_scale, 0)
+    # LiteRT 2.3's BUILTIN_REF resolver registers SUM versions 1 and 2 only.
+    model = reduce_model(Op.SUM, in16, shape, axis, np.int32, keep_dims, out16, 2)
+    x16 = xu.astype(np.int16) - 128
+    y16 = yu.astype(np.int16) - 128
+    save_op_case(name, model, [x16], tolerance=0, expected=[y16])
+
+
+def float_sum(name, t, shape, axis, keep_dims=False):
+    spec = MOVE_SPECS[t]
+    x = move_data(rng_for(name), spec, shape)
+    model = reduce_model(Op.SUM, spec, shape, axis, np.int32, keep_dims, spec, 1)
+    save_op_case(name, model, [x])
+
+
+def reduce_cases():
+    MAX, MIN = Op.REDUCE_MAX, Op.REDUCE_MIN
+    # SUM
+    float_sum("sum_axes_1_2_keep_dims_f32", "f32", [2, 3, 4, 5], [1, 2], keep_dims=True)
+    float_sum("sum_negative_axis_f32", "f32", [3, 4, 5], [-1])
+    float_sum("sum_all_axes_f32", "f32", [2, 3, 4], [0, 1, 2])
+    float_sum("sum_duplicate_axes_int32", "int32", [4, 3, 5], [0, -3, 2])
+    quantized_sum("sum_axes_1_2_keep_dims_int8", "int8", [1, 4, 4, 8], [1, 2], keep_dims=True)
+    quantized_sum("sum_negative_axis_int8", "int8", [2, 3, 7], [-1])
+    quantized_sum("sum_saturated_int8", "int8", [2, 6, 5], [1], out_scale=0.01)
+    quantized_sum("sum_axis0_uint8", "uint8", [5, 3, 4], [0])
+    quantized_sum("sum_axes_0_2_uint8", "uint8", [3, 4, 5], [0, 2], keep_dims=True)
+    int16_sum("sum_axis1_int16", [3, 6, 4], [1])
+    int16_sum("sum_all_axes_keep_dims_int16", [2, 3, 4], [0, 1, 2], keep_dims=True)
+    # REDUCE_MAX / REDUCE_MIN
+    for op, opname in ((MAX, "reduce_max"), (MIN, "reduce_min")):
+        reduce_min_max(f"{opname}_axes_1_2_keep_dims_int8", op, "int8", [1, 4, 4, 6], [1, 2],
+                       keep_dims=True)
+        reduce_min_max(f"{opname}_negative_axis_f32", op, "f32", [2, 3, 7], [-1])
+        reduce_min_max(f"{opname}_all_axes_f32", op, "f32", [3, 4, 2], [0, 1, 2])
+        reduce_min_max(f"{opname}_axis0_uint8", op, "uint8", [5, 3, 4], [0])
+        reduce_min_max(f"{opname}_axes_0_2_int16", op, "int16", [3, 4, 5], [0, -1])
+        reduce_min_max(f"{opname}_axis1_int32", op, "int32", [4, 6, 3], [1], keep_dims=True)
+
+
+LAYOUT_SPECS = {**MOVE_SPECS, "int64": Spec("int64")}
+
+
+def pack(name, t, shape, n, axis):
+    spec = LAYOUT_SPECS[t]
+    ver = {"int8": 2, "int16": 3}.get(t, 1)
+    out = list(np.stack([np.zeros(shape)] * n, axis=axis).shape)
+    move_case(name, spec, Op.PACK, ver, [("data", shape)] * n, [out],
+              schema.PackOptionsT(valuesCount=n, axis=axis),
+              lambda *xs: np.stack(xs, axis=axis))
+
+
+def unpack(name, t, shape, axis):
+    spec = LAYOUT_SPECS[t]
+    ver = {"int8": 2, "uint8": 2, "int16": 4}.get(t, 1)
+    n = shape[axis]
+    out = [d for i, d in enumerate(shape) if i != axis % len(shape)]
+    move_case(name, spec, Op.UNPACK, ver, [("data", shape)], [out] * n,
+              schema.UnpackOptionsT(num=n, axis=axis),
+              lambda x: [np.take(x, i, axis=axis) for i in range(n)])
+
+
+def space_to_depth_ref(x, bs):
+    b, h, w, d = x.shape
+    y = x.reshape(b, h // bs, bs, w // bs, bs, d).transpose(0, 1, 3, 2, 4, 5)
+    return y.reshape(b, h // bs, w // bs, bs * bs * d)
+
+
+def depth_to_space_ref(x, bs):
+    b, h, w, d = x.shape
+    y = x.reshape(b, h, w, bs, bs, d // (bs * bs)).transpose(0, 1, 3, 2, 4, 5)
+    return y.reshape(b, h * bs, w * bs, d // (bs * bs))
+
+
+def depth_space(name, op, t, shape, bs):
+    spec = LAYOUT_SPECS[t]
+    ref = space_to_depth_ref if op == Op.SPACE_TO_DEPTH else depth_to_space_ref
+    out = list(ref(np.zeros(shape), bs).shape)
+    options = (schema.SpaceToDepthOptionsT if op == Op.SPACE_TO_DEPTH
+               else schema.DepthToSpaceOptionsT)()
+    options.blockSize = bs
+    # LiteRT 2.3's BUILTIN_REF resolver registers DEPTH_TO_SPACE version 1 only
+    # (op_version.cc asks for 2 on int8), with the same kernel for every type.
+    ver = 2 if t == "int8" and op == Op.SPACE_TO_DEPTH else 1
+    move_case(name, spec, op, ver, [("data", shape)], [out], options, lambda x: ref(x, bs))
+
+
+def as_4d(shape):
+    """TFLite's 4D view of a rank 3 shape: [b, h, d] is [b, h, 1, d]."""
+    return list(shape) if len(shape) == 4 else [shape[0], shape[1], 1, shape[2]]
+
+
+def space_to_batch_ref(x, block, pads, pad_value):
+    b, h, w, d = as_4d(x.shape)
+    block = list(block) + [1] * (2 - len(block))
+    pads = [list(p) for p in pads] + [[0, 0]] * (2 - len(pads))
+    xp = np.pad(x.reshape(b, h, w, d), [(0, 0), *map(tuple, pads), (0, 0)],
+                constant_values=pad_value)
+    (bh, bw), (_, hp, wp, _) = block, xp.shape
+    y = xp.reshape(b, hp // bh, bh, wp // bw, bw, d).transpose(2, 4, 0, 1, 3, 5)
+    y = y.reshape(bh * bw * b, hp // bh, wp // bw, d)
+    return y if x.ndim == 4 else y.reshape(y.shape[0], y.shape[1], d)
+
+
+def batch_to_space_ref(x, block, crops):
+    b, h, w, d = as_4d(x.shape)
+    block = list(block) + [1] * (2 - len(block))
+    crops = [list(c) for c in crops] + [[0, 0]] * (2 - len(crops))
+    (bh, bw), ob = block, b // (block[0] * block[1])
+    y = x.reshape(bh, bw, ob, h, w, d).transpose(2, 3, 0, 4, 1, 5)
+    y = y.reshape(ob, h * bh, w * bw, d)
+    y = y[:, crops[0][0]:h * bh - crops[0][1], crops[1][0]:w * bw - crops[1][1], :]
+    return y if x.ndim == 4 else y.reshape(y.shape[0], y.shape[1], d)
+
+
+def space_batch(name, op, t, shape, block, pads):
+    """SPACE_TO_BATCH_ND (`pads` are paddings) or BATCH_TO_SPACE_ND (`pads` are
+    crops). Quantized padding is the zero point, as in TFLite."""
+    spec = LAYOUT_SPECS[t]
+    ver = {"int8": 2, "uint8": 2, "int16": 4}.get(t, 3 if len(shape) == 3 else 1)
+    if op == Op.SPACE_TO_BATCH_ND:
+        pad_value = spec.zero_point if spec.zero_point is not None else 0
+        ref = lambda x, *_: space_to_batch_ref(x, block, pads, pad_value)  # noqa: E731
+        options = schema.SpaceToBatchNDOptionsT()
+    else:
+        ref = lambda x, *_: batch_to_space_ref(x, block, pads)  # noqa: E731
+        options = schema.BatchToSpaceNDOptionsT()
+    out = list(ref(np.zeros(shape, dtype=np.float32)).shape)
+    move_case(name, spec, op, ver,
+              [("data", shape), ("const", i32(block)), ("const", i32(pads))], [out],
+              options, ref)
+
+
+def layout_cases():
+    # PACK
+    pack("pack_axis0_f32", "f32", [2, 3], 3, 0)
+    pack("pack_axis1_int8", "int8", [2, 3, 4], 2, 1)
+    pack("pack_negative_axis_int16", "int16", [3, 2], 4, -1)
+    pack("pack_scalars_uint8", "uint8", [], 5, 0)
+    pack("pack_last_axis_int32", "int32", [2, 2, 3], 2, 3)
+    pack("pack_int64", "int64", [4], 3, 1)
+    # UNPACK
+    unpack("unpack_axis0_f32", "f32", [3, 2, 4], 0)
+    unpack("unpack_axis1_int8", "int8", [2, 4, 3], 1)
+    unpack("unpack_negative_axis_int16", "int16", [2, 3, 5], -1)
+    unpack("unpack_to_scalars_uint8", "uint8", [6], 0)
+    unpack("unpack_int32", "int32", [2, 3], 1)
+    # SPACE_TO_DEPTH, DEPTH_TO_SPACE
+    S2D, D2S = Op.SPACE_TO_DEPTH, Op.DEPTH_TO_SPACE
+    depth_space("space_to_depth_2_f32", S2D, "f32", [1, 4, 6, 3], 2)
+    depth_space("space_to_depth_3_int8", S2D, "int8", [2, 6, 6, 2], 3)
+    depth_space("space_to_depth_uint8", S2D, "uint8", [1, 2, 2, 1], 2)
+    depth_space("space_to_depth_whole_int32", S2D, "int32", [1, 4, 4, 5], 4)
+    depth_space("space_to_depth_int64", S2D, "int64", [2, 2, 4, 1], 2)
+    depth_space("depth_to_space_2_f32", D2S, "f32", [1, 2, 3, 12], 2)
+    depth_space("depth_to_space_3_int8", D2S, "int8", [2, 2, 2, 18], 3)
+    depth_space("depth_to_space_uint8", D2S, "uint8", [1, 3, 1, 4], 2)
+    depth_space("depth_to_space_whole_int32", D2S, "int32", [1, 1, 1, 16], 4)
+    # SPACE_TO_BATCH_ND, BATCH_TO_SPACE_ND
+    S2B, B2S = Op.SPACE_TO_BATCH_ND, Op.BATCH_TO_SPACE_ND
+    space_batch("space_to_batch_nd_f32", S2B, "f32", [1, 4, 4, 3], [2, 2], [[0, 0], [0, 0]])
+    space_batch("space_to_batch_nd_padded_int8", S2B, "int8", [2, 5, 3, 2], [2, 2],
+                [[1, 0], [0, 1]])
+    space_batch("space_to_batch_nd_rank3_uint8", S2B, "uint8", [2, 5, 3], [3], [[1, 0]])
+    space_batch("space_to_batch_nd_int16", S2B, "int16", [1, 3, 4, 2], [3, 2],
+                [[0, 0], [1, 1]])
+    space_batch("space_to_batch_nd_padding_only_f32", S2B, "f32", [1, 2, 2, 1], [1, 1],
+                [[1, 1], [0, 2]])
+    space_batch("batch_to_space_nd_f32", B2S, "f32", [4, 2, 2, 3], [2, 2], [[0, 0], [0, 0]])
+    space_batch("batch_to_space_nd_cropped_int8", B2S, "int8", [8, 3, 2, 2], [2, 2],
+                [[1, 0], [0, 1]])
+    space_batch("batch_to_space_nd_rank3_uint8", B2S, "uint8", [6, 2, 3], [3], [[1, 0]])
+    space_batch("batch_to_space_nd_int16", B2S, "int16", [6, 1, 3, 2], [3, 2],
+                [[0, 0], [1, 1]])
+    space_batch("batch_to_space_nd_large_crops_f32", B2S, "f32", [4, 3, 3, 1], [2, 2],
+                [[2, 1], [1, 2]])
+
+
+# TensorFlow Lite Micro's fixed-point requantization (double rounding), to
+# check that LiteRT's outputs are also TFLM's where their preparation differs.
+
+
+def quantize_multiplier(real: float) -> tuple[int, int]:
+    """TFLite `QuantizeMultiplier` (`real` is a Python float, i.e. a double)."""
+    if real == 0.0:
+        return 0, 0
+    mantissa, shift = math.frexp(real)
+    q = int(math.floor(abs(mantissa) * (1 << 31) + 0.5)) * (1 if mantissa > 0 else -1)
+    if q == 1 << 31:
+        q //= 2
+        shift += 1
+    if shift < -31:
+        return 0, 0
+    return q, shift
+
+
+def multiply_by_quantized_multiplier(x: int, multiplier: int, shift: int) -> int:
+    """TFLite `MultiplyByQuantizedMultiplier` without `TFLITE_SINGLE_ROUNDING`."""
+    a = x * (1 << max(shift, 0))
+    a = (a + (1 << 31)) % (1 << 32) - (1 << 31)  # int32 wrap-around
+    if a == multiplier == -(1 << 31):
+        high = (1 << 31) - 1
+    else:
+        ab = a * multiplier
+        n = ab + ((1 << 30) if ab >= 0 else 1 - (1 << 30))
+        high = (abs(n) >> 31) * (1 if n >= 0 else -1)  # C division truncates
+    exponent = max(-shift, 0)
+    mask = (1 << exponent) - 1
+    remainder = high & mask
+    threshold = (mask >> 1) + (1 if high < 0 else 0)
+    return (high >> exponent) + (1 if remainder > threshold else 0)
+
+
+def tflm_prelu(x, alpha, xs: Spec, as_: Spec, ys: Spec):
+    """TensorFlow Lite Micro's quantized PRELU (multipliers in double)."""
+    m1 = quantize_multiplier(float(xs.scale) / float(ys.scale))
+    m2 = quantize_multiplier(float(xs.scale) * float(as_.scale) / float(ys.scale))
+    info = np.iinfo(ys.dtype)
+    alpha = np.broadcast_to(alpha, x.shape)
+    out = np.empty(x.shape, dtype=ys.dtype)
+    for i in np.ndindex(x.shape):
+        v = int(x[i]) - xs.zero_point
+        if v >= 0:
+            r = multiply_by_quantized_multiplier(v, *m1)
+        else:
+            r = multiply_by_quantized_multiplier(v * (int(alpha[i]) - as_.zero_point), *m2)
+        out[i] = min(max(r + ys.zero_point, info.min), info.max)
+    return out
+
+
+def prelu(name, mode, shape, alpha_shape, const_alpha=True, out_range=None):
+    """PRELU. Quantized cases are checked against TensorFlow Lite Micro's
+    formula: LiteRT computes the multiplier ratios in float, TFLM in double,
+    which may round a multiplier differently (a case where the outputs differ
+    would be refused here)."""
+    rng = rng_for(name)
+    x = uniform(rng, shape, -3.0, 2.0)
+    a = uniform(rng, alpha_shape, -0.3, 0.6)
+    yf = np.where(x >= 0, x, x * a)
+    if out_range is not None:
+        yf = np.array(out_range, dtype=np.float32)
+    if mode == F32:
+        xs = as_ = ys = FLOAT
+    elif mode == "uint8":
+        xs, as_, ys = (to_uint8_spec(range_spec(I8, v)) for v in (x, a, yf))
+    else:
+        xs, ys = range_spec(mode, x), range_spec(mode, yf)
+        as_ = range_spec(I8, a)
+    xq, aq = xs.quantize(x), as_.quantize(a)
+    b = ModelBuilder()
+    xi = add_act(b, "input", xs, shape)
+    if const_alpha:
+        ai = b.add_tensor("alpha", aq.dtype, alpha_shape, data=aq, scale=as_.scale,
+                          zero_point=as_.zero_point)
+        inputs, feeds = [xi], [xq]
+    else:
+        ai = add_act(b, "alpha", as_, alpha_shape)
+        inputs, feeds = [xi, ai], [xq, aq]
+    y = add_act(b, "output", ys, shape)
+    # LiteRT 2.3's BUILTIN_REF resolver registers PRELU version 1 only, with
+    # the same kernel for every type.
+    b.add_operator(Op.PRELU, [xi, ai], [y], version=1)
+    model = b.build(inputs, [y])
+    if mode != F32:
+        got = run(model, feeds)[0]
+        if not np.array_equal(got, tflm_prelu(xq, aq, xs, as_, ys)):
+            raise AssertionError(f"{name}: LiteRT and TensorFlow Lite Micro disagree")
+    save_op_case(name, model, feeds)
+
+
+def prelu_cases():
+    prelu("prelu_channel_alpha_f32", F32, [1, 4, 4, 3], [3])
+    prelu("prelu_same_shape_alpha_input_f32", F32, [2, 5], [2, 5], const_alpha=False)
+    prelu("prelu_channel_alpha_int8", I8, [1, 4, 4, 3], [1, 1, 3])
+    prelu("prelu_alpha_input_int8", I8, [2, 3, 4], [3, 4], const_alpha=False)
+    prelu("prelu_saturated_int8", I8, [2, 8], [8], out_range=[-0.2, 0.3])
+    prelu("prelu_uint8", "uint8", [2, 6], [6])
+    prelu("prelu_int16", I16, [1, 3, 3, 2], [2])
+
+
+def same_multiplier(name, litert_real: float, tflm_real: float):
+    """Fail unless LiteRT's and TensorFlow Lite Micro's ratios give the same
+    `QuantizeMultiplier`: where the rest of the kernel is the same code, the
+    case then holds for both."""
+    if quantize_multiplier(litert_real) != quantize_multiplier(tflm_real):
+        raise AssertionError(f"{name}: LiteRT and TFLM multipliers differ")
+
+
+def unary_case(name, op, spec_in, spec_out, x, ver=1):
+    """A one-operator unary case on the quantized (or raw) values `x`."""
+    b = ModelBuilder()
+    xi = add_act(b, "input", spec_in, list(x.shape))
+    y = add_act(b, "output", spec_out, list(x.shape))
+    b.add_operator(op, [xi], [y], version=ver)
+    save_op_case(name, b.build([xi], [y]), [x])
+
+
+def float_unary(name, op, shape, lo, hi, special=()):
+    x = uniform(rng_for(name), shape, lo, hi)
+    x.flat[:len(special)] = special
+    unary_case(name, op, FLOAT, FLOAT, x)
+
+
+def abs_q(name, dtype, shape, s_in, z_in, s_out, z_out):
+    f32 = np.float32
+    same_multiplier(name, float(f32(s_in) / f32(s_out)), s_in / s_out)
+    xs, ys = Spec(dtype, s_in, z_in), Spec(dtype, s_out, z_out)
+    x = xs.quantize(uniform(rng_for(name), shape, -2.0, 1.5))
+    unary_case(name, Op.ABS, xs, ys, x, ver={I8: 2, I16: 3}[dtype])
+
+
+def rsqrt_q(name, shape, s_in, z_in, s_out, z_out):
+    """int8 RSQRT on non-negative values (TFLite fails on negative ones), one
+    of them exactly zero (the output is then 127)."""
+    f32 = np.float32
+    same_multiplier(name, 1.0 / float(np.sqrt(f32(s_in)) * f32(s_out)),
+                    1.0 / (math.sqrt(s_in) * s_out))
+    xs, ys = Spec(I8, s_in, z_in), Spec(I8, s_out, z_out)
+    x = xs.quantize(uniform(rng_for(name), shape, 0.0, 3.0))
+    x.flat[0] = z_in
+    unary_case(name, Op.RSQRT, xs, ys, x, ver=2)
+
+
+def unary_cases():
+    float_unary("abs_f32", Op.ABS, [2, 3, 4], -3.0, 3.0, [-0.0, np.inf, -np.inf])
+    float_unary("neg_f32", Op.NEG, [3, 5], -3.0, 3.0, [0.0, -0.0])
+    float_unary("sqrt_f32", Op.SQRT, [2, 7], 0.0, 9.0, [0.0, 1.0, 4.0])
+    float_unary("rsqrt_f32", Op.RSQRT, [2, 7], 0.01, 9.0, [1.0, 4.0, 0.25])
+    float_unary("exp_f32", Op.EXP, [4, 6], -10.0, 10.0, [0.0, -100.0, 1.0])
+    float_unary("log_f32", Op.LOG, [4, 6], 0.001, 100.0, [1.0, np.e, 0.0])
+    rng = rng_for("abs_int32")
+    unary_case("abs_int32", Op.ABS, Spec("int32"), Spec("int32"),
+               rng.integers(-100000, 100000, size=[3, 4], dtype=np.int32))
+    rng = rng_for("abs_raw_int16")
+    unary_case("abs_raw_int16", Op.ABS, Spec(I16), Spec(I16),
+               rng.integers(-30000, 30000, size=[10], dtype=np.int16))
+    rng = rng_for("neg_int32")
+    unary_case("neg_int32", Op.NEG, Spec("int32"), Spec("int32"),
+               rng.integers(-100000, 100000, size=[2, 5], dtype=np.int32))
+    rng = rng_for("neg_int64")
+    unary_case("neg_int64", Op.NEG, Spec("int64"), Spec("int64"),
+               rng.integers(-10**12, 10**12, size=[7], dtype=np.int64))
+    # Scales whose ratios f32 and f64 compute alike (see `same_multiplier`).
+    abs_q("abs_rescaled_int8", I8, [2, 4, 5], 3 / 256, -10, 1 / 64, -128)
+    abs_q("abs_same_scale_int8", I8, [3, 6], 0.02, 5, 0.02, -128)
+    abs_q("abs_int16", I16, [4, 5], 5 / 4096, 0, 1 / 256, 0)
+    rsqrt_q("rsqrt_int8", [3, 7], 9 / 1024, -128, 5 / 128, -128)
+    rsqrt_q("rsqrt_offset_int8", [2, 9], 1 / 64, -100, 3 / 128, -120)
+
+
+def binary_case(name, op, specs, out_spec, values, options, ver=1):
+    """A one-operator case with two model inputs `values` (already of the
+    specs' types) and an output of their broadcast shape."""
+    b = ModelBuilder()
+    ins = [add_act(b, f"input_{i}", s, list(v.shape)) for i, (s, v) in
+           enumerate(zip(specs, values))]
+    out_shape = list(np.broadcast_shapes(*(v.shape for v in values)))
+    y = add_act(b, "output", out_spec, out_shape)
+    b.add_operator(op, ins, [y], options, version=ver)
+    save_op_case(name, b.build(ins, [y]), list(values))
+
+
+def div_f32(name, shape_a, shape_b, act=Act.NONE, zeros=False):
+    """f32 DIV; with `zeros`, some denominators are 0 (TFLite clamps the
+    infinities to the activation range, here the largest finite floats) and
+    one numerator too (0 / 0 is NaN)."""
+    rng = rng_for(name)
+    a = uniform(rng, shape_a, -3.0, 3.0)
+    b = uniform(rng, shape_b, 0.5, 2.0) * rng.choice([-1, 1], size=shape_b).astype(np.float32)
+    if zeros:
+        b.flat[0] = 0.0
+        a.flat[0] = 0.0
+    binary_case(name, Op.DIV, [FLOAT, FLOAT], FLOAT, [a, b],
+                schema.DivOptionsT(fusedActivationFunction=act))
+
+
+def div_int32(name, shape_a, shape_b, act=Act.NONE):
+    rng = rng_for(name)
+    a = rng.integers(-1000, 1000, size=shape_a, dtype=np.int32)
+    b = rng.integers(1, 50, size=shape_b, dtype=np.int32) * rng.choice([-1, 1], size=shape_b)
+    i32_ = Spec("int32")
+    binary_case(name, Op.DIV, [i32_, i32_], i32_, [a, b.astype(np.int32)],
+                schema.DivOptionsT(fusedActivationFunction=act), ver=2)
+
+
+def squared_difference(name, mode, shape_a, shape_b):
+    rng = rng_for(name)
+    opts = schema.SquaredDifferenceOptionsT()
+    if mode == "int32":
+        i32_ = Spec("int32")
+        a = rng.integers(-1000, 1000, size=shape_a, dtype=np.int32)
+        b = rng.integers(-1000, 1000, size=shape_b, dtype=np.int32)
+        binary_case(name, Op.SQUARED_DIFFERENCE, [i32_, i32_], i32_, [a, b], opts)
+        return
+    a = uniform(rng, shape_a, -1.0, 3.0)
+    b = uniform(rng, shape_b, -2.0, 1.5)
+    if mode == F32:
+        binary_case(name, Op.SQUARED_DIFFERENCE, [FLOAT, FLOAT], FLOAT, [a, b], opts)
+        return
+    sa, sb = range_spec(mode, a), range_spec(mode, b)
+    sy = range_spec(mode, np.square(a - b))
+    binary_case(name, Op.SQUARED_DIFFERENCE, [sa, sb], sy, [sa.quantize(a), sb.quantize(b)],
+                opts, ver=2)
+
+
+def binary_cases():
+    div_f32("div_broadcast_f32", [2, 3, 4], [4])
+    div_f32("div_by_zero_f32", [3, 5], [3, 5], zeros=True)
+    div_f32("div_relu6_f32", [2, 1, 5], [3, 1], act=Act.RELU6)
+    div_int32("div_int32", [2, 6], [6])
+    div_int32("div_relu_int32", [3, 4], [3, 4], act=Act.RELU)
+    squared_difference("squared_difference_broadcast_f32", F32, [2, 3, 4], [3, 1])
+    squared_difference("squared_difference_int32", "int32", [5], [5])
+    squared_difference("squared_difference_broadcast_int8", I8, [1, 4, 4, 3], [3])
+    squared_difference("squared_difference_int8", I8, [2, 8], [2, 8])
+
+
+def checked_case(name, op, specs, out_specs, values, out_shapes, options, expected, ver=1):
+    """A one-operator case whose LiteRT outputs must equal `expected` (NumPy),
+    when it is not None."""
+    b = ModelBuilder()
+    ins = [add_act(b, f"input_{i}", s, list(v.shape)) for i, (s, v) in
+           enumerate(zip(specs, values))]
+    outs = [add_act(b, f"output_{i}", s, shp) for i, (s, shp) in
+            enumerate(zip(out_specs, out_shapes))]
+    b.add_operator(op, ins, outs, options, version=ver)
+    model = b.build(ins, outs)
+    if expected is not None:
+        got = run(model, list(values))
+        for g, w in zip(got, expected, strict=True):
+            if g.shape != w.shape or not np.array_equal(g, w):
+                raise AssertionError(f"{name}: LiteRT and NumPy disagree")
+    save_op_case(name, model, list(values), tolerance=0)
+
+
+COMPARISONS = {
+    Op.EQUAL: ("equal", np.equal, schema.EqualOptionsT),
+    Op.NOT_EQUAL: ("not_equal", np.not_equal, schema.NotEqualOptionsT),
+    Op.LESS: ("less", np.less, schema.LessOptionsT),
+    Op.LESS_EQUAL: ("less_equal", np.less_equal, schema.LessEqualOptionsT),
+    Op.GREATER: ("greater", np.greater, schema.GreaterOptionsT),
+    Op.GREATER_EQUAL: ("greater_equal", np.greater_equal, schema.GreaterEqualOptionsT),
+}
+
+
+def levels(rng, shape, dtype, step=0.5):
+    """Values on a few levels, so that ties are frequent."""
+    return (rng.integers(-3, 4, size=shape) * step).astype(dtype)
+
+
+def comparison(name, op, t, shape_a, shape_b, specs=None):
+    """A comparison. Quantized inputs (`specs`) hold the same real levels at
+    different scales; their results are TFLite's rescaled comparison, which
+    LiteRT computes (not checked against NumPy)."""
+    rng = rng_for(name)
+    fn, options = COMPARISONS[op][1], COMPARISONS[op][2]()
+    out_shape = list(np.broadcast_shapes(tuple(shape_a), tuple(shape_b)))
+    if specs is not None:
+        a = specs[0].quantize(levels(rng, shape_a, np.float32, 0.3))
+        b = specs[1].quantize(levels(rng, shape_b, np.float32, 0.3))
+        checked_case(name, op, specs, [Spec("bool")], [a, b], [out_shape], options, None,
+                     ver=2)
+        return
+    if t == "bool":
+        a = rng.integers(0, 2, size=shape_a).astype(np.bool_)
+        b = rng.integers(0, 2, size=shape_b).astype(np.bool_)
+    else:
+        a, b = levels(rng, shape_a, t), levels(rng, shape_b, t)
+    spec = Spec(np.dtype(t).name)
+    checked_case(name, op, [spec, spec], [Spec("bool")], [a, b], [out_shape], options,
+                 [fn(a, b)])
+
+
+def select_v2(name, t, shape_c, shape_x, shape_y):
+    rng = rng_for(name)
+    spec = LAYOUT_SPECS[t]
+    c = rng.integers(0, 2, size=shape_c).astype(np.bool_)
+    x, y = move_data(rng, spec, shape_x), move_data(rng, spec, shape_y)
+    out_shape = list(np.broadcast_shapes(tuple(shape_c), tuple(shape_x), tuple(shape_y)))
+    checked_case(name, Op.SELECT_V2, [Spec("bool"), spec, spec], [spec], [c, x, y],
+                 [out_shape], schema.SelectV2OptionsT(), [np.where(c, x, y)])
+
+
+def cast(name, x, to, expected=True):
+    """CAST of `x` to dtype `to`; checked against NumPy's conversion unless
+    `expected` is False (float values out of the integer range, which TFLite
+    saturates)."""
+    to = np.dtype(to)
+    options = schema.CastOptionsT()
+    options.inDataType = tensor_type(x.dtype)
+    options.outDataType = tensor_type(to)
+    want = None
+    if expected:
+        want = [x.astype(to) if x.dtype != np.float32 or to.kind != "i" else np.trunc(x).astype(to)]
+    checked_case(name, Op.CAST, [Spec(x.dtype.name)], [Spec(to.name)], [x], [list(x.shape)],
+                 options, want)
+
+
+def logic_cases():
+    for op, (opname, _, _) in COMPARISONS.items():
+        comparison(f"{opname}_broadcast_f32", op, np.float32, [2, 3, 4], [4])
+        comparison(f"{opname}_int8", op, I8, [3, 5], [3, 5],
+                   specs=[Spec(I8, 0.05, -3), Spec(I8, 0.1, 10)])
+    comparison("equal_int32", Op.EQUAL, np.int32, [4, 3], [4, 1])
+    comparison("less_int64", Op.LESS, np.int64, [2, 6], [6])
+    comparison("greater_equal_int32", Op.GREATER_EQUAL, np.int32, [3, 1, 2], [4, 1])
+    comparison("equal_bool", Op.EQUAL, "bool", [2, 5], [5])
+    comparison("not_equal_bool", Op.NOT_EQUAL, "bool", [3, 4], [3, 4])
+    comparison("less_broadcast_uint8", Op.LESS, "uint8", [2, 3, 4], [3, 1],
+               specs=[Spec("uint8", 0.02, 128), Spec("uint8", 0.07, 100)])
+    comparison("greater_broadcast_int8", Op.GREATER, I8, [2, 3, 4], [4],
+                specs=[Spec(I8, 0.031, 0), Spec(I8, 0.017, -50)])
+
+    select_v2("select_v2_broadcast_f32", "f32", [2, 1, 4], [3, 1], [1])
+    select_v2("select_v2_int8", "int8", [3, 5], [3, 5], [3, 5])
+    select_v2("select_v2_scalar_condition_int16", "int16", [], [2, 3], [2, 3])
+    select_v2("select_v2_int32", "int32", [4, 1], [1, 3], [4, 3])
+
+    rng = rng_for("cast")
+    floats = uniform(rng, [3, 8], -300.0, 300.0)
+    floats.flat[:4] = [0.0, -0.0, -1.5, 2.5]
+    cast("cast_f32_to_int32", floats, np.int32)
+    cast("cast_f32_to_int8_saturated", floats, np.int8, expected=False)
+    cast("cast_f32_to_bool", floats, np.bool_)
+    cast("cast_f32_to_uint8_saturated", floats, np.uint8, expected=False)
+    ints = rng.integers(-2**31, 2**31, size=[20], dtype=np.int64).astype(np.int32)
+    cast("cast_int32_to_f32", ints, np.float32)
+    cast("cast_int32_to_int8", ints, np.int8)
+    cast("cast_int32_to_uint32", ints, np.uint32)
+    cast("cast_int32_to_bool", np.array([0, 1, -1, 7, 0], dtype=np.int32), np.bool_)
+    cast("cast_int64_to_int32", rng.integers(-2**40, 2**40, size=[9], dtype=np.int64),
+         np.int32)
+    cast("cast_int8_to_f32", rng.integers(-128, 128, size=[2, 5], dtype=np.int8), np.float32)
+    cast("cast_uint8_to_int32", rng.integers(0, 256, size=[7], dtype=np.uint8), np.int32)
+    cast("cast_int16_to_int32", rng.integers(-2**15, 2**15, size=[7], dtype=np.int16),
+         np.int32)
+    cast("cast_uint32_to_f32", rng.integers(0, 2**32, size=[8], dtype=np.uint32),
+         np.float32)
+    cast("cast_bool_to_f32", rng.integers(0, 2, size=[6]).astype(np.bool_), np.float32)
+    cast("cast_bool_to_int32", rng.integers(0, 2, size=[6]).astype(np.bool_), np.int32)
+
+
+def extra_cases():
+    reduce_cases()
+    layout_cases()
+    prelu_cases()
+    unary_cases()
+    binary_cases()
+    logic_cases()
+
+
 def op_cases():
     for mode in (I8, F32, I16):
         s = "_" + {I8: "int8", F32: "f32", I16: "int16"}[mode]
@@ -1282,6 +1937,7 @@ def main():
     op_cases()
     movement_cases()
     vision_cases()
+    extra_cases()
     mlperf_cases()
     print(f"{len(CASES)} op cases in {OPS_DIR.relative_to(REPO)}")
     print(f"{len(MLPERF_MODELS)} x {MLPERF_SAMPLES} MLPerf Tiny cases in "

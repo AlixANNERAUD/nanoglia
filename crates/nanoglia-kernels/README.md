@@ -12,8 +12,22 @@ They cover what the optimized C libraries lack: shape, data-movement and quantiz
 | `QUANTIZE` | `f32` → `i8`/`u8`/`i16`; `i8`/`u8` → `i8`/`u8`/`i16`; `i16` → `i8`/`i16`; `i32` → `i8`/`i16` |
 | `DEQUANTIZE` | `i8`/`u8` (per-tensor or per-channel), `i16`, `f16` → `f32` |
 | `MEAN` | `f32`, `i8`, `u8`, `i16` |
+| `SUM`, `REDUCE_MAX`, `REDUCE_MIN` | `f32`, `i8`, `u8`, `i16`, `i32`, `i64` |
+| `PACK`, `UNPACK` | `f32`, `i8`, `u8`, `i16`, `i32` (`PACK`: `u32`, `i64`; `UNPACK`: `f16`, `bf16`, `bool`), up to 16 inputs or 8 outputs |
+| `SPACE_TO_DEPTH`, `DEPTH_TO_SPACE` | `f32`, `i8`, `u8`, `i32`, `i64` |
+| `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND` | `f32`, `i8`, `u8`, `i16`, `i32`, `i64`, rank 3 or 4, constant block shape and paddings or crops |
 | `RELU`, `RELU6`, `RELU_N1_TO_1` | `f32`, `i8`, `u8`, `i16` |
 | `LEAKY_RELU` | `f32`, `i8`, `u8`, `i16` |
+| `PRELU` | `f32`, `i8`, `u8`, `i16` (`i8` alpha), broadcasting |
+| `ABS` | `f32`, `i8`, `i16`, `i32` |
+| `NEG` | `f32`, `i32`, `i64` |
+| `SQRT`, `EXP`, `LOG` | `f32` |
+| `RSQRT` | `f32`, `i8` |
+| `DIV` | `f32`, `i32` (broadcasting) |
+| `SQUARED_DIFFERENCE` | `f32`, `i32`, `i8`, `i16` (broadcasting) |
+| `EQUAL`, `NOT_EQUAL`, `LESS`, `LESS_EQUAL`, `GREATER`, `GREATER_EQUAL` | `f32`, `i32`, `i64`, `bool` (equalities), `i8`/`u8` rescaled like TFLite (broadcasting) |
+| `SELECT_V2` | `f32`, `bool`, `i8`, `u8`, `i16`, `i32`, `u32`, `i64` (broadcasting) |
+| `CAST` | between `bool`, `i8`, `u8`, `i16`, `i32`, `u32`, `i64`, `f32` |
 | `LOGISTIC`, `TANH` | `f32`, `i8`, `u8`, `i16` (TFLite's interpolated sigmoid table) |
 | `HARD_SWISH` | `f32`, `i8`, `u8` |
 | `PAD`, `PADV2` | any |

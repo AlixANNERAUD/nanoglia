@@ -1,0 +1,38 @@
+{
+  "model": "testdata/ops/not_equal_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        3,
+        5
+      ],
+      "scale": 0.05000000074505806,
+      "zero_point": -3
+    },
+    {
+      "name": "input_1",
+      "dtype": "int8",
+      "shape": [
+        3,
+        5
+      ],
+      "scale": 0.10000000149011612,
+      "zero_point": 10
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "bool",
+      "shape": [
+        3,
+        5
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

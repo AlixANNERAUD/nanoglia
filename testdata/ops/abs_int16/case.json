@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/abs_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int16",
+      "shape": [
+        4,
+        5
+      ],
+      "scale": 0.001220703125,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int16",
+      "shape": [
+        4,
+        5
+      ],
+      "scale": 0.00390625,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

@@ -1,7 +1,8 @@
 //! Binary element-wise operators with broadcasting up to [`nanoglia_core::MAX_RANK`] dimensions:
 //! `ADD`, `SUB`, `MUL` on `f32` (TFLite `BroadcastAdd6DSlow` & co.), on int8 and on int16
 //! (16-bit activations, symmetric), and `MAXIMUM`, `MINIMUM` on any numeric type (TFLite
-//! `maximum_minimum.cc`).
+//! `maximum_minimum.cc`). `DIV` on `f32` and `i32` and `SQUARED_DIFFERENCE` on `f32`, `i32`,
+//! int8 and int16 follow TensorFlow Lite Micro's `div.cc` and `squared_difference_common.cc`.
 //!
 //! The quantized operators port the `Prepare` of TFLite's `add.cc`, `sub.cc` and `mul.cc` and the
 //! reference kernels `reference_integer_ops::BroadcastAdd6DSlow`,
@@ -10,6 +11,11 @@
 //! (int16) bits of headroom and `QuantizeMultiplierSmallerThanOneExp` multipliers; `MUL`
 //! requantizes the product of the inputs. The `MUL` multiplier is computed in `f64` like TensorFlow
 //! Lite Micro and the CMSIS-NN backend (LiteRT rounds the product of the scales to `f32` first).
+//!
+//! Quantized `SQUARED_DIFFERENCE` rescales both inputs like `ADD` (with `left_shift = 7` on int8
+//! and `0` on int16), squares their difference in `i32` and requantizes it. Quantized `DIV` is
+//! not supported: TensorFlow Lite Micro's `DivElementwise` divides by powers of two above 2^31
+//! for small quotients, which C++ leaves undefined and CPUs compute differently.
 //!
 //! TFLite runs int16 `ADD` and `SUB` through a different, power-of-two kernel when all three
 //! scales are powers of two and the operator's `pot_scale_int16` option (true by default) is
@@ -22,13 +28,15 @@ use crate::util::{
 use nanoglia_core::backend::EvalCtx;
 use nanoglia_core::pod::{self, Pod};
 use nanoglia_core::quant::{self, Multiplier, multiply_by_quantized_multiplier};
-use nanoglia_core::{Activation, BuiltinOp, DataType, OpDesc, OpOptions, Result};
+use nanoglia_core::{Activation, BuiltinOp, DataType, Detail, Error, OpDesc, OpOptions, Result};
 
 const OP_ADD: u32 = 0;
 const OP_SUB: u32 = 1;
 const OP_MUL: u32 = 2;
 const OP_MAXIMUM: u32 = 3;
 const OP_MINIMUM: u32 = 4;
+const OP_DIV: u32 = 5;
+const OP_SQUARED_DIFFERENCE: u32 = 6;
 
 pod_struct! {
     /// Parameters of a binary element-wise operator.
@@ -36,8 +44,12 @@ pod_struct! {
         broadcast: Broadcast,
         op: u32,
         dtype: u32,
+        /// Clamping range of the fused activation (`f32`).
         min: f32,
         max: f32,
+        /// Clamping range of the fused activation (`i32` `DIV`).
+        imin: i32,
+        imax: i32,
     }
 }
 
@@ -53,18 +65,41 @@ fn binary_params(op: &OpDesc<'_, '_>) -> Result<BinaryParams> {
         Some(BuiltinOp::MUL) => OP_MUL,
         Some(BuiltinOp::MAXIMUM) => OP_MAXIMUM,
         Some(BuiltinOp::MINIMUM) => OP_MINIMUM,
+        Some(BuiltinOp::DIV) => OP_DIV,
+        Some(BuiltinOp::SQUARED_DIFFERENCE) => OP_SQUARED_DIFFERENCE,
         _ => return Err(unsupported(op)),
     };
     let (mut min, mut max) = (f32::MIN, f32::MAX);
-    if code <= OP_MUL {
+    let (mut imin, mut imax) = (i32::MIN, i32::MAX);
+    let activation = match op.options {
+        OpOptions::Elementwise { activation } => activation,
+        OpOptions::None => Activation::None,
+        _ => return Err(unsupported(op)),
+    };
+    if matches!(code, OP_DIV | OP_SQUARED_DIFFERENCE) {
+        // f32 and plain int32 (TFLite refuses quantized int32 `DIV`).
+        let plain_i32 =
+            out.dtype == DataType::I32 && !a.quant.is_quantized() && !b.quant.is_quantized();
+        if out.dtype != DataType::F32 && !plain_i32 {
+            return Err(unsupported_type(out));
+        }
+        if code == OP_DIV {
+            (min, max) = float_activation(op, activation)?;
+            // TFLite `CalculateActivationRange<int32_t>`.
+            (imin, imax) = match activation {
+                Activation::None => (i32::MIN, i32::MAX),
+                Activation::Relu => (0, i32::MAX),
+                Activation::Relu6 => (0, 6),
+                Activation::ReluN1To1 => (-1, 1),
+                _ => return Err(unsupported(op)),
+            };
+        } else if activation != Activation::None {
+            return Err(unsupported(op));
+        }
+    } else if code <= OP_MUL {
         if out.dtype != DataType::F32 {
             return Err(unsupported_type(out));
         }
-        let activation = match op.options {
-            OpOptions::Elementwise { activation } => activation,
-            OpOptions::None => nanoglia_core::Activation::None,
-            _ => return Err(unsupported(op)),
-        };
         (min, max) = float_activation(op, activation)?;
     } else if !matches!(
         out.dtype,
@@ -81,6 +116,8 @@ fn binary_params(op: &OpDesc<'_, '_>) -> Result<BinaryParams> {
         dtype: type_code(out.dtype),
         min,
         max,
+        imin,
+        imax,
     })
 }
 
@@ -105,10 +142,31 @@ fn min_max<T: Pod + PartialOrd>(ctx: &mut EvalCtx<'_, '_>, p: &BinaryParams) -> 
 fn binary_eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
     let p: BinaryParams = *pod::read(ctx.persist)?;
     let (min, max) = (p.min, p.max);
+    let float = p.dtype == type_code(DataType::F32);
     match p.op {
         OP_ADD => apply::<f32>(ctx, &p.broadcast, |a, b| clamp_f32(a + b, min, max)),
         OP_SUB => apply::<f32>(ctx, &p.broadcast, |a, b| clamp_f32(a - b, min, max)),
         OP_MUL => apply::<f32>(ctx, &p.broadcast, |a, b| clamp_f32(a * b, min, max)),
+        OP_DIV if float => apply::<f32>(ctx, &p.broadcast, |a, b| clamp_f32(a / b, min, max)),
+        OP_DIV => {
+            // TFLite fails on a zero denominator, anywhere in the second input.
+            let denominators = in_slice::<i32>(ctx.inputs, 1, p.broadcast.len2 as usize)?;
+            if denominators.contains(&0) {
+                return Err(Error::invalid_argument(Detail::None));
+            }
+            let (imin, imax) = (p.imin, p.imax);
+            apply::<i32>(ctx, &p.broadcast, |a, b| {
+                a.wrapping_div(b).clamp(imin, imax)
+            })
+        }
+        OP_SQUARED_DIFFERENCE if float => apply::<f32>(ctx, &p.broadcast, |a, b| {
+            let d = a - b;
+            d * d
+        }),
+        OP_SQUARED_DIFFERENCE => apply::<i32>(ctx, &p.broadcast, |a, b| {
+            let d = a.wrapping_sub(b);
+            d.wrapping_mul(d)
+        }),
         _ => match p.dtype {
             t if t == type_code(DataType::F32) => min_max::<f32>(ctx, &p),
             t if t == type_code(DataType::I8) => min_max::<i8>(ctx, &p),
@@ -121,7 +179,8 @@ fn binary_eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
 }
 
 fixed_kernel!(
-    /// `ADD`, `SUB` and `MUL` on `f32`; `MAXIMUM` and `MINIMUM` on `f32` and integers.
+    /// `ADD`, `SUB` and `MUL` on `f32`; `DIV` and `SQUARED_DIFFERENCE` on `f32` and `i32`;
+    /// `MAXIMUM` and `MINIMUM` on `f32` and integers.
     BINARY,
     "rust/binary",
     binary_params,
@@ -167,6 +226,7 @@ fn quantized_binary_params(op: &OpDesc<'_, '_>) -> Result<QuantizedBinaryParams>
         Some(BuiltinOp::ADD) => OP_ADD,
         Some(BuiltinOp::SUB) => OP_SUB,
         Some(BuiltinOp::MUL) => OP_MUL,
+        Some(BuiltinOp::SQUARED_DIFFERENCE) => OP_SQUARED_DIFFERENCE,
         _ => return Err(unsupported(op)),
     };
     let activation = match op.options {
@@ -189,7 +249,10 @@ fn quantized_binary_params(op: &OpDesc<'_, '_>) -> Result<QuantizedBinaryParams>
             return Err(unsupported_type(t));
         }
     }
-    if int16 && code != OP_MUL && [s1, s2, so].into_iter().all(quant::is_near_power_of_two) {
+    if int16
+        && matches!(code, OP_ADD | OP_SUB)
+        && [s1, s2, so].into_iter().all(quant::is_near_power_of_two)
+    {
         // The power-of-two kernel of TFLite, selected by an option nanoglia does not decode.
         return Err(unsupported(op));
     }
@@ -208,7 +271,24 @@ fn quantized_binary_params(op: &OpDesc<'_, '_>) -> Result<QuantizedBinaryParams>
         min,
         max,
     };
-    if code == OP_MUL {
+    if code == OP_SQUARED_DIFFERENCE {
+        // TensorFlow Lite Micro's `PrepareQuantized` (`squared_difference_common.cc`).
+        if activation != Activation::None {
+            return Err(unsupported(op));
+        }
+        params.left_shift = if int16 { 0 } else { 7 };
+        let twice_max_input_scale = 2.0 * f64::from(if s1 < s2 { s2 } else { s1 });
+        let smaller =
+            |real| quant::quantize_multiplier_smaller_than_one(real).ok_or(unsupported(op));
+        params.input1 = smaller(f64::from(s1) / twice_max_input_scale)?;
+        params.input2 = smaller(f64::from(s2) / twice_max_input_scale)?;
+        let real_output = twice_max_input_scale * twice_max_input_scale
+            / (f64::from(1u32 << (2 * params.left_shift)) * f64::from(so));
+        params.output = quant::quantize_multiplier(real_output);
+        if params.output.shift > 30 {
+            return Err(unsupported(op));
+        }
+    } else if code == OP_MUL {
         let real = f64::from(s1) * f64::from(s2) / f64::from(so);
         params.output = quant::quantize_multiplier(real);
         // `MultiplyByQuantizedMultiplier` shifts an `int32_t` left by positive shifts.
@@ -279,6 +359,16 @@ fn quantized_apply<T: Quantized>(
     }
     let sub = p.op == OP_SUB;
     let unit = 1i32 << p.left_shift;
+    if p.op == OP_SQUARED_DIFFERENCE {
+        return apply::<T>(ctx, &p.broadcast, |a, b| {
+            let shifted1 = (p.input1_offset + a.to_i32()).wrapping_mul(unit);
+            let shifted2 = (p.input2_offset + b.to_i32()).wrapping_mul(unit);
+            let raw = multiply_by_quantized_multiplier(shifted1, p.input1)
+                .wrapping_sub(multiply_by_quantized_multiplier(shifted2, p.input2));
+            let squared = raw.wrapping_mul(raw);
+            clamp(multiply_by_quantized_multiplier(squared, p.output).wrapping_add(p.output_offset))
+        });
+    }
     apply::<T>(ctx, &p.broadcast, |a, b| {
         let shifted1 = (p.input1_offset + a.to_i32()).wrapping_mul(unit);
         let shifted2 = (p.input2_offset + b.to_i32()).wrapping_mul(unit);
@@ -303,7 +393,7 @@ fn quantized_binary_eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
 }
 
 fixed_kernel!(
-    /// `ADD`, `SUB` and `MUL` on int8 and int16, with broadcasting.
+    /// `ADD`, `SUB`, `MUL` and `SQUARED_DIFFERENCE` on int8 and int16, with broadcasting.
     QUANTIZED_BINARY,
     "rust/binary_q",
     quantized_binary_params,

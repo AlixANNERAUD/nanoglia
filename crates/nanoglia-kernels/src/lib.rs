@@ -7,24 +7,30 @@
 
 mod activation;
 mod arg_min_max;
+mod cast;
+mod compare;
 mod concat;
 mod conv;
 mod copy;
+mod depth_space;
 mod elementwise;
 mod fully_connected;
 mod gather;
 mod math;
 mod pad;
 mod pool;
+mod prelu;
 mod quantize;
 mod reduce;
 mod resize;
 mod slice;
 mod softmax;
+mod space_batch;
 mod split;
 mod strided;
 mod transpose;
 mod transpose_conv;
+mod unary;
 mod util;
 
 #[cfg(test)]
@@ -95,6 +101,30 @@ impl RustKernels {
                 activation::HARD_SWISH_Q
             ),
             BuiltinOp::MEAN => kernels!(reduce::MEAN),
+            BuiltinOp::SUM => kernels!(reduce::SUM),
+            BuiltinOp::REDUCE_MAX | BuiltinOp::REDUCE_MIN => kernels!(reduce::REDUCE_MIN_MAX),
+            BuiltinOp::PACK => kernels!(concat::PACK),
+            BuiltinOp::UNPACK => kernels!(split::UNPACK),
+            BuiltinOp::SPACE_TO_DEPTH => kernels!(depth_space::SPACE_TO_DEPTH),
+            BuiltinOp::DEPTH_TO_SPACE => kernels!(depth_space::DEPTH_TO_SPACE),
+            BuiltinOp::SPACE_TO_BATCH_ND => kernels!(space_batch::SPACE_TO_BATCH_ND),
+            BuiltinOp::BATCH_TO_SPACE_ND => kernels!(space_batch::BATCH_TO_SPACE_ND),
+            BuiltinOp::PRELU => kernels!(
+                #[cfg(feature = "float")]
+                prelu::PRELU_F32,
+                prelu::PRELU_Q
+            ),
+            BuiltinOp::ABS
+            | BuiltinOp::NEG
+            | BuiltinOp::SQRT
+            | BuiltinOp::RSQRT
+            | BuiltinOp::EXP
+            | BuiltinOp::LOG => kernels!(
+                #[cfg(feature = "float")]
+                unary::UNARY_F32,
+                unary::UNARY_INT,
+                unary::UNARY_Q
+            ),
             BuiltinOp::PAD | BuiltinOp::PADV2 => kernels!(pad::PAD),
             BuiltinOp::CONCATENATION => kernels!(concat::CONCATENATION),
             BuiltinOp::TRANSPOSE => kernels!(transpose::TRANSPOSE),
@@ -112,7 +142,20 @@ impl RustKernels {
             BuiltinOp::ADD | BuiltinOp::SUB | BuiltinOp::MUL => {
                 kernels!(elementwise::BINARY, elementwise::QUANTIZED_BINARY)
             }
-            BuiltinOp::MAXIMUM | BuiltinOp::MINIMUM => kernels!(elementwise::BINARY),
+            BuiltinOp::MAXIMUM | BuiltinOp::MINIMUM | BuiltinOp::DIV => {
+                kernels!(elementwise::BINARY)
+            }
+            BuiltinOp::SQUARED_DIFFERENCE => {
+                kernels!(elementwise::BINARY, elementwise::QUANTIZED_BINARY)
+            }
+            BuiltinOp::EQUAL
+            | BuiltinOp::NOT_EQUAL
+            | BuiltinOp::LESS
+            | BuiltinOp::LESS_EQUAL
+            | BuiltinOp::GREATER
+            | BuiltinOp::GREATER_EQUAL => kernels!(compare::COMPARISON),
+            BuiltinOp::SELECT_V2 => kernels!(compare::SELECT_V2),
+            BuiltinOp::CAST => kernels!(cast::CAST),
             BuiltinOp::CONV_2D => kernels!(
                 #[cfg(feature = "float")]
                 conv::CONV_2D_F32

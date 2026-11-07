@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/prelu_saturated_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        2,
+        8
+      ],
+      "scale": 0.017668157815933228,
+      "zero_point": 32
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        2,
+        8
+      ],
+      "scale": 0.0019607844296842813,
+      "zero_point": -26
+    }
+  ],
+  "tolerance": 0
+}

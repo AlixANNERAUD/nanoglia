@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/prelu_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int16",
+      "shape": [
+        1,
+        3,
+        3,
+        2
+      ],
+      "scale": 8.461964898742735e-05,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int16",
+      "shape": [
+        1,
+        3,
+        3,
+        2
+      ],
+      "scale": 4.633783100871369e-05,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

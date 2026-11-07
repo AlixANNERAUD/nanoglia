@@ -41,8 +41,9 @@ Every case directory holds:
   ```
 
   - `model`: path of the model, relative to the repository root;
-  - `dtype`: one of `int8`, `int16`, `uint8`, `int32`, `int64` (indices fed
-    to `GATHER`, indices computed by `ARG_MAX` / `ARG_MIN`), `float32`;
+  - `dtype`: one of `int8`, `int16`, `uint8`, `int32`, `uint32`, `int64`
+    (indices fed to `GATHER`, indices computed by `ARG_MAX` / `ARG_MIN`),
+    `bool` (comparisons, `SELECT_V2`, `CAST`), `float32`;
   - `scale`, `zero_point`: per-tensor quantization of the tensor; `0.0` and `0`
     for a tensor that is not quantized (float);
   - `tolerance`: how far an output may be from the golden one. For quantized
@@ -102,12 +103,66 @@ The vision operators:
   more and fewer than 16 input channels (the two CMSIS-NN paths), two batches,
   fused activations (version 4), with, without and with an omitted bias.
 
+The reductions `SUM`, `REDUCE_MAX` and `REDUCE_MIN` (`_f32`, `_int8`, `_uint8`,
+`_int16`, `_int32`) cover several ranks, negative and duplicate axes,
+`keep_dims`, reductions over every axis and a saturated int8 sum.
+`REDUCE_MAX` / `REDUCE_MIN` keep the input quantization (TFLite requires it)
+and the oracle checks them against NumPy. LiteRT 2.3's reference `SUM` reads
+int8 and int16 data as uint8 bytes, so its int8 and int16 outputs are wrong:
+the golden outputs of these cases come from the equivalent uint8 model (data
+and zero points plus 128), which LiteRT computes right, shifted back. The
+int16 cases keep their inputs in the int8 range and their sums from saturating
+in uint8 for that, and declare `SUM` version 2 (LiteRT 2.3 registers versions
+1 and 2 only).
+
+The layout operators `PACK`, `UNPACK`, `SPACE_TO_DEPTH`, `DEPTH_TO_SPACE`,
+`SPACE_TO_BATCH_ND` and `BATCH_TO_SPACE_ND` (`_f32`, `_int8`, `_uint8`,
+`_int16`, `_int32`, `_int64`) cover negative axes, scalars, rank 3 and 4,
+several block sizes, paddings (quantized ones with the zero point) and crops;
+the oracle checks them against NumPy. LiteRT 2.3's reference resolver
+registers `DEPTH_TO_SPACE` version 1 only: its int8 case declares version 1
+instead of 2.
+
+`PRELU` (`_f32`, `_int8`, `_uint8`, `_int16` with an int8 `alpha`) covers a
+per-channel `alpha`, an `alpha` of the input's shape fed at run time, and a
+saturated output. LiteRT computes the two requantization ratios in float,
+TensorFlow Lite Micro in double: the oracle checks each quantized output
+against TFLM's formula (a Python port of its fixed-point requantization), so
+that the golden data holds for both. LiteRT 2.3's reference resolver registers
+`PRELU` version 1 only, which every case declares.
+
+The unary operators `ABS`, `NEG`, `SQRT`, `RSQRT`, `EXP` and `LOG` (`_f32`
+with zeros, infinities and values that make `LOG` return `-inf`; quantized
+`ABS` on int8 and int16, with and without rescaling; int8 `RSQRT` with an
+input at the zero point; `ABS` and `NEG` on raw integers). LiteRT computes the
+quantized `ABS` and `RSQRT` ratios in float, TensorFlow Lite Micro in double:
+these cases use scales whose ratios both compute to the same multiplier (the
+oracle checks it), so that the golden data holds for both.
+
+`DIV` (`_f32` with broadcasting, a fused activation, zero denominators and
+`0 / 0`; `_int32` with and without activation) and `SQUARED_DIFFERENCE`
+(`_f32`, `_int32`, `_int8`, with broadcasting). LiteRT 2.3 has no int16
+`SQUARED_DIFFERENCE`, and quantized `DIV` is not supported by nanoglia.
+
+The comparisons (`_f32`, `_int32`, `_int64`, `_bool`, and quantized `_int8`
+and `_uint8` inputs of different scales, with broadcasting) draw their values
+from a few levels so that ties are frequent; `SELECT_V2` (`_f32`, `_int8`,
+`_int16`, `_int32`) broadcasts its three inputs, one case with a scalar
+condition; `CAST` covers every conversion family (float to integer with
+truncation and saturation, integer narrowing and widening, bool, uint32), with
+no NaN input (TensorFlow Lite Micro converts NaN to 0, LiteRT 2.3 to the
+largest value). The oracle checks them against NumPy, except the rescaled
+quantized comparisons and the saturating casts.
+
 Operators covered: `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`,
 `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`, `SUB`, `MUL`, `MAXIMUM`,
 `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `LOGISTIC`, `TANH`, `RELU`, `RELU6`,
 `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`, `TRANSPOSE`, `SLICE`, `STRIDED_SLICE`,
 `GATHER`, `SPLIT`, `SPLIT_V`, `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`,
-`RESIZE_BILINEAR`, `TRANSPOSE_CONV`.
+`RESIZE_BILINEAR`, `TRANSPOSE_CONV`, `SUM`, `REDUCE_MAX`, `REDUCE_MIN`, `PACK`, `UNPACK`,
+`SPACE_TO_DEPTH`, `DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `PRELU`, `ABS`, `NEG`, `SQRT`,
+`RSQRT`, `EXP`, `LOG`, `DIV`, `SQUARED_DIFFERENCE`, `EQUAL`, `NOT_EQUAL`, `LESS`,
+`LESS_EQUAL`, `GREATER`, `GREATER_EQUAL`, `SELECT_V2`, `CAST`.
 
 Not covered: int8 `CONCATENATION` with different input and output
 quantization, which the reference kernel rejects (as TensorFlow Lite Micro does).

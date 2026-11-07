@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/rsqrt_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        3,
+        7
+      ],
+      "scale": 0.0087890625,
+      "zero_point": -128
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        3,
+        7
+      ],
+      "scale": 0.0390625,
+      "zero_point": -128
+    }
+  ],
+  "tolerance": 0
+}

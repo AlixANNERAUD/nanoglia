@@ -1,0 +1,29 @@
+{
+  "model": "testdata/ops/sum_saturated_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int8",
+      "shape": [
+        2,
+        6,
+        5
+      ],
+      "scale": 0.01481910701841116,
+      "zero_point": -69
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        2,
+        5
+      ],
+      "scale": 0.009999999776482582,
+      "zero_point": -124
+    }
+  ],
+  "tolerance": 0
+}

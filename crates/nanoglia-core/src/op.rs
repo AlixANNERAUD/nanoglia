@@ -35,6 +35,8 @@ impl BuiltinOp {
     pub const CUSTOM: Self = Self(32);
     pub const PAD: Self = Self(34);
     pub const GATHER: Self = Self(36);
+    pub const BATCH_TO_SPACE_ND: Self = Self(37);
+    pub const SPACE_TO_BATCH_ND: Self = Self(38);
     pub const TRANSPOSE: Self = Self(39);
     pub const MEAN: Self = Self(40);
     pub const SUB: Self = Self(41);
@@ -51,10 +53,19 @@ impl BuiltinOp {
     pub const MAXIMUM: Self = Self(55);
     pub const ARG_MAX: Self = Self(56);
     pub const MINIMUM: Self = Self(57);
+    pub const LESS: Self = Self(58);
+    pub const NEG: Self = Self(59);
     pub const PADV2: Self = Self(60);
+    pub const GREATER: Self = Self(61);
+    pub const GREATER_EQUAL: Self = Self(62);
+    pub const LESS_EQUAL: Self = Self(63);
+    pub const SELECT: Self = Self(64);
     pub const SLICE: Self = Self(65);
     pub const TRANSPOSE_CONV: Self = Self(67);
     pub const EXPAND_DIMS: Self = Self(70);
+    pub const EQUAL: Self = Self(71);
+    pub const NOT_EQUAL: Self = Self(72);
+    pub const LOG: Self = Self(73);
     pub const SUM: Self = Self(74);
     pub const SQRT: Self = Self(75);
     pub const RSQRT: Self = Self(76);
@@ -77,6 +88,7 @@ impl BuiltinOp {
     pub const ELU: Self = Self(111);
     pub const QUANTIZE: Self = Self(114);
     pub const HARD_SWISH: Self = Self(117);
+    pub const SELECT_V2: Self = Self(123);
     pub const BATCH_MATMUL: Self = Self(126);
 }
 
@@ -311,6 +323,25 @@ pub enum OpOptions<'a> {
     },
     /// `TRANSPOSE_CONV`.
     TransposeConv(TransposeConvOptions),
+    /// `PACK`.
+    Pack {
+        /// The number of inputs.
+        values_count: i32,
+        /// The axis of the output the inputs are stacked along (may be negative).
+        axis: i32,
+    },
+    /// `UNPACK`.
+    Unpack {
+        /// The number of outputs.
+        num: i32,
+        /// The axis of the input that is unstacked (may be negative).
+        axis: i32,
+    },
+    /// `SPACE_TO_DEPTH`, `DEPTH_TO_SPACE`.
+    BlockSize {
+        /// The height and width of the blocks moved between space and depth.
+        block_size: i32,
+    },
     /// Raw options of a custom operator.
     Custom(&'a [u8]),
 }

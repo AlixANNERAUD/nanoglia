@@ -1,15 +1,16 @@
-//! `CONCATENATION` (TFLite `concatenation.cc`, reference `Concatenation`), for any element type.
+//! `CONCATENATION` (TFLite `concatenation.cc`, reference `Concatenation`), for any element type,
+//! and `PACK` (TFLite `pack.cc`), which is a concatenation along a new axis.
 //!
-//! Like TFLite, quantized inputs must share the output's scale and zero point: the operator only
-//! moves bytes.
+//! Like TFLite, quantized inputs must share the output's scale and zero point: the operators only
+//! move bytes.
 
 use crate::util::{
-    elements, fixed_kernel, in_slice, input, int_range, out_slice, output, pod_struct,
-    shape_mismatch, unsupported, unsupported_type,
+    dims_product, elements, fixed_kernel, in_slice, input, int_range, out_slice, output,
+    pod_struct, shape_mismatch, unsupported, unsupported_type,
 };
 use nanoglia_core::backend::EvalCtx;
 use nanoglia_core::pod;
-use nanoglia_core::{Activation, MAX_OP_INPUTS, OpDesc, OpOptions, Result};
+use nanoglia_core::{Activation, DataType, MAX_OP_INPUTS, OpDesc, OpOptions, Result};
 
 pod_struct! {
     /// Parameters of `CONCATENATION`.
@@ -111,5 +112,86 @@ fixed_kernel!(
     CONCATENATION,
     "rust/concatenation",
     concat_params,
+    concat_eval
+);
+
+/// `PACK` (TFLite `pack.cc`): stacking `values_count` inputs of the same shape along a new
+/// output axis is a concatenation in which every input contributes one slice per outer step.
+fn pack_params(op: &OpDesc<'_, '_>) -> Result<ConcatParams> {
+    let OpOptions::Pack { values_count, axis } = op.options else {
+        return Err(unsupported(op));
+    };
+    let n = op.inputs.len();
+    if n == 0 || n > MAX_OP_INPUTS || i32::try_from(n) != Ok(values_count) || op.outputs.len() != 1
+    {
+        return Err(unsupported(op));
+    }
+    let output = output(op, 0)?;
+    let first = input(op, 0)?;
+    // The types of LiteRT's `pack.cc` (TensorFlow Lite Micro: f32, int8, int16, int32, int64).
+    if !matches!(
+        first.dtype,
+        DataType::F32
+            | DataType::U8
+            | DataType::I8
+            | DataType::I16
+            | DataType::I32
+            | DataType::U32
+            | DataType::I64
+    ) {
+        return Err(unsupported_type(first));
+    }
+    let size = first.dtype.size().ok_or_else(|| unsupported_type(first))?;
+    elements(output)?;
+    let in_dims = first.dims.as_slice();
+    let rank = in_dims.len() as i32 + 1;
+    let axis = if axis < 0 { axis + rank } else { axis };
+    if !(0..rank).contains(&axis) {
+        return Err(unsupported(op));
+    }
+    let axis = axis as usize;
+    // The output has the input dimensions with `values_count` inserted at `axis`.
+    let out_dims = output.dims.as_slice();
+    let expected = in_dims[..axis]
+        .iter()
+        .chain([&values_count])
+        .chain(&in_dims[axis..]);
+    if out_dims.len() != rank as usize || !out_dims.iter().eq(expected) {
+        return Err(shape_mismatch(output));
+    }
+    if output.dtype != first.dtype {
+        return Err(unsupported_type(output));
+    }
+    for i in 0..n {
+        let t = input(op, i)?;
+        if t.dtype != first.dtype {
+            return Err(unsupported_type(t));
+        }
+        if t.dims != first.dims {
+            return Err(shape_mismatch(t));
+        }
+        // LiteRT requires every input to have the output's scale and zero point.
+        if t.quant.scale() != output.quant.scale()
+            || t.quant.zero_point() != output.quant.zero_point()
+        {
+            return Err(unsupported(op));
+        }
+    }
+    let inner = dims_product(&in_dims[axis..], first)? as usize;
+    let chunk = u32::try_from(inner * size).map_err(|_| shape_mismatch(first))?;
+    let mut params = ConcatParams {
+        outer: dims_product(&in_dims[..axis], first)?,
+        inputs: n as u32,
+        chunk: [0; MAX_OP_INPUTS],
+    };
+    params.chunk[..n].fill(chunk);
+    Ok(params)
+}
+
+fixed_kernel!(
+    /// `PACK` of `f32`, `u8`, `i8`, `i16`, `i32`, `u32` and `i64`, up to 16 inputs.
+    PACK,
+    "rust/pack",
+    pack_params,
     concat_eval
 );

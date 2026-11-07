@@ -1,0 +1,41 @@
+{
+  "model": "testdata/ops/squared_difference_broadcast_int8/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        3
+      ],
+      "scale": 0.015094722621142864,
+      "zero_point": -64
+    },
+    {
+      "name": "input_1",
+      "dtype": "int8",
+      "shape": [
+        3
+      ],
+      "scale": 0.012229937128722668,
+      "zero_point": 16
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int8",
+      "shape": [
+        1,
+        4,
+        4,
+        3
+      ],
+      "scale": 0.08449295908212662,
+      "zero_point": -128
+    }
+  ],
+  "tolerance": 0
+}

@@ -1,0 +1,45 @@
+{
+  "model": "testdata/ops/pack_int64/model.tflite",
+  "inputs": [
+    {
+      "name": "input_0",
+      "dtype": "int64",
+      "shape": [
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    },
+    {
+      "name": "input_1",
+      "dtype": "int64",
+      "shape": [
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    },
+    {
+      "name": "input_2",
+      "dtype": "int64",
+      "shape": [
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output_0",
+      "dtype": "int64",
+      "shape": [
+        4,
+        3
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

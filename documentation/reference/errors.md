@@ -111,6 +111,7 @@ fail with `Unknown` / `None`; `select` and `plan` must be deterministic.
 | `output_by_name` | `NotFound` / `TensorNotFound` | No output has this name. |
 | `compute`, `compute_with` | `RuntimeError` / `Backend` | CMSIS-NN returned a failure status. |
 | `compute`, `compute_with` | `InvalidArgument` / `IndexOutOfRange` | A `GATHER` index computed by the model is negative or not below the size of the gathered axis (as in TFLite); `index` is its position in the indices tensor. |
+| `compute`, `compute_with` | `InvalidArgument` / `None` | An int8 `RSQRT` input is below its zero point (a negative value), or an int32 `DIV` denominator is zero, as TFLite fails; nothing is written then. |
 | `compute`, `compute_with` | `InvalidArgument` / `SizeMismatch`, `Misaligned` | A kernel found buffers that do not match its prepared parameters. This does not happen with buffers laid out by `Graph`. |
 | `compute`, `compute_with` | any | A kernel of your own failed. `compute_with` passes the error to `Observer::after`, then returns it. |
 | `compute_with`, `step_with`, `compute_async_with` | `Timeout` / `Interrupted` | The observer stopped the computation ([Run long inferences](../how-to-guides/run-long-inferences.md)). |

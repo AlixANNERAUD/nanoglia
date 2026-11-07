@@ -158,6 +158,7 @@ pub(crate) mod builtin_options {
     pub(crate) const CONCATENATION: u8 = 10;
     pub(crate) const ADD: u8 = 11;
     pub(crate) const RESIZE_BILINEAR: u8 = 15;
+    pub(crate) const SPACE_TO_DEPTH: u8 = 19;
     pub(crate) const MUL: u8 = 21;
     pub(crate) const GATHER: u8 = 23;
     pub(crate) const REDUCER: u8 = 27;
@@ -169,9 +170,12 @@ pub(crate) mod builtin_options {
     pub(crate) const ARG_MAX: u8 = 40;
     pub(crate) const TRANSPOSE_CONV: u8 = 49;
     pub(crate) const ARG_MIN: u8 = 57;
+    pub(crate) const PACK: u8 = 59;
+    pub(crate) const UNPACK: u8 = 64;
     pub(crate) const RESIZE_NEAREST_NEIGHBOR: u8 = 74;
     pub(crate) const LEAKY_RELU: u8 = 75;
     pub(crate) const SPLIT_V: u8 = 79;
+    pub(crate) const DEPTH_TO_SPACE: u8 = 94;
 }
 
 /// `table Conv2DOptions`.
@@ -293,4 +297,21 @@ pub(crate) mod transpose_conv {
     pub(crate) const STRIDE_H: u16 = 2;
     pub(crate) const FUSED_ACTIVATION_FUNCTION: u16 = 3;
     pub(crate) const QUANTIZED_BIAS_TYPE: u16 = 4;
+}
+
+/// `table PackOptions`.
+pub(crate) mod pack {
+    pub(crate) const VALUES_COUNT: u16 = 0;
+    pub(crate) const AXIS: u16 = 1;
+}
+
+/// `table UnpackOptions`.
+pub(crate) mod unpack {
+    pub(crate) const NUM: u16 = 0;
+    pub(crate) const AXIS: u16 = 1;
+}
+
+/// `table SpaceToDepthOptions`, `table DepthToSpaceOptions`.
+pub(crate) mod block_size {
+    pub(crate) const BLOCK_SIZE: u16 = 0;
 }

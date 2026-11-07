@@ -584,6 +584,44 @@ fn decodes_options() {
          activation: None })"
     );
 
+    let pack = Spec::default()
+        .with_opcode(83)
+        .with_options(59, vec![(0, Field::I32(3)), (1, Field::I32(-1))]);
+    assert_eq!(decode(pack), "Pack { values_count: 3, axis: -1 }");
+    assert_eq!(
+        decode(Spec::default().with_opcode(83)),
+        "Pack { values_count: 0, axis: 0 }"
+    );
+    let unpack = Spec::default()
+        .with_opcode(88)
+        .with_options(64, vec![(0, Field::I32(4)), (1, Field::I32(2))]);
+    assert_eq!(decode(unpack), "Unpack { num: 4, axis: 2 }");
+    let space_to_depth = Spec::default()
+        .with_opcode(26)
+        .with_options(19, vec![(0, Field::I32(2))]);
+    assert_eq!(decode(space_to_depth), "BlockSize { block_size: 2 }");
+    let depth_to_space = Spec::default()
+        .with_opcode(5)
+        .with_options(94, vec![(0, Field::I32(3))]);
+    assert_eq!(decode(depth_to_space), "BlockSize { block_size: 3 }");
+    assert_eq!(
+        decode(Spec::default().with_opcode(5)),
+        "BlockSize { block_size: 0 }"
+    );
+    // DEPTH_TO_SPACE carrying `SpaceToDepthOptions`, UNPACK carrying `PackOptions`: malformed.
+    malformed(
+        &Spec::default()
+            .with_opcode(5)
+            .with_options(19, vec![])
+            .bytes(),
+    );
+    malformed(
+        &Spec::default()
+            .with_opcode(88)
+            .with_options(59, vec![])
+            .bytes(),
+    );
+
     // Operators whose options nanoglia does not decode.
     let reshape = Spec::default()
         .with_opcode(22)
@@ -674,6 +712,11 @@ fn options_fields_must_fit_their_table() {
         .with_opcode(67)
         .with_options(49, vec![(0, Field::I8(0)), (2, Field::I32(1))]);
     assert!(Model::parse(&spec.bytes()).is_ok());
+    // The same for PACK's `axis`.
+    let spec = Spec::default()
+        .with_opcode(83)
+        .with_options(59, vec![(0, Field::I32(2)), (1, Field::U8(1))]);
+    malformed(&spec.bytes());
 }
 
 #[test]

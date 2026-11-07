@@ -1,8 +1,9 @@
 //! `SPLIT` (TFLite `split.cc`) and `SPLIT_V` (TFLite `split_v.cc`), both with the reference
-//! `Split`, with a constant axis and constant sizes.
+//! `Split`, with a constant axis and constant sizes, and `UNPACK` (TFLite `unpack.cc`).
 //!
-//! Like TFLite, these operators only move bytes: quantized tensors are copied unchanged,
-//! whatever their quantization.
+//! Like TFLite, `SPLIT` and `SPLIT_V` only move bytes: quantized tensors are copied unchanged,
+//! whatever their quantization. `UNPACK` requires the outputs to share the input's quantization,
+//! as LiteRT does.
 
 use crate::util::{
     constant, dims_product, elements, fixed_kernel, in_slice, input, out_slice, output, pod_struct,
@@ -172,5 +173,87 @@ fixed_kernel!(
     SPLIT,
     "rust/split",
     split_params,
+    split_eval
+);
+
+/// `UNPACK` (TFLite `unpack.cc`): unstacking the `num` slices of an input axis is a split into
+/// slices of one along that axis, which the outputs drop.
+fn unpack_params(op: &OpDesc<'_, '_>) -> Result<SplitParams> {
+    let OpOptions::Unpack { num, axis } = op.options else {
+        return Err(unsupported(op));
+    };
+    let outputs = op.outputs.len();
+    if op.inputs.len() != 1
+        || outputs == 0
+        || outputs > MAX_OP_OUTPUTS
+        || i32::try_from(outputs) != Ok(num)
+    {
+        return Err(unsupported(op));
+    }
+    let input = input(op, 0)?;
+    // The types of LiteRT's `unpack.cc` (TensorFlow Lite Micro: f32, int8, int16, int32).
+    let supported = matches!(
+        input.dtype,
+        DataType::F32
+            | DataType::F16
+            | DataType::BF16
+            | DataType::U8
+            | DataType::I8
+            | DataType::I16
+            | DataType::I32
+            | DataType::Bool
+    );
+    if !supported {
+        return Err(unsupported_type(input));
+    }
+    let size = input.dtype.size().ok_or_else(|| unsupported_type(input))?;
+    // TFLite refuses empty inputs.
+    if elements(input)? == 0 {
+        return Err(unsupported(op));
+    }
+    let in_dims = input.dims.as_slice();
+    let rank = in_dims.len() as i32;
+    let axis = if axis < 0 { axis + rank } else { axis };
+    if !(0..rank).contains(&axis) {
+        return Err(unsupported(op));
+    }
+    let axis = axis as usize;
+    if in_dims[axis] != num {
+        return Err(shape_mismatch(input));
+    }
+    let inner = dims_product(&in_dims[axis + 1..], input)? as usize;
+    let chunk = u32::try_from(inner * size).map_err(|_| shape_mismatch(input))?;
+    let mut params = SplitParams {
+        outer: dims_product(&in_dims[..axis], input)?,
+        outputs: outputs as u32,
+        data: 0,
+        chunk: [0; MAX_OP_OUTPUTS],
+    };
+    params.chunk[..outputs].fill(chunk);
+    for i in 0..outputs {
+        let out = output(op, i)?;
+        if out.dtype != input.dtype {
+            return Err(unsupported_type(out));
+        }
+        // The input dimensions without the axis.
+        let expected = in_dims[..axis].iter().chain(&in_dims[axis + 1..]);
+        if !out.dims.as_slice().iter().eq(expected) {
+            return Err(shape_mismatch(out));
+        }
+        // LiteRT requires every output to have the input's scale and zero point.
+        if out.quant.scale() != input.quant.scale()
+            || out.quant.zero_point() != input.quant.zero_point()
+        {
+            return Err(unsupported(op));
+        }
+    }
+    Ok(params)
+}
+
+fixed_kernel!(
+    /// `UNPACK` of `f32`, `f16`, `bf16`, `u8`, `i8`, `i16`, `i32` and `bool`, up to 8 outputs.
+    UNPACK,
+    "rust/unpack",
+    unpack_params,
     split_eval
 );

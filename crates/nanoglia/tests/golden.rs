@@ -59,7 +59,7 @@ fn dtype_size(dtype: &str) -> usize {
     match dtype {
         "int8" | "uint8" | "bool" => 1,
         "int16" => 2,
-        "int32" | "float32" => 4,
+        "int32" | "uint32" | "float32" => 4,
         "int64" => 8,
         other => panic!("unknown dtype {other}"),
     }
@@ -80,6 +80,9 @@ fn max_diff(dtype: &str, actual: &[u8], expected: &[u8]) -> f64 {
             "int32" => (i32::from_le_bytes(a.try_into().unwrap()) as f64
                 - i32::from_le_bytes(e.try_into().unwrap()) as f64)
                 .abs(),
+            "uint32" => (u32::from_le_bytes(a.try_into().unwrap()) as f64
+                - u32::from_le_bytes(e.try_into().unwrap()) as f64)
+                .abs(),
             "int64" => {
                 let (a, e) = (
                     i64::from_le_bytes(a.try_into().unwrap()),
@@ -92,7 +95,15 @@ fn max_diff(dtype: &str, actual: &[u8], expected: &[u8]) -> f64 {
                     f32::from_le_bytes(a.try_into().unwrap()),
                     f32::from_le_bytes(e.try_into().unwrap()),
                 );
-                ((a - e).abs() / e.abs().max(1.0)) as f64
+                if a == e || (a.is_nan() && e.is_nan()) {
+                    0.0
+                } else if !a.is_finite() || !e.is_finite() {
+                    // Infinities and NaN must match exactly (`f64::max` would drop a NaN
+                    // difference).
+                    f64::INFINITY
+                } else {
+                    ((a - e).abs() / e.abs().max(1.0)) as f64
+                }
             }
             _ => f64::INFINITY,
         })

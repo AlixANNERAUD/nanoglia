@@ -14,14 +14,20 @@ use std::vec;
 use std::vec::Vec;
 
 mod arg_min_max_tests;
+mod binary_tests;
 mod gather_tests;
 mod golden;
 mod golden_tests;
 mod hand_tests;
+mod layout_tests;
+mod logic_tests;
+mod prelu_tests;
+mod reduce_tests;
 mod resize_tests;
 mod slice_tests;
 mod split_tests;
 mod transpose_conv_tests;
+mod unary_tests;
 
 /// Sixteen bytes aligned like the interpreter's arena.
 #[derive(Clone, Copy)]
