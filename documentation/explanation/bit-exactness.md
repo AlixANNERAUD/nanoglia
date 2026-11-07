@@ -60,15 +60,15 @@ The reference kernels are the plain C++ implementations TFLite
 specifies its operators with, and they compute the same results as
 TensorFlow Lite Micro.
 
-There are 222 cases:
+There are 254 cases:
 
-- 207 single-operator models written by the generator, in int8, 16x8
+- 239 single-operator models written by the generator, in int8, 16x8
   and float32 versions, with weights and output ranges calibrated as a
   converter would;
 - 3 random inputs for each of the 5 MLPerf Tiny models.
 
 `crates/nanoglia/tests/golden.rs` runs every case end to end and
-requires quantized outputs to match exactly. 219 cases pass; the 3
+requires quantized outputs to match exactly. 251 cases pass; the 3
 `ad01_int8` samples are listed in its `PENDING` table (see below). The
 test fails if a pending case starts to pass, so the list stays current.
 The same tests run compiled to WebAssembly under wasmtime (`mise run
@@ -130,6 +130,11 @@ where noted:
 - **int16 `SOFTMAX`.** Here nanoglia follows LiteRT: its lookup tables are
   computed in `f64`, while TensorFlow Lite Micro computes them in `f32`,
   which changes two entries of one table.
+- **int16 `LOGISTIC` output scale.** Both compute the int16 `LOGISTIC` and
+  `TANH` the same way, but LiteRT's reference `LOGISTIC` requires an output
+  scale of exactly 1/32768, while TensorFlow Lite Micro accepts any scale
+  within 0.07 % of it (its `CheckedLog2` test). nanoglia claims only what
+  both accept.
 - **int8 `TRANSPOSE_CONV` activation.** TensorFlow Lite Micro's CMSIS-NN
   kernel passes `kTfLiteActNone` when it computes the activation range,
   so it ignores the fused activation of the options (operator version
@@ -145,8 +150,10 @@ A backend refuses an operator rather than compute it differently from
 TFLite. For example, CMSIS-NN's int16 softmax is not used (it does not
 clamp its result), int16 `ADD` and `SUB` with power-of-two scales are
 refused (TFLite runs another kernel, chosen by an option nanoglia does
-not decode), and 16x8 layers with an int32 bias are refused (LiteRT would
-read the bias as int64). See [Supported operators](../reference/supported-operators.md).
+not decode), 16x8 layers with an int32 bias are refused (LiteRT would
+read the bias as int64), and the 16x8 `DEPTHWISE_CONV_2D` of CMSIS-NN is
+claimed only when its accumulators cannot overflow the 32-bit intermediate
+value of CMSIS-NN's requantization (TFLite keeps 64 bits). See [Supported operators](../reference/supported-operators.md).
 
 ## Why TFLite and not ONNX
 

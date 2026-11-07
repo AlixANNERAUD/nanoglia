@@ -15,7 +15,7 @@ Default features: `cmsis-nn`, `kernels`, `float`, `int16`.
 | `esp-nn` | no | The ESP-NN backend (`nanoglia-esp-nn`), tried before CMSIS-NN in `Registry::default()`: ESP-NN's optimized kernels on `xtensa-esp32s3-*` targets, its ANSI C kernels elsewhere (slower than CMSIS-NN's portable C: enable it there for testing only). Compiles the ESP-NN C sources shipped with `nanoglia-esp-nn-sys` and CMSIS-NN's, whose kernels it runs while another context uses ESP-NN ([Supported operators](supported-operators.md#esp-nn)). Claims nothing with `single-rounding`. |
 | `kernels` | yes | The pure Rust backend (`nanoglia-kernels`), after CMSIS-NN in `Registry::default()`. |
 | `float` | yes | The f32 kernels of the Rust backend: `CONV_2D`, `DEPTHWISE_CONV_2D`, `TRANSPOSE_CONV`, `FULLY_CONNECTED`, pooling, `SOFTMAX`, `RESIZE_BILINEAR` and the f32 activations (`RELU`, `RELU6`, `RELU_N1_TO_1`, `LEAKY_RELU`, `LOGISTIC`, `TANH`, `HARD_SWISH`). Has an effect only with `kernels`. |
-| `int16` | yes | The 16x8 kernels: CMSIS-NN `CONV_2D`, `FULLY_CONNECTED`, `ADD` and `MUL` on int16, and the Rust `FULLY_CONNECTED` 16x8 and int16 `SOFTMAX`. |
+| `int16` | yes | The 16x8 kernels: CMSIS-NN `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`, `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `ADD` and `MUL` on int16, and the Rust `FULLY_CONNECTED` 16x8, int16 `SOFTMAX`, `LOGISTIC` and `TANH`. |
 | `single-rounding` | no | Requantizes with a single rounding (`TFLITE_SINGLE_ROUNDING`) in every crate, CMSIS-NN included (`CMSIS_NN_USE_SINGLE_ROUNDING`), instead of the double rounding of TensorFlow Lite Micro, CMSIS-NN and the TFLite reference kernels. Results then differ from the golden data by design ([Bit-exactness](../explanation/bit-exactness.md#single-and-double-rounding)). |
 | `defmt` | no | `defmt::Format` for `Error`, `ErrorCode`, `Detail`, `DataType`, `Dims`, `BuiltinOp`, `Padding`, `Activation` and `BackendKind`. Forwards `nanoglia-core/defmt`. |
 
@@ -62,7 +62,7 @@ Rust backend has no int8 version of them.
 
 | Feature | Default | Enables |
 | --- | :---: | --- |
-| `int16` | yes (off through `nanoglia` unless its `int16` is on) | The 16x8 kernels: `CONV_2D`, `FULLY_CONNECTED`, `ADD`, `MUL`. |
+| `int16` | yes (off through `nanoglia` unless its `int16` is on) | The 16x8 kernels: `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`, `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `ADD`, `MUL`. |
 | `single-rounding` | no | `nanoglia-cmsis-nn-sys/single-rounding` and `nanoglia-core/single-rounding`. |
 
 ## nanoglia-cmsis-nn-sys
@@ -81,7 +81,7 @@ or Helium flags of the Arm target.
 | Feature | Default | Enables |
 | --- | :---: | --- |
 | `float` | yes (off through `nanoglia` unless its `float` is on) | The f32 kernels listed for `nanoglia/float`. |
-| `int16` | yes (off through `nanoglia` unless its `int16` is on) | `rust/fully_connected_16x8` and `rust/softmax_i16`. |
+| `int16` | yes (off through `nanoglia` unless its `int16` is on) | `rust/fully_connected_16x8`, `rust/softmax_i16`, `rust/logistic_i16` and `rust/tanh_i16`. |
 | `single-rounding` | no | `nanoglia-core/single-rounding`. |
 
 ## nanoglia-esp-nn, nanoglia-esp-nn-sys
