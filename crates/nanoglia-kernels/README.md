@@ -25,6 +25,9 @@ They cover what the optimized C libraries lack: shape, data-movement and quantiz
 | `RSQRT` | `f32`, `i8` |
 | `DIV` | `f32`, `i32` (broadcasting) |
 | `SQUARED_DIFFERENCE` | `f32`, `i32`, `i8`, `i16` (broadcasting) |
+| `EQUAL`, `NOT_EQUAL`, `LESS`, `LESS_EQUAL`, `GREATER`, `GREATER_EQUAL` | `f32`, `i32`, `i64`, `bool` (equalities), `i8`/`u8` rescaled like TFLite (broadcasting) |
+| `SELECT_V2` | `f32`, `bool`, `i8`, `u8`, `i16`, `i32`, `u32`, `i64` (broadcasting) |
+| `CAST` | between `bool`, `i8`, `u8`, `i16`, `i32`, `u32`, `i64`, `f32` |
 | `LOGISTIC`, `TANH` | `f32`, `i8`, `u8`, `i16` (TFLite's interpolated sigmoid table) |
 | `HARD_SWISH` | `f32`, `i8`, `u8` |
 | `PAD`, `PADV2` | any |

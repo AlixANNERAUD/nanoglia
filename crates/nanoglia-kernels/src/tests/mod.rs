@@ -20,6 +20,7 @@ mod golden;
 mod golden_tests;
 mod hand_tests;
 mod layout_tests;
+mod logic_tests;
 mod prelu_tests;
 mod reduce_tests;
 mod resize_tests;

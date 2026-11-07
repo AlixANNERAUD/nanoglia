@@ -7,6 +7,8 @@
 
 mod activation;
 mod arg_min_max;
+mod cast;
+mod compare;
 mod concat;
 mod conv;
 mod copy;
@@ -146,6 +148,14 @@ impl RustKernels {
             BuiltinOp::SQUARED_DIFFERENCE => {
                 kernels!(elementwise::BINARY, elementwise::QUANTIZED_BINARY)
             }
+            BuiltinOp::EQUAL
+            | BuiltinOp::NOT_EQUAL
+            | BuiltinOp::LESS
+            | BuiltinOp::LESS_EQUAL
+            | BuiltinOp::GREATER
+            | BuiltinOp::GREATER_EQUAL => kernels!(compare::COMPARISON),
+            BuiltinOp::SELECT_V2 => kernels!(compare::SELECT_V2),
+            BuiltinOp::CAST => kernels!(cast::CAST),
             BuiltinOp::CONV_2D => kernels!(
                 #[cfg(feature = "float")]
                 conv::CONV_2D_F32

@@ -123,6 +123,10 @@ int64 bias.
 | `DIV` | f32, int32 | `rust/binary` | — |
 | `SQUARED_DIFFERENCE` | f32, int32 | `rust/binary` | — |
 | | int8, int16 | `rust/binary_q` | — |
+| `EQUAL`, `NOT_EQUAL` | f32, int32, int64, bool; int8, uint8 (rescaled) → bool | `rust/comparison` | — |
+| `LESS`, `LESS_EQUAL`, `GREATER`, `GREATER_EQUAL` | f32, int32, int64; int8, uint8 (rescaled) → bool | `rust/comparison` | — |
+| `SELECT_V2` | f32, bool, int8, uint8, int16, int32, uint32, int64 | `rust/select_v2` | — |
+| `CAST` | between bool, int8, uint8, int16, int32, uint32, int64, f32 | `rust/cast` | — |
 | `RELU`, `RELU6`, `RELU_N1_TO_1` | f32 | `rust/relu_f32` | float |
 | | int8, uint8, int16 | `rust/relu_q` | — |
 | `LEAKY_RELU` | f32 | `rust/leaky_relu_f32` | float |
@@ -546,6 +550,28 @@ Two inputs of the output's type, broadcasting up to rank 6.
   C++ leaves undefined and Cortex-M, AArch64 and x86 compute differently,
   so no result is bit-exact with "TFLite" there.
 
+### EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, SELECT_V2, CAST
+
+- `rust/comparison`: two inputs of the same type, broadcasting up to
+  rank 6, a bool output. int8 and uint8 inputs are rescaled to their own
+  scale before comparing, as in TFLite: `(x - zero_point) << 8` times
+  `QuantizeMultiplierSmallerThanOneExp(scale)`, so each scale must be
+  below 1 (TensorFlow Lite Micro requires it) and each zero point in the
+  range of its type. bool supports `EQUAL` and `NOT_EQUAL` only. int16 is
+  refused: TensorFlow Lite Micro computes int16 `GREATER` without its
+  rescaling parameters, and LiteRT compares int16 raw or rescaled
+  depending on the operator. TensorFlow Lite Micro has no uint8 version.
+- `rust/select_v2`: a bool condition and two value inputs of the
+  output's type, all three broadcast to the output's shape (up to rank
+  6). Values are copied unchanged, whatever their quantization, as in
+  TFLite. `SELECT` (version 1, with its row semantics) is not supported.
+- `rust/cast`: input and output of the same shape. Integers convert like
+  C++'s `static_cast` (narrowing keeps the low bits), to bool as `x != 0`;
+  f32 converts to integers with TensorFlow Lite Micro's `SafeCast`
+  (truncation toward zero, saturation, NaN to 0; LiteRT 2.3 maps NaN to
+  the largest value instead). Quantization is not looked at: raw values
+  are converted. TensorFlow Lite Micro has no uint8 or int64 version.
+
 ### Activations
 
 - `rust/relu_q`: int16 needs zero points 0 and is not supported for
@@ -574,7 +600,8 @@ The golden cases of `testdata/` exercise `CONV_2D`, `DEPTHWISE_CONV_2D`,
 `SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `SUM`,
 `REDUCE_MAX`, `REDUCE_MIN`, `PACK`, `UNPACK`, `SPACE_TO_DEPTH`,
 `DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `PRELU`, `ABS`, `NEG`, `SQRT`, `RSQRT`, `EXP`, `LOG`,
-`DIV`, `SQUARED_DIFFERENCE`, `LOGISTIC`,
+`DIV`, `SQUARED_DIFFERENCE`, `EQUAL`, `NOT_EQUAL`, `LESS`, `LESS_EQUAL`, `GREATER`,
+`GREATER_EQUAL`, `SELECT_V2`, `CAST`, `LOGISTIC`,
 `TANH`, `RELU`, `RELU6`, `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`,
 `TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`, `SPLIT`, `SPLIT_V`,
 `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR` and

@@ -392,6 +392,26 @@ impl Broadcast {
         b: &TensorDesc<'_>,
         out: &TensorDesc<'_>,
     ) -> Result<Self> {
+        Self::build(a, b, out, true)
+    }
+
+    /// Computes how `a` and `b` broadcast to `out`, which may be larger than their broadcast
+    /// shape (a third input of a ternary operator may set its other dimensions): each dimension
+    /// of `a` and `b` must be 1 or the output's.
+    pub(crate) fn within(
+        a: &TensorDesc<'_>,
+        b: &TensorDesc<'_>,
+        out: &TensorDesc<'_>,
+    ) -> Result<Self> {
+        Self::build(a, b, out, false)
+    }
+
+    fn build(
+        a: &TensorDesc<'_>,
+        b: &TensorDesc<'_>,
+        out: &TensorDesc<'_>,
+        exact: bool,
+    ) -> Result<Self> {
         let len1 = elements(a)?;
         let len2 = elements(b)?;
         let len = elements(out)?;
@@ -419,7 +439,7 @@ impl Broadcast {
         for axis in (0..MAX_RANK).rev() {
             let (x, y, o) = (da[axis], db[axis], dout[axis]);
             let ok = |d: i32| d == o || d == 1;
-            if !ok(x) || !ok(y) || (o != x && o != y) {
+            if !ok(x) || !ok(y) || (exact && o != x && o != y) {
                 return Err(shape_mismatch(out));
             }
             params.out[axis] = o as u32;
