@@ -95,6 +95,8 @@ impl RustKernels {
                 activation::HARD_SWISH_Q
             ),
             BuiltinOp::MEAN => kernels!(reduce::MEAN),
+            BuiltinOp::SUM => kernels!(reduce::SUM),
+            BuiltinOp::REDUCE_MAX | BuiltinOp::REDUCE_MIN => kernels!(reduce::REDUCE_MIN_MAX),
             BuiltinOp::PAD | BuiltinOp::PADV2 => kernels!(pad::PAD),
             BuiltinOp::CONCATENATION => kernels!(concat::CONCATENATION),
             BuiltinOp::TRANSPOSE => kernels!(transpose::TRANSPOSE),

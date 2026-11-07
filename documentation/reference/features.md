@@ -25,10 +25,10 @@ int16 operators stay available without them, because they share a
 kernel with other types:
 
 - without `float`: f32 `ADD`, `SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `MEAN`,
-  `PAD`, `CONCATENATION`, `RESHAPE`, `ARG_MAX`, `ARG_MIN`,
+  `SUM`, `REDUCE_MAX`, `REDUCE_MIN`, `PAD`, `CONCATENATION`, `RESHAPE`, `ARG_MAX`, `ARG_MIN`,
   `RESIZE_NEAREST_NEIGHBOR` and the `QUANTIZE` / `DEQUANTIZE` conversions;
 - without `int16`: int16 `ADD`, `SUB` and `MUL` (Rust kernel, with
-  broadcasting), `MEAN`, `RELU`, `RELU6`, `LEAKY_RELU`, `MAXIMUM`,
+  broadcasting), `MEAN`, `SUM`, `REDUCE_MAX`, `REDUCE_MIN`, `RELU`, `RELU6`, `LEAKY_RELU`, `MAXIMUM`,
   `MINIMUM`, `PAD`, `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`,
   `RESIZE_BILINEAR` and `QUANTIZE` / `DEQUANTIZE`.
 

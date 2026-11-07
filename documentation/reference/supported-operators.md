@@ -105,6 +105,8 @@ int64 bias.
 | | int8, uint8 → int8, uint8, int16; int16 → int8, int16; int32 → int8, int16 | `rust/requantize` | — |
 | `DEQUANTIZE` | int8, uint8, int16, f16 → f32 | `rust/dequantize` | — |
 | `MEAN` | f32, int8, uint8, int16 | `rust/mean` | — |
+| `SUM` | f32, int8, uint8, int16, int32, int64 | `rust/sum` | — |
+| `REDUCE_MAX`, `REDUCE_MIN` | f32, int8, uint8, int16, int32, int64 | `rust/reduce_min_max` | — |
 | `RELU`, `RELU6`, `RELU_N1_TO_1` | f32 | `rust/relu_f32` | float |
 | | int8, uint8, int16 | `rust/relu_q` | — |
 | `LEAKY_RELU` | f32 | `rust/leaky_relu_f32` | float |
@@ -411,11 +413,31 @@ with a non-empty output is refused (TFLite would read before the input).
 - `rust/dequantize`: int8 and uint8 per tensor or per channel, int16 per
   tensor with zero point 0, f16.
 
-### MEAN
+### MEAN, SUM, REDUCE_MAX, REDUCE_MIN
 
 The axes are a constant int32 or int64 tensor (negative axes wrap,
-duplicates are ignored); input and output of the same type; int16 needs
-zero points 0.
+duplicates are ignored); input and output of the same type, a non-empty
+input, an output with the element count of the kept dimensions
+(`keep_dims` either way); int16 needs zero points 0.
+
+- `rust/mean`, `rust/sum`: quantized inputs are summed in an `i32` minus
+  their zero point, then requantized in fixed point with
+  `QuantizeMultiplier(input_scale / output_scale)` (computed in `f64`;
+  `MEAN` folds the division by the element count into it), as TensorFlow
+  Lite Micro does. Refused when that multiplier shifts left by more than
+  30 bits. f32, int32 and int64 sums add the inputs in order; integer sums
+  wrap around. TensorFlow Lite Micro has `SUM` on f32, int8 and int16
+  only; the uint8, int32 and int64 versions follow LiteRT's reference
+  kernel.
+- `rust/reduce_min_max`: quantized inputs and output must share their
+  scale and zero point (values are compared as integers, as TensorFlow
+  Lite Micro requires). Each output starts from the lowest (highest)
+  finite value of the type and takes the next input only if it compares
+  greater (smaller): f32 NaN inputs are skipped, and a slice of `-inf`
+  (`+inf`) gives the lowest (highest) finite f32, as in TensorFlow Lite
+  Micro (LiteRT's reference kernel starts a reduction over every axis from
+  the first input instead). TensorFlow Lite Micro has f32 and int8 only;
+  the other types follow LiteRT's reference kernel.
 
 ### Activations
 
@@ -442,7 +464,8 @@ zero points 0.
 
 The golden cases of `testdata/` exercise `CONV_2D`, `DEPTHWISE_CONV_2D`,
 `FULLY_CONNECTED`, `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`,
-`SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `LOGISTIC`,
+`SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `SUM`,
+`REDUCE_MAX`, `REDUCE_MIN`, `LOGISTIC`,
 `TANH`, `RELU`, `RELU6`, `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`,
 `TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`, `SPLIT`, `SPLIT_V`,
 `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR` and
