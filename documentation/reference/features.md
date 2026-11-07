@@ -14,7 +14,7 @@ Default features: `cmsis-nn`, `kernels`, `float`, `int16`.
 | `cmsis-nn` | yes | The CMSIS-NN backend (`nanoglia-cmsis-nn`), first in `Registry::default()` (after ESP-NN with `esp-nn`). Compiles the CMSIS-NN C sources shipped with `nanoglia-cmsis-nn-sys`, so it needs a C compiler and the C headers of the target ([Run on a microcontroller](../how-to-guides/run-on-a-microcontroller.md), [Run in the browser](../how-to-guides/run-in-the-browser.md)). |
 | `esp-nn` | no | The ESP-NN backend (`nanoglia-esp-nn`), tried before CMSIS-NN in `Registry::default()`: ESP-NN's optimized kernels on `xtensa-esp32s3-*` targets, its ANSI C kernels elsewhere (slower than CMSIS-NN's portable C: enable it there for testing only). Compiles the ESP-NN C sources shipped with `nanoglia-esp-nn-sys` and CMSIS-NN's, whose kernels it runs while another context uses ESP-NN ([Supported operators](supported-operators.md#esp-nn)). Claims nothing with `single-rounding`. |
 | `kernels` | yes | The pure Rust backend (`nanoglia-kernels`), after CMSIS-NN in `Registry::default()`. |
-| `float` | yes | The f32 kernels of the Rust backend: `CONV_2D`, `DEPTHWISE_CONV_2D`, `TRANSPOSE_CONV`, `FULLY_CONNECTED`, pooling, `SOFTMAX`, `RESIZE_BILINEAR` and the f32 activations (`RELU`, `RELU6`, `RELU_N1_TO_1`, `LEAKY_RELU`, `LOGISTIC`, `TANH`, `HARD_SWISH`). Has an effect only with `kernels`. |
+| `float` | yes | The f32 kernels of the Rust backend: `CONV_2D`, `DEPTHWISE_CONV_2D`, `TRANSPOSE_CONV`, `FULLY_CONNECTED`, pooling, `SOFTMAX`, `RESIZE_BILINEAR` and the f32 activations (`RELU`, `RELU6`, `RELU_N1_TO_1`, `LEAKY_RELU`, `PRELU`, `LOGISTIC`, `TANH`, `HARD_SWISH`). Has an effect only with `kernels`. |
 | `int16` | yes | The 16x8 kernels: CMSIS-NN `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`, `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `ADD` and `MUL` on int16, and the Rust `FULLY_CONNECTED` 16x8, int16 `SOFTMAX`, `LOGISTIC` and `TANH`. |
 | `single-rounding` | no | Requantizes with a single rounding (`TFLITE_SINGLE_ROUNDING`) in every crate, CMSIS-NN included (`CMSIS_NN_USE_SINGLE_ROUNDING`), instead of the double rounding of TensorFlow Lite Micro, CMSIS-NN and the TFLite reference kernels. Results then differ from the golden data by design ([Bit-exactness](../explanation/bit-exactness.md#single-and-double-rounding)). |
 | `defmt` | no | `defmt::Format` for `Error`, `ErrorCode`, `Detail`, `DataType`, `Dims`, `BuiltinOp`, `Padding`, `Activation` and `BackendKind`. Forwards `nanoglia-core/defmt`. |
@@ -32,8 +32,8 @@ kernel with other types:
 - without `int16`: int16 `ADD`, `SUB` and `MUL` (Rust kernel, with
   broadcasting), `MEAN`, `SUM`, `REDUCE_MAX`, `REDUCE_MIN`, `PACK`,
   `UNPACK`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `RELU`, `RELU6`,
-  `LEAKY_RELU`, `MAXIMUM`, `MINIMUM`, `PAD`, `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`,
-  `RESIZE_BILINEAR` and `QUANTIZE` / `DEQUANTIZE`.
+  `LEAKY_RELU`, `PRELU`, `MAXIMUM`, `MINIMUM`, `PAD`, `ARG_MAX`, `ARG_MIN`,
+  `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR` and `QUANTIZE` / `DEQUANTIZE`.
 
 The full matrix is in [Supported operators](supported-operators.md).
 

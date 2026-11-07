@@ -113,6 +113,8 @@ int64 bias.
 | `DEPTH_TO_SPACE` | f32, int8, uint8, int32, int64 | `rust/depth_to_space` | — |
 | `SPACE_TO_BATCH_ND` | f32, int8, uint8, int16, int32, int64 | `rust/space_to_batch_nd` | — |
 | `BATCH_TO_SPACE_ND` | f32, int8, uint8, int16, int32, int64 | `rust/batch_to_space_nd` | — |
+| `PRELU` | f32 | `rust/prelu_f32` | float |
+| | int8, uint8, int16 (int8 `alpha`) | `rust/prelu_q` | — |
 | `RELU`, `RELU6`, `RELU_N1_TO_1` | f32 | `rust/relu_f32` | float |
 | | int8, uint8, int16 | `rust/relu_q` | — |
 | `LEAKY_RELU` | f32 | `rust/leaky_relu_f32` | float |
@@ -478,6 +480,21 @@ other types follow LiteRT's reference kernels.
   tensors with the byte of the output zero point and other types with
   zeros, as the reference kernel's `memset` does.
 
+### PRELU
+
+`alpha` broadcasts to the input (up to rank 6), whose shape the output
+has; `alpha` may be a constant or computed at run time.
+
+- `rust/prelu_q`: int8 and uint8 take an `alpha` of their type, int16 an
+  int8 one; zero points in the range of their type, 0 for int16
+  activations. Non-negative inputs are requantized with
+  `input_scale / output_scale`, negative ones (times `alpha`) with
+  `input_scale × alpha_scale / output_scale`, both computed in `f64` as
+  in TensorFlow Lite Micro (LiteRT divides in `f32` first; the golden
+  cases check that both agree on their data). Refused when a multiplier
+  shifts left by more than 30 bits.
+- `rust/prelu_f32`: `x >= 0 ? x : x * alpha`.
+
 ### Activations
 
 - `rust/relu_q`: int16 needs zero points 0 and is not supported for
@@ -505,7 +522,7 @@ The golden cases of `testdata/` exercise `CONV_2D`, `DEPTHWISE_CONV_2D`,
 `FULLY_CONNECTED`, `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`,
 `SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `SUM`,
 `REDUCE_MAX`, `REDUCE_MIN`, `PACK`, `UNPACK`, `SPACE_TO_DEPTH`,
-`DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `LOGISTIC`,
+`DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `PRELU`, `LOGISTIC`,
 `TANH`, `RELU`, `RELU6`, `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`,
 `TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`, `SPLIT`, `SPLIT_V`,
 `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR` and

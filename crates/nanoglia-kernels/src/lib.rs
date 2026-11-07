@@ -17,6 +17,7 @@ mod gather;
 mod math;
 mod pad;
 mod pool;
+mod prelu;
 mod quantize;
 mod reduce;
 mod resize;
@@ -105,6 +106,11 @@ impl RustKernels {
             BuiltinOp::DEPTH_TO_SPACE => kernels!(depth_space::DEPTH_TO_SPACE),
             BuiltinOp::SPACE_TO_BATCH_ND => kernels!(space_batch::SPACE_TO_BATCH_ND),
             BuiltinOp::BATCH_TO_SPACE_ND => kernels!(space_batch::BATCH_TO_SPACE_ND),
+            BuiltinOp::PRELU => kernels!(
+                #[cfg(feature = "float")]
+                prelu::PRELU_F32,
+                prelu::PRELU_Q
+            ),
             BuiltinOp::PAD | BuiltinOp::PADV2 => kernels!(pad::PAD),
             BuiltinOp::CONCATENATION => kernels!(concat::CONCATENATION),
             BuiltinOp::TRANSPOSE => kernels!(transpose::TRANSPOSE),
