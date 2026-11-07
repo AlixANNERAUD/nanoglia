@@ -155,6 +155,53 @@ fn logistic_requires_output_scale() {
     assert!(select(&unary(BuiltinOp::LOGISTIC, x, y)).is_none());
 }
 
+#[cfg(feature = "int16")]
+#[test]
+fn logistic_tanh_i16() {
+    let one = 1.0 / 32768.0;
+    let x = |scale: f32, zero_point| q(t(0, DataType::I16, &[4]), scale, zero_point);
+    let y = |scale: f32, zero_point| q(t(1, DataType::I16, &[4]), scale, zero_point);
+    let name = |code, input, output| select(&unary(code, input, output)).map(|k| k.name());
+    assert_eq!(
+        name(BuiltinOp::LOGISTIC, x(0.001, 0), y(one, 0)),
+        Some("rust/logistic_i16")
+    );
+    assert_eq!(
+        name(BuiltinOp::TANH, x(0.001, 0), y(one, 0)),
+        Some("rust/tanh_i16")
+    );
+
+    // sigmoid(0) = 0.5, tanh(0) = 0, and the saturated ends of the table (the negative end of
+    // LOGISTIC rounds to 1, not 0, as in TFLite).
+    let values = buf(&[0i16, 32767, -32768, -1]);
+    let logistic = unary(BuiltinOp::LOGISTIC, x(1.0 / 256.0, 0), y(one, 0));
+    assert_eq!(run1::<i16>(&logistic, &[values]), [16384, 32767, 1, 16352]);
+    let tanh = unary(BuiltinOp::TANH, x(1.0 / 256.0, 0), y(one, 0));
+    assert_eq!(run1::<i16>(&tanh, &[values]), [0, 32767, -32767, -128]);
+
+    for code in [BuiltinOp::LOGISTIC, BuiltinOp::TANH] {
+        // Zero points must be 0.
+        assert!(name(code, x(0.001, 1), y(one, 0)).is_none());
+        assert!(name(code, x(0.001, 0), y(one, 2)).is_none());
+        // The output scale must be 2^-15.
+        assert!(name(code, x(0.001, 0), y(2.0 * one, 0)).is_none());
+        assert!(name(code, x(0.001, 0), y(0.0001, 0)).is_none());
+        // Input scales whose multiplier TFLite cannot represent: above 65535 / 12288 the
+        // product overflows an `int32_t`, below 4e-14 the multiplier truncates to 0.
+        assert!(name(code, x(5.0, 0), y(one, 0)).is_some());
+        assert!(name(code, x(6.0, 0), y(one, 0)).is_none());
+        assert!(name(code, x(1e-12, 0), y(one, 0)).is_some());
+        assert!(name(code, x(1e-15, 0), y(one, 0)).is_none());
+        // int8 and float tensors go to other kernels.
+        let int8 = |i| q(t(i, DataType::I8, &[4]), 1.0 / 256.0, -128);
+        assert_ne!(name(code, int8(0), int8(1)), Some("rust/logistic_i16"));
+    }
+    // An output scale close to 2^-15 passes TFLite's `CheckedLog2` (TANH), but LiteRT's
+    // reference LOGISTIC wants exactly 1/32768.
+    assert!(name(BuiltinOp::TANH, x(0.001, 0), y(one * 1.0005, 0)).is_some());
+    assert!(name(BuiltinOp::LOGISTIC, x(0.001, 0), y(one * 1.0005, 0)).is_none());
+}
+
 #[test]
 fn mean_tflm_vectors() {
     // reduce_test.cc: MeanFloat4DKeepDims and the int8 variant (scale 1, zero point 0).
