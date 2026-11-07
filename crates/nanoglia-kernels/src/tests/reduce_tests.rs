@@ -107,6 +107,31 @@ fn quantized_sum_requantizes_in_fixed_point() {
 }
 
 #[test]
+fn int16_sum_accumulates_in_32_bits_and_saturates() {
+    // Scale 1 to 2: multiplier 0.5, exact on even sums. The golden cases stay in the int8 range
+    // (their outputs come from an equivalent uint8 model): these rows use the whole int16 range,
+    // past it in the accumulator, and saturate on both sides.
+    let op = reduce(
+        BuiltinOp::SUM,
+        q(t(0, DataType::I16, &[3, 3]), 1.0, 0),
+        &[1],
+        q(t(2, DataType::I16, &[3]), 2.0, 0),
+    );
+    let x: [i16; 9] = [
+        30000,
+        30002,
+        0,
+        i16::MAX,
+        i16::MAX,
+        i16::MAX - 1,
+        i16::MIN,
+        i16::MIN,
+        i16::MIN,
+    ];
+    assert_eq!(run1::<i16>(&op, &[buf(&x)]), [30001, i16::MAX, i16::MIN]);
+}
+
+#[test]
 fn backend_refuses_unsupported_reductions() {
     let i8t = |i, dims: &[i32], s, z| q(t(i, DataType::I8, dims), s, z);
     // REDUCE_MAX compares without requantizing: the quantization must be the same.
