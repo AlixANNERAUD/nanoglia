@@ -210,24 +210,24 @@ input, int8 weights) are refused.
   channels]`, output channels a multiple of input channels (the depth
   multiplier is derived from the shapes, as LiteRT does), weights per
   tensor or per channel along axis 3, int32 bias. Same dimension, stride
-  and dilation limits as `conv2d_s8`.
+  and dilation limits as `conv2d_s8`, plus `(output height - 1) ×
+  stride_h - padding_h` and the same for the width at most 32767, with
+  paddings up to 32767: CMSIS-NN keeps the window origin in an `int16_t`.
 - `cmsis-nn/depthwise_conv2d_s16`: as `depthwise_conv2d_s8`, with input
   and output zero points 0 and an int64 bias (int32 biases are refused, as
-  for `conv2d_s16`), plus three conditions under which CMSIS-NN computes
+  for `conv2d_s16`), plus two conditions under which CMSIS-NN computes
   LiteRT's reference result exactly:
   - a requantization shift below 8 for every channel;
   - a constant bias (or none), small enough that the largest possible
     accumulator of each channel (`height × width × 2^22`, plus the
     magnitude of its bias), multiplied by the 16-bit multiplier CMSIS-NN
     derives from the channel's multiplier, stays below
-    `2^min(45 - shift, 62)`. CMSIS-NN keeps `product >> (14 - shift)` in
-    an `int32_t` where TFLite keeps 64 bits; beyond this bound, saturated
+    `2^min(45 - shift, 62) - 2^(14 - shift)`. CMSIS-NN keeps
+    `product >> (14 - shift)` in an `int32_t` and adds 1 to it, where
+    TFLite keeps 64 bits; beyond this bound, saturated
     outputs can take the wrong sign. For example, a channel whose shift is
     -9 (effective scale between 2^-10 and 2^-9) accepts accumulators up to
-    about 2^39;
-  - `(output height - 1) × stride_h - padding_h` and the same for the
-    width at most 32767, with paddings up to 32767: CMSIS-NN keeps the
-    window origin in an `int16_t`.
+    about 2^39.
 
   Depth multiplier 1, no dilation and fewer than 512 filter values per
   channel run `arm_depthwise_conv_fast_s16` (its DSP or Helium code on
@@ -429,7 +429,7 @@ zero points 0.
   256-entry sigmoid table. Zero points 0 and an output scale of 2^-15
   (TFLite's `CheckedLog2`, within 0.07 %; exactly 1/32768 for `LOGISTIC`,
   as LiteRT's reference kernel requires, where TensorFlow Lite Micro only
-  checks the power of two). Any input scale from 4e-14 to 5.33: a power of
+  checks the power of two). Any input scale from about 3.8e-14 to 5.33: a power of
   two that TFLite treats specially (2^-12, and 2^-11 for `TANH`) uses the
   multiplier 3; other scales get the multiplier and shift TFLite computes in
   `double`. Outside this range TFLite's multiplier truncates to 0 or the

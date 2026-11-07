@@ -342,6 +342,42 @@ fn depthwise_16x8_refusals() {
     assert!(pointwise(&ok_input, &ok_output));
 }
 
+#[test]
+fn depthwise_16x8_accumulator_limit() {
+    // Scale 0.5: multiplier 2^30, shift 0, CMSIS-NN's 16-bit multiplier 2^14. The largest
+    // accumulator (`2^22 + |bias|`) times 2^14 must stay below `2^45 - 2^14`, so that
+    // `(result + 1) >> 1` cannot overflow CMSIS-NN's `int32_t`: accumulators up to `2^31 - 2`.
+    let input = Tensor::activation(DataType::I16, &[1, 1, 1, 1], 1.0, 0).with_data_i16(&[-32768]);
+    let filter = Tensor::weights(&[1, 1, 1, 1], &[-128], &[0.5], 3);
+    let output = Tensor::activation(DataType::I16, &[1, 1, 1, 1], 1.0, 0);
+    let options = OpOptions::DepthwiseConv2D(DepthwiseConv2DOptions {
+        padding: Padding::Valid,
+        stride_h: 1,
+        stride_w: 1,
+        depth_multiplier: 1,
+        dilation_h: 1,
+        dilation_w: 1,
+        activation: Activation::None,
+    });
+    // Accumulator 2^31 - 1: `product >> 14` is `2^31 - 1` and `+ 1` overflows in CMSIS-NN.
+    let over = Tensor::bias_i64(&[(1 << 31) - 1 - (1 << 22)]);
+    let refused = Op::new(BuiltinOp::DEPTHWISE_CONV_2D, options)
+        .input(&input)
+        .input(&filter)
+        .input(&over)
+        .output(&output);
+    assert!(!refused.selected());
+    // Accumulator 2^31 - 2: claimed, and saturates like TFLite.
+    let limit = Tensor::bias_i64(&[(1 << 31) - 2 - (1 << 22)]);
+    let at_limit = Op::new(BuiltinOp::DEPTHWISE_CONV_2D, options)
+        .input(&input)
+        .input(&filter)
+        .input(&limit)
+        .output(&output);
+    assert_eq!(at_limit.kernel_name(), "cmsis-nn/depthwise_conv2d_s16");
+    assert_eq!(at_limit.run_i16(), [32767]);
+}
+
 /// An int16 pooling test case.
 struct PoolCase {
     input: [i32; 4],

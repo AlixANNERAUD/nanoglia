@@ -107,12 +107,16 @@ fn s16_requantize_exact(max_acc: u128, m: Multiplier) -> bool {
         0x7fff
     };
     let reduced = u128::try_from(reduced).unwrap_or(0);
-    // `45 - shift` is at least 38 (shift < 8); `|product >> (14 - shift)| < 2^31` holds when
-    // `|product| < 2^(45 - shift)`.
+    // CMSIS-NN computes `result = (int32_t)(product >> (14 - shift))`, then `(result + 1) >> 1`
+    // in `int32_t`: both stay in range when `|product| < 2^(45 - shift) - 2^(14 - shift)`, so
+    // that `product >> (14 - shift)` is at most `2^31 - 2`. `45 - shift` is at least 38 and
+    // `14 - shift` at least 7 (shift < 8); the product must also fit 62 bits.
     let bits = (45 - i64::from(m.shift)).min(62) as u32;
+    let low = (14 - i64::from(m.shift)).min(63) as u32;
+    let limit = (1u128 << bits).saturating_sub(1u128 << low);
     max_acc
         .checked_mul(reduced)
-        .is_some_and(|product| product < 1u128 << bits)
+        .is_some_and(|product| product < limit)
 }
 
 /// The 16x8 conditions on the multipliers and the bias (see the module documentation).
@@ -197,15 +201,16 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
     if (computed_h, computed_w) != (out_h, out_w) {
         return None;
     }
+    // CMSIS-NN keeps the window origin `out * stride - pad` in an `int16_t`
+    // (`arm_depthwise_conv_s8.c`, `_s8_opt.c`, `_s16.c` and `_fast_s16.c`).
+    let fits_i16 = |out: i32, stride: i32, pad: i32| {
+        let last = i64::from(out - 1) * i64::from(stride) - i64::from(pad);
+        pad <= i16::MAX as i32 && last <= i64::from(i16::MAX)
+    };
+    if !(fits_i16(out_h, stride_h, pad_h) && fits_i16(out_w, stride_w, pad_w)) {
+        return None;
+    }
     if int16 {
-        // CMSIS-NN keeps `out * stride - pad` in an `int16_t`.
-        let fits_i16 = |out: i32, stride: i32, pad: i32| {
-            let last = i64::from(out - 1) * i64::from(stride) - i64::from(pad);
-            pad <= i16::MAX as i32 && last <= i64::from(i16::MAX)
-        };
-        if !(fits_i16(out_h, stride_h, pad_h) && fits_i16(out_w, stride_w, pad_w)) {
-            return None;
-        }
         s16_supported(input, filter, bias, output, filter_h * filter_w, out_c)?;
     }
     let (act_min, act_max) =
