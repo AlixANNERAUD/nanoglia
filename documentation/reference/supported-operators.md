@@ -65,14 +65,17 @@ int64 bias.
 | | int8, otherwise | `rust/transpose_conv_s8` | — |
 | | f32 | `rust/transpose_conv_f32` | float |
 | `DEPTHWISE_CONV_2D` | int8 | `cmsis-nn/depthwise_conv2d_s8` | — |
+| | 16x8, constant bias, bounded accumulators | `cmsis-nn/depthwise_conv2d_s16` | int16 |
 | | f32 | `rust/depthwise_conv_2d_f32` | float |
 | `FULLY_CONNECTED` | int8 | `cmsis-nn/fully_connected_s8` | — |
 | | 16x8, per-tensor weights, small shift | `cmsis-nn/fully_connected_s16` | int16 |
 | | 16x8, otherwise | `rust/fully_connected_16x8` | int16 |
 | | f32 | `rust/fully_connected_f32` | float |
 | `AVERAGE_POOL_2D` | int8 | `cmsis-nn/average_pool2d_s8` | — |
+| | int16 | `cmsis-nn/average_pool2d_s16` | int16 |
 | | f32 | `rust/pool_f32` | float |
 | `MAX_POOL_2D` | int8 | `cmsis-nn/max_pool2d_s8` | — |
+| | int16 | `cmsis-nn/max_pool2d_s16` | int16 |
 | | f32 | `rust/pool_f32` | float |
 | `SOFTMAX` | int8 | `cmsis-nn/softmax_s8` | — |
 | | int16 | `rust/softmax_i16` | int16 |
@@ -108,13 +111,15 @@ int64 bias.
 | | int8, uint8, int16 | `rust/leaky_relu_q` | — |
 | `LOGISTIC` | f32 | `rust/logistic_f32` | float |
 | | int8, uint8 | `rust/lut_q` | — |
+| | int16 | `rust/logistic_i16` | int16 |
 | `TANH` | f32 | `rust/tanh_f32` | float |
 | | int8, uint8 | `rust/lut_q` | — |
+| | int16 | `rust/tanh_i16` | int16 |
 | `HARD_SWISH` | f32 | `rust/hard_swish_f32` | float |
 | | int8, uint8 | `rust/hard_swish_q` | — |
 
 Any other operator, any custom operator, and any type not listed (for
-example int16 `DEPTHWISE_CONV_2D` or pooling, uint8 `ADD`, int4 weights)
+example int16 `TRANSPOSE_CONV` or `HARD_SWISH`, uint8 `ADD`, int4 weights)
 is unsupported.
 
 ## ESP-NN
@@ -205,10 +210,33 @@ input, int8 weights) are refused.
   channels]`, output channels a multiple of input channels (the depth
   multiplier is derived from the shapes, as LiteRT does), weights per
   tensor or per channel along axis 3, int32 bias. Same dimension, stride
-  and dilation limits as `conv2d_s8`.
+  and dilation limits as `conv2d_s8`, plus `(output height - 1) ×
+  stride_h - padding_h` and the same for the width at most 32767, with
+  paddings up to 32767: CMSIS-NN keeps the window origin in an `int16_t`.
+- `cmsis-nn/depthwise_conv2d_s16`: as `depthwise_conv2d_s8`, with input
+  and output zero points 0 and an int64 bias (int32 biases are refused, as
+  for `conv2d_s16`), plus two conditions under which CMSIS-NN computes
+  LiteRT's reference result exactly:
+  - a requantization shift below 8 for every channel;
+  - a constant bias (or none), small enough that the largest possible
+    accumulator of each channel (`height × width × 2^22`, plus the
+    magnitude of its bias), multiplied by the 16-bit multiplier CMSIS-NN
+    derives from the channel's multiplier, stays below
+    `2^min(45 - shift, 62) - 2^(14 - shift)`. CMSIS-NN keeps
+    `product >> (14 - shift)` in an `int32_t` and adds 1 to it, where
+    TFLite keeps 64 bits; beyond this bound, saturated
+    outputs can take the wrong sign. For example, a channel whose shift is
+    -9 (effective scale between 2^-10 and 2^-9) accepts accumulators up to
+    about 2^39.
+
+  Depth multiplier 1, no dilation and fewer than 512 filter values per
+  channel run `arm_depthwise_conv_fast_s16` (its DSP or Helium code on
+  Cortex-M, its generic code elsewhere), the other configurations
+  `arm_depthwise_conv_s16`.
 - `rust/depthwise_conv_2d_f32`: same shapes.
 
-There is no int16 depthwise convolution.
+int16 depthwise convolutions outside these conditions are unsupported:
+there is no Rust kernel for them, nor for int8.
 
 ### FULLY_CONNECTED
 
@@ -235,6 +263,11 @@ contract (`FullyConnectedOptions.quant_spec`) is refused by the reader.
 - `cmsis-nn/*_pool2d_s8`: rank-4 input and output, input and output
   sharing their quantization (scales within 1e-6, equal zero points),
   filter sizes and strides in `1..=32767`.
+- `cmsis-nn/*_pool2d_s16`: the same with int16 tensors and zero points 0.
+  Average pooling rounds half away from zero (`(sum ± count / 2) /
+  count`), like LiteRT's reference int16 kernel, and is claimed for at
+  most 65535 values per window (`filter_h × filter_w`), so that the 32-bit
+  sum and its rounding cannot overflow.
 - `rust/pool_f32`: rank-4 f32.
 
 ### SOFTMAX
@@ -391,6 +424,17 @@ zero points 0.
 - `rust/leaky_relu_q`: int16 needs zero points 0.
 - `rust/lut_q`: a 256-entry table, as TFLite; `LOGISTIC` needs an output
   scale of exactly 1/256.
+- `rust/logistic_i16`, `rust/tanh_i16`: TFLite's int16 path
+  (`reference_integer_ops::Logistic` and `Tanh`), which interpolates a
+  256-entry sigmoid table. Zero points 0 and an output scale of 2^-15
+  (TFLite's `CheckedLog2`, within 0.07 %; exactly 1/32768 for `LOGISTIC`,
+  as LiteRT's reference kernel requires, where TensorFlow Lite Micro only
+  checks the power of two). Any input scale from about 3.8e-14 to 5.33: a power of
+  two that TFLite treats specially (2^-12, and 2^-11 for `TANH`) uses the
+  multiplier 3; other scales get the multiplier and shift TFLite computes in
+  `double`. Outside this range TFLite's multiplier truncates to 0 or the
+  product `input × multiplier` overflows an `int32_t`, both undefined in
+  C.
 - `rust/hard_swish_q`: refused when the requantization multipliers fall
   outside the range of TFLite's fixed-point implementation.
 
@@ -402,7 +446,9 @@ The golden cases of `testdata/` exercise `CONV_2D`, `DEPTHWISE_CONV_2D`,
 `TANH`, `RELU`, `RELU6`, `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`,
 `TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`, `SPLIT`, `SPLIT_V`,
 `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR` and
-`TRANSPOSE_CONV` against LiteRT (see `testdata/README.md`); the other kernels have unit
+`TRANSPOSE_CONV` against LiteRT (see `testdata/README.md`), and checks that
+the int16 cases of `CONV_2D`, `DEPTHWISE_CONV_2D` and pooling run the
+CMSIS-NN kernels and those of `LOGISTIC` and `TANH` the Rust ones; the other kernels have unit
 tests in `crates/nanoglia-kernels/src/tests/` (int16 `ARG_MAX` / `ARG_MIN`
 among them: LiteRT has no int16 version to compare with), and
 `crates/nanoglia-cmsis-nn/tests/kernels/` compares every CMSIS-NN kernel,

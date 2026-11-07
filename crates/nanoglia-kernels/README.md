@@ -14,7 +14,7 @@ They cover what the optimized C libraries lack: shape, data-movement and quantiz
 | `MEAN` | `f32`, `i8`, `u8`, `i16` |
 | `RELU`, `RELU6`, `RELU_N1_TO_1` | `f32`, `i8`, `u8`, `i16` |
 | `LEAKY_RELU` | `f32`, `i8`, `u8`, `i16` |
-| `LOGISTIC`, `TANH` | `f32`, `i8`, `u8` |
+| `LOGISTIC`, `TANH` | `f32`, `i8`, `u8`, `i16` (TFLite's interpolated sigmoid table) |
 | `HARD_SWISH` | `f32`, `i8`, `u8` |
 | `PAD`, `PADV2` | any |
 | `CONCATENATION` | any (quantized inputs must share the output's parameters) |

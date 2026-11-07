@@ -1,14 +1,33 @@
 //! `DEPTHWISE_CONV_2D` with int8 activations, int8 weights (per-tensor or per-output-channel) and
-//! int32 bias, through `arm_depthwise_conv_wrapper_s8`.
+//! int32 bias, through `arm_depthwise_conv_wrapper_s8`, and with int16 activations (16x8: zero
+//! points 0, int8 weights, int64 bias) through `arm_depthwise_conv_wrapper_s16`.
 //!
 //! Port of TFLite Micro's `kernels/cmsis_nn/depthwise_conv.cc` and of
 //! `CalculateOpDataDepthwiseConv`. The depth multiplier is derived from the shapes (output
 //! channels / input channels) like LiteRT does, rather than read from the options.
+//!
+//! The int16 wrapper runs `arm_depthwise_conv_fast_s16` for a depth multiplier of 1, no dilation
+//! and fewer than 512 filter values per channel (with the DSP or Helium extension; elsewhere it
+//! runs the generic code), `arm_depthwise_conv_s16` otherwise. TensorFlow Lite Micro calls
+//! `arm_depthwise_conv_s16` directly; both compute TFLite's reference result
+//! (`reference_integer_ops::DepthwiseConvPerChannel` with a 64-bit accumulator and
+//! `MultiplyByQuantizedMultiplier` for `int64_t`) under these 16x8 restrictions:
+//!
+//! - int32 biases are refused: LiteRT reads the bias of a 16x8 depthwise convolution as int64;
+//! - requantization shifts must stay below 8 (TFLite's 64-bit `MultiplyByQuantizedMultiplier`);
+//! - CMSIS-NN's `arm_nn_requantize_s64` truncates `acc * multiplier >> (14 - shift)` to 32 bits
+//!   before its last rounding shift, where TFLite keeps 64 bits: the kernel is claimed only when
+//!   the largest possible accumulator (every product at `2^22`, plus the constant bias) keeps that
+//!   value in an `int32_t` and the product in 62 bits, so that both agree. A bias computed at run
+//!   time cannot be bounded and is refused;
+//! - CMSIS-NN keeps the top-left input coordinate of each window in an `int16_t`, so
+//!   `(output size - 1) × stride - padding` must fit one.
 
 use nanoglia_cmsis_nn_sys as sys;
 use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
-use nanoglia_core::pod::Pod;
-use nanoglia_core::quant;
+use nanoglia_core::le::LeSlice;
+use nanoglia_core::pod::{Pod, cast_slice, cast_slice_mut};
+use nanoglia_core::quant::{self, Multiplier};
 use nanoglia_core::{BuiltinOp, DataType, OpDesc, OpOptions, Result, TensorDesc};
 
 use crate::common::{self, nhwc};
@@ -21,6 +40,17 @@ pub static KERNEL: FnKernel = FnKernel {
     prepare,
     eval,
 };
+
+/// The 16x8 `DEPTHWISE_CONV_2D` kernel.
+pub(crate) static KERNEL_S16: FnKernel = FnKernel {
+    name: "cmsis-nn/depthwise_conv2d_s16",
+    plan,
+    prepare,
+    eval: eval_s16,
+};
+
+/// The largest magnitude of one int16 × int8 product (`-32768 × -128`).
+const S16_MAX_PRODUCT: u128 = 1 << 22;
 
 /// Persistent parameters, followed by the per-channel multipliers and shifts.
 #[repr(C)]
@@ -48,6 +78,74 @@ struct Analysis<'a> {
     output: &'a TensorDesc<'a>,
 }
 
+/// TFLite `PopulateConvolutionQuantizationParams` for output channel `channel`.
+fn channel_multiplier(
+    input: &TensorDesc<'_>,
+    filter: &TensorDesc<'_>,
+    output: &TensorDesc<'_>,
+    channel: usize,
+) -> Multiplier {
+    quant::quantize_multiplier(quant::conv_effective_scale(
+        input.quant.scale(),
+        common::weight_scale(filter, channel),
+        output.quant.scale(),
+    ))
+}
+
+/// Whether CMSIS-NN's `arm_nn_requantize_s64` computes TFLite's 64-bit
+/// `MultiplyByQuantizedMultiplier` for every accumulator of magnitude at most `max_acc`: the
+/// product with the 16-bit multiplier must fit 62 bits, and its shift by `14 - shift` an
+/// `int32_t` (CMSIS-NN truncates it to 32 bits before its last rounding shift).
+fn s16_requantize_exact(max_acc: u128, m: Multiplier) -> bool {
+    if m.shift >= 8 {
+        return false;
+    }
+    // `REDUCE_MULTIPLIER`: the Q31 multiplier rounded to Q15.
+    let reduced = if m.multiplier < 0x7fff_0000 {
+        (i64::from(m.multiplier) + (1 << 15)) >> 16
+    } else {
+        0x7fff
+    };
+    let reduced = u128::try_from(reduced).unwrap_or(0);
+    // CMSIS-NN computes `result = (int32_t)(product >> (14 - shift))`, then `(result + 1) >> 1`
+    // in `int32_t`: both stay in range when `|product| < 2^(45 - shift) - 2^(14 - shift)`, so
+    // that `product >> (14 - shift)` is at most `2^31 - 2`. `45 - shift` is at least 38 and
+    // `14 - shift` at least 7 (shift < 8); the product must also fit 62 bits.
+    let bits = (45 - i64::from(m.shift)).min(62) as u32;
+    let low = (14 - i64::from(m.shift)).min(63) as u32;
+    let limit = (1u128 << bits).saturating_sub(1u128 << low);
+    max_acc
+        .checked_mul(reduced)
+        .is_some_and(|product| product < limit)
+}
+
+/// The 16x8 conditions on the multipliers and the bias (see the module documentation).
+fn s16_supported(
+    input: &TensorDesc<'_>,
+    filter: &TensorDesc<'_>,
+    bias: Option<&TensorDesc<'_>>,
+    output: &TensorDesc<'_>,
+    taps: i32,
+    channels: i32,
+) -> Option<()> {
+    let bias_values = match bias {
+        Some(b) => Some(LeSlice::<i64>::new(b.data?)),
+        None => None,
+    };
+    let products = u128::try_from(taps).ok()? * S16_MAX_PRODUCT;
+    for c in 0..channels as usize {
+        let bias = match bias_values {
+            Some(values) => values.get(c)?.unsigned_abs(),
+            None => 0,
+        };
+        let max_acc = products + u128::from(bias);
+        if !s16_requantize_exact(max_acc, channel_multiplier(input, filter, output, c)) {
+            return None;
+        }
+    }
+    Some(())
+}
+
 fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
     if op.builtin()? != BuiltinOp::DEPTHWISE_CONV_2D || op.outputs.len() != 1 {
         return None;
@@ -63,9 +161,12 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
     let bias = op.input(2);
     let output = op.output(0)?;
 
-    let (_, input_zero_point) = common::activation_quant(input, DataType::I8)?;
-    let (output_scale, output_zero_point) = common::activation_quant(output, DataType::I8)?;
-    if filter.dtype != DataType::I8 {
+    let dtype = input.dtype;
+    let int16 = dtype == DataType::I16;
+    let (_, input_zero_point) = common::activation_quant(input, dtype)?;
+    let (output_scale, output_zero_point) = common::activation_quant(output, dtype)?;
+    if filter.dtype != DataType::I8 || (int16 && (input_zero_point != 0 || output_zero_point != 0))
+    {
         return None;
     }
     let [batches, in_h, in_w, in_c] = common::dims4(input)?;
@@ -76,9 +177,10 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
     }
     let depth_multiplier = out_c / in_c;
     common::weight_quant(filter, out_c as usize, 3)?;
+    let bias_type = if int16 { DataType::I64 } else { DataType::I32 };
     let has_bias = match bias {
         Some(b) => {
-            if b.dtype != DataType::I32 || common::element_count(&b.dims)? != out_c {
+            if b.dtype != bias_type || common::element_count(&b.dims)? != out_c {
                 return None;
             }
             true
@@ -99,12 +201,20 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
     if (computed_h, computed_w) != (out_h, out_w) {
         return None;
     }
-    let (act_min, act_max) = common::activation_range(
-        options.activation,
-        DataType::I8,
-        output_scale,
-        output_zero_point,
-    )?;
+    // CMSIS-NN keeps the window origin `out * stride - pad` in an `int16_t`
+    // (`arm_depthwise_conv_s8.c`, `_s8_opt.c`, `_s16.c` and `_fast_s16.c`).
+    let fits_i16 = |out: i32, stride: i32, pad: i32| {
+        let last = i64::from(out - 1) * i64::from(stride) - i64::from(pad);
+        pad <= i16::MAX as i32 && last <= i64::from(i16::MAX)
+    };
+    if !(fits_i16(out_h, stride_h, pad_h) && fits_i16(out_w, stride_w, pad_w)) {
+        return None;
+    }
+    if int16 {
+        s16_supported(input, filter, bias, output, filter_h * filter_w, out_c)?;
+    }
+    let (act_min, act_max) =
+        common::activation_range(options.activation, dtype, output_scale, output_zero_point)?;
 
     let conv = sys::cmsis_nn_dw_conv_params {
         input_offset: -input_zero_point,
@@ -127,14 +237,23 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
     let input_dims = nhwc(batches, in_h, in_w, in_c);
     let filter_dims = nhwc(filter_n, filter_h, filter_w, out_c);
     let output_dims = nhwc(batches, out_h, out_w, out_c);
-    // SAFETY: the pointers are to live locals; the function only reads them.
+    // SAFETY: the pointers are to live locals; the functions only read them.
     let scratch = unsafe {
-        sys::arm_depthwise_conv_wrapper_s8_get_buffer_size(
-            &conv,
-            &input_dims,
-            &filter_dims,
-            &output_dims,
-        )
+        if int16 {
+            sys::arm_depthwise_conv_wrapper_s16_get_buffer_size(
+                &conv,
+                &input_dims,
+                &filter_dims,
+                &output_dims,
+            )
+        } else {
+            sys::arm_depthwise_conv_wrapper_s8_get_buffer_size(
+                &conv,
+                &input_dims,
+                &filter_dims,
+                &output_dims,
+            )
+        }
     };
     let params = Params {
         conv,
@@ -153,9 +272,17 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
     })
 }
 
-/// Whether this kernel runs `op`.
-pub(crate) fn supports(op: &OpDesc<'_, '_>) -> bool {
-    analyze(op).is_some()
+/// The kernel running `op`, if any.
+pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static FnKernel> {
+    let a = analyze(op)?;
+    Some(if a.input.dtype == DataType::I16 {
+        if !crate::INT16 {
+            return None;
+        }
+        &KERNEL_S16
+    } else {
+        &KERNEL
+    })
 }
 
 fn plan(op: &OpDesc<'_, '_>) -> Result<KernelPlan> {
@@ -169,16 +296,8 @@ fn plan(op: &OpDesc<'_, '_>) -> Result<KernelPlan> {
 fn prepare(op: &OpDesc<'_, '_>, persist: &mut [u8]) -> Result<()> {
     let a = analyze(op).ok_or_else(|| common::unsupported(op))?;
     let layout = ChannelLayout::<Params>::new(a.params.channels as usize, 0);
-    let input_scale = a.input.quant.scale();
-    let output_scale = a.output.quant.scale();
-    let multipliers = (0..a.params.channels as usize).map(|c| {
-        let filter_scale = common::weight_scale(a.filter, c);
-        quant::quantize_multiplier(quant::conv_effective_scale(
-            input_scale,
-            filter_scale,
-            output_scale,
-        ))
-    });
+    let multipliers =
+        (0..a.params.channels as usize).map(|c| channel_multiplier(a.input, a.filter, a.output, c));
     layout.write(persist, a.params, multipliers)
 }
 
@@ -219,6 +338,56 @@ fn eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
             bias,
             &p.output,
             output.as_mut_ptr().cast(),
+        )
+    };
+    common::check_status(status)
+}
+
+fn eval_s16(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
+    let p: Params = read_params(ctx.persist)?;
+    let layout = ChannelLayout::<Params>::new(p.channels as usize, 0);
+    let multiplier = layout.multiplier.get(ctx.persist)?;
+    let shift = layout.shift.get(ctx.persist)?;
+    let quant_params = sys::cmsis_nn_per_channel_quant_params {
+        // CMSIS-NN only reads the arrays despite the non-const pointers.
+        multiplier: multiplier.as_ptr().cast_mut(),
+        shift: shift.as_ptr().cast_mut(),
+    };
+
+    let input = common::input(ctx.inputs, 0);
+    let filter = common::input(ctx.inputs, 1);
+    common::check_len(input, common::dims_len(&p.input).saturating_mul(2))?;
+    let input = cast_slice::<i16>(input)?;
+    common::check_len(filter, common::dims_len(&p.filter))?;
+    let bias = if p.has_bias != 0 {
+        let bias = common::input(ctx.inputs, 2);
+        common::check_len(bias, p.channels.saturating_mul(8))?;
+        cast_slice::<i64>(bias)?.as_ptr()
+    } else {
+        core::ptr::null()
+    };
+    let bias_dims = nhwc(1, 1, 1, p.channels);
+    let scratch = common::scratch_context(ctx.scratch, p.scratch)?;
+    let output = ctx.output(0);
+    common::check_len(output, common::dims_len(&p.output).saturating_mul(2))?;
+    let output = cast_slice_mut::<i16>(output)?;
+
+    // SAFETY: every buffer was checked against the sizes CMSIS-NN derives from the dimensions and
+    // is aligned for its type, the scratch buffer is as large as CMSIS-NN asked for, and the
+    // per-channel arrays have `output.c` entries.
+    let status = unsafe {
+        sys::arm_depthwise_conv_wrapper_s16(
+            &scratch,
+            &p.conv,
+            &quant_params,
+            &p.input,
+            input.as_ptr(),
+            &p.filter,
+            filter.as_ptr().cast(),
+            &bias_dims,
+            bias,
+            &p.output,
+            output.as_mut_ptr(),
         )
     };
     common::check_status(status)

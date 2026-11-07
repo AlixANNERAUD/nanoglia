@@ -78,12 +78,16 @@ impl RustKernels {
             BuiltinOp::LOGISTIC => kernels!(
                 #[cfg(feature = "float")]
                 activation::LOGISTIC_F32,
-                activation::LUT_Q
+                activation::LUT_Q,
+                #[cfg(feature = "int16")]
+                activation::LOGISTIC_I16
             ),
             BuiltinOp::TANH => kernels!(
                 #[cfg(feature = "float")]
                 activation::TANH_F32,
-                activation::LUT_Q
+                activation::LUT_Q,
+                #[cfg(feature = "int16")]
+                activation::TANH_I16
             ),
             BuiltinOp::HARD_SWISH => kernels!(
                 #[cfg(feature = "float")]

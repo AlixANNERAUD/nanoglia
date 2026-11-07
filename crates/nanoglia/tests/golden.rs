@@ -99,10 +99,41 @@ fn max_diff(dtype: &str, actual: &[u8], expected: &[u8]) -> f64 {
         .fold(0.0, f64::max)
 }
 
-fn run(case: &Case) -> Result<(), String> {
+/// The kernel that must run the operator of the per-op case `name`, for the cases whose kernel is
+/// not otherwise pinned down: the int16 cases of operators with a CMSIS-NN kernel, so that the
+/// golden data checks CMSIS-NN rather than a fallback, and the int16 activations.
+fn expected_kernel(name: &str) -> Option<&'static str> {
+    let case = name.strip_prefix("ops/")?;
+    if !case.ends_with("_int16") || !cfg!(feature = "int16") {
+        return None;
+    }
+    const KERNELS: &[(&str, &str, bool)] = &[
+        ("conv2d_", "cmsis-nn/conv2d_s16", true),
+        ("depthwise_conv2d_", "cmsis-nn/depthwise_conv2d_s16", true),
+        ("average_pool2d_", "cmsis-nn/average_pool2d_s16", true),
+        ("max_pool2d_", "cmsis-nn/max_pool2d_s16", true),
+        ("logistic_", "rust/logistic_i16", false),
+        ("tanh_", "rust/tanh_i16", false),
+    ];
+    KERNELS
+        .iter()
+        .find(|(prefix, _, _)| case.starts_with(prefix))
+        .filter(|(_, _, cmsis_nn)| !cmsis_nn || cfg!(feature = "cmsis-nn"))
+        .map(|(_, kernel, _)| *kernel)
+}
+
+fn run(name: &str, case: &Case) -> Result<(), String> {
     let model = Aligned::read(&repo_root().join(case.json["model"].as_str().unwrap()));
     let graph = Graph::load_in(&[model.bytes()], Encoding::Autodetect, Target::Auto, Global)
         .map_err(|e| format!("load: {e}"))?;
+    if let Some(expected) = expected_kernel(name) {
+        for i in 0..graph.operator_count() {
+            let kernel = graph.kernel_name(i);
+            if kernel != Some(expected) {
+                return Err(format!("operator {i} runs {kernel:?}, expected {expected}"));
+            }
+        }
+    }
     let esp_nn = (0..graph.operator_count())
         .filter(|&i| {
             graph
@@ -178,7 +209,7 @@ fn golden_cases() {
             .display()
             .to_string();
         let reason = PENDING.iter().find(|(n, _)| *n == name).map(|(_, r)| *r);
-        match (run(case), reason) {
+        match (run(&name, case), reason) {
             (Ok(()), None) => println!("ok       {name}"),
             (Err(e), Some(reason)) => {
                 pending += 1;

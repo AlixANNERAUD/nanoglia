@@ -1,0 +1,32 @@
+{
+  "model": "testdata/ops/depthwise_conv2d_stride2_valid_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int16",
+      "shape": [
+        1,
+        8,
+        8,
+        8
+      ],
+      "scale": 9.126163058681414e-05,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int16",
+      "shape": [
+        1,
+        3,
+        3,
+        8
+      ],
+      "scale": 0.00012659186904784292,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

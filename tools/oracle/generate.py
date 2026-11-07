@@ -373,7 +373,7 @@ def conv2d(name, mode, in_shape, out_ch, k, stride=1, padding=Pad.SAME, dilation
 
 
 def depthwise_conv2d(name, mode, in_shape, multiplier, k=3, stride=1, padding=Pad.SAME,
-                     dilation=1, act=Act.NONE):
+                     dilation=1, act=Act.NONE, per_channel=True):
     rng = rng_for(name)
     n, h, w_, c = in_shape
     out_ch = c * multiplier
@@ -390,7 +390,7 @@ def depthwise_conv2d(name, mode, in_shape, multiplier, k=3, stride=1, padding=Pa
     def build(ins, out):
         b = ModelBuilder()
         xi = add_act(b, "input", ins[0], in_shape)
-        wi, ws = add_weights(b, "filter", w, ins[0], axis=3)
+        wi, ws = add_weights(b, "filter", w, ins[0], axis=3, per_channel=per_channel)
         bi = add_bias(b, "bias", bias, ins[0], ws)
         y = add_act(b, "output", out, out_shape)
         b.add_operator(Op.DEPTHWISE_CONV_2D, [xi, wi, bi], [y], opts,
@@ -1032,6 +1032,49 @@ def transpose_conv(name, mode, in_shape, out_ch, k, stride, padding, out_hw, *, 
     calibrated_case(name, mode, [x], build)
 
 
+# int16 LOGISTIC and TANH: TFLite's table lookup expects an output scale of
+# 2^-15 and zero points 0. The input scale picks the path of the prepare step
+# (`activations.cc`): a power of two that makes `input_left_shift` 0 (or 1 for
+# TANH) uses the multiplier `3 << input_left_shift`; any other scale gets a
+# multiplier in (16383.5, 32767] and a shift found by doubling, or, above
+# 16383.5 / 12288, a larger multiplier and no shift.
+SIGMOID_I16_OUT = Spec(I16, 1.0 / 32768.0, 0)
+
+
+def sigmoid_int16(name, op, scale, shape=(4, 128)):
+    """LOGISTIC / TANH on int16 with a fixed input scale: half of the inputs
+    cover the whole int16 range (saturation), half the interval [-12, 12]
+    where the functions vary, plus the extreme values."""
+    rng = rng_for(name)
+    n = int(np.prod(shape))
+    wide = rng.integers(-32768, 32767, size=n // 2, endpoint=True)
+    limit = min(32767, max(1, int(12.0 / scale)))
+    narrow = rng.integers(-limit, limit, size=n - n // 2, endpoint=True)
+    x = np.concatenate([wide, narrow])
+    x[:8] = [-32768, -32767, -1, 0, 1, 2, 32766, 32767]
+    x = x.astype(np.int16).reshape(shape)
+    model = single_op(op, [Spec(I16, scale, 0)], [list(shape)], SIGMOID_I16_OUT, list(shape))
+    save_op_case(name, model, [x])
+
+
+def int16_activation_cases():
+    for op, opname in ((Op.LOGISTIC, "logistic"), (Op.TANH, "tanh")):
+        # Calibrated on [-6, 6]: a general scale, doubled up to the table scale.
+        sigmoid_int16(f"{opname}_scale_6_int16", op, float(np.float32(6.0 / 32767.0)))
+        # 2^-12: input_left_shift 0, the power-of-two multiplier 3.
+        sigmoid_int16(f"{opname}_pot_2e-12_int16", op, 2.0 ** -12)
+        # 2^-11: the power-of-two case of TANH, a general scale for LOGISTIC.
+        sigmoid_int16(f"{opname}_pot_2e-11_int16", op, 2.0 ** -11)
+        # 2^-8: a power of two outside the power-of-two case (shift 8).
+        sigmoid_int16(f"{opname}_pot_2e-8_int16", op, 2.0 ** -8)
+        # Scales above 16383.5 / 12288: no shift, multiplier 36864 and 61440;
+        # nearly every input saturates.
+        sigmoid_int16(f"{opname}_large_scale_int16", op, 3.0)
+        sigmoid_int16(f"{opname}_largest_scale_int16", op, 5.0)
+        # A tiny scale: a 24-bit shift, every output close to sigmoid(0).
+        sigmoid_int16(f"{opname}_tiny_scale_int16", op, 1e-7)
+
+
 def vision_cases():
     S = MOVE_SPECS
     NN, BL = Op.RESIZE_NEAREST_NEIGHBOR, Op.RESIZE_BILINEAR
@@ -1105,17 +1148,8 @@ def vision_cases():
 
 
 def op_cases():
-    for mode in (I8, F32):
-        s = "_" + {I8: "int8", F32: "f32"}[mode]
-        # CONV_2D
-        conv2d("conv2d_1x1" + s, mode, [1, 6, 6, 8], 16, 1, padding=Pad.VALID)
-        conv2d("conv2d_3x3_same" + s, mode, [1, 8, 8, 4], 8, 3)
-        conv2d("conv2d_3x3_stride2_valid" + s, mode, [1, 9, 9, 4], 8, 3, stride=2,
-               padding=Pad.VALID)
-        conv2d("conv2d_3x3_dilation2" + s, mode, [1, 9, 9, 3], 4, 3, dilation=2)
-        conv2d("conv2d_relu" + s, mode, [1, 7, 7, 4], 8, 3, act=Act.RELU)
-        conv2d("conv2d_relu6" + s, mode, [1, 7, 7, 4], 8, 3, stride=2, act=Act.RELU6)
-        conv2d("conv2d_batch2" + s, mode, [2, 5, 5, 3], 6, 3)
+    for mode in (I8, F32, I16):
+        s = "_" + {I8: "int8", F32: "f32", I16: "int16"}[mode]
         # DEPTHWISE_CONV_2D
         depthwise_conv2d("depthwise_conv2d_m1_same" + s, mode, [1, 8, 8, 8], 1)
         depthwise_conv2d("depthwise_conv2d_m2_valid" + s, mode, [1, 7, 7, 4], 2,
@@ -1126,14 +1160,6 @@ def op_cases():
                          stride=2, padding=Pad.VALID)
         depthwise_conv2d("depthwise_conv2d_m2_dilation2" + s, mode, [1, 8, 8, 3], 2,
                          dilation=2)
-        # FULLY_CONNECTED
-        fully_connected("fully_connected_per_tensor" + s, mode, [2, 16], 8, per_channel=False)
-        fully_connected("fully_connected_per_channel" + s, mode, [2, 16], 8)
-        fully_connected("fully_connected_no_bias" + s, mode, [2, 16], 8, use_bias=False)
-        fully_connected("fully_connected_keep_num_dims" + s, mode, [1, 3, 16], 8,
-                        keep_num_dims=True)
-        fully_connected("fully_connected_4d_input" + s, mode, [1, 2, 2, 8], 10, in_features=32)
-        fully_connected("fully_connected_relu" + s, mode, [3, 12], 6, act=Act.RELU)
         # Pooling
         pool2d("average_pool2d_2x2_stride2_valid" + s, mode, Op.AVERAGE_POOL_2D,
                [1, 8, 8, 4], 2, 2, Pad.VALID)
@@ -1147,6 +1173,25 @@ def op_cases():
                [1, 6, 6, 4], 3, 1, Pad.SAME)
         pool2d("max_pool2d_3x3_stride2_same" + s, mode, Op.MAX_POOL_2D,
                [2, 7, 7, 3], 3, 2, Pad.SAME)
+    for mode in (I8, F32):
+        s = "_" + {I8: "int8", F32: "f32"}[mode]
+        # CONV_2D
+        conv2d("conv2d_1x1" + s, mode, [1, 6, 6, 8], 16, 1, padding=Pad.VALID)
+        conv2d("conv2d_3x3_same" + s, mode, [1, 8, 8, 4], 8, 3)
+        conv2d("conv2d_3x3_stride2_valid" + s, mode, [1, 9, 9, 4], 8, 3, stride=2,
+               padding=Pad.VALID)
+        conv2d("conv2d_3x3_dilation2" + s, mode, [1, 9, 9, 3], 4, 3, dilation=2)
+        conv2d("conv2d_relu" + s, mode, [1, 7, 7, 4], 8, 3, act=Act.RELU)
+        conv2d("conv2d_relu6" + s, mode, [1, 7, 7, 4], 8, 3, stride=2, act=Act.RELU6)
+        conv2d("conv2d_batch2" + s, mode, [2, 5, 5, 3], 6, 3)
+        # FULLY_CONNECTED
+        fully_connected("fully_connected_per_tensor" + s, mode, [2, 16], 8, per_channel=False)
+        fully_connected("fully_connected_per_channel" + s, mode, [2, 16], 8)
+        fully_connected("fully_connected_no_bias" + s, mode, [2, 16], 8, use_bias=False)
+        fully_connected("fully_connected_keep_num_dims" + s, mode, [1, 3, 16], 8,
+                        keep_num_dims=True)
+        fully_connected("fully_connected_4d_input" + s, mode, [1, 2, 2, 8], 10, in_features=32)
+        fully_connected("fully_connected_relu" + s, mode, [3, 12], 6, act=Act.RELU)
         # SOFTMAX
         softmax("softmax_2d" + s, mode, [2, 10])
         softmax("softmax_4d" + s, mode, [1, 2, 3, 10])
@@ -1192,6 +1237,21 @@ def op_cases():
     softmax("softmax_2d_int16", I16, [2, 10])
     binary("add_int16", I16, Op.ADD, [1, 4, 4, 8], [1, 4, 4, 8])
     binary("add_broadcast_int16", I16, Op.ADD, [1, 4, 4, 8], [1, 1, 1, 8])
+    depthwise_conv2d("depthwise_conv2d_m3_stride2_relu_int16", I16, [2, 9, 8, 3], 3,
+                     stride=2, act=Act.RELU)
+    depthwise_conv2d("depthwise_conv2d_per_tensor_int16", I16, [1, 6, 7, 5], 1,
+                     per_channel=False)
+    depthwise_conv2d("depthwise_conv2d_5x5_dilation2_valid_int16", I16, [1, 12, 11, 4], 1, k=5,
+                     padding=Pad.VALID, dilation=2)
+    pool2d("average_pool2d_3x3_same_relu6_int16", I16, Op.AVERAGE_POOL_2D,
+           [1, 5, 7, 6], 3, 1, Pad.SAME, act=Act.RELU6)
+    pool2d("average_pool2d_global_int16", I16, Op.AVERAGE_POOL_2D, [1, 5, 5, 16], 5, 1,
+           Pad.VALID)
+    pool2d("max_pool2d_relu_int16", I16, Op.MAX_POOL_2D, [1, 6, 6, 4], 2, 2, Pad.SAME,
+           act=Act.RELU)
+    pool2d("max_pool2d_4x4_stride3_valid_relu_n1_to_1_int16", I16, Op.MAX_POOL_2D,
+           [1, 10, 9, 3], 4, 3, Pad.VALID, act=Act.RELU_N1_TO_1)
+    int16_activation_cases()
 
 
 # --------------------------------------------------------------------------

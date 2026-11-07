@@ -28,7 +28,7 @@ let scores = ctx.output(0)?.as_slice::<i8>()?;
 | At a glance | |
 | --- | --- |
 | Models | TensorFlow Lite / LiteRT `.tflite`, **loaded at run time**: update a model over the air without reflashing the firmware |
-| Accuracy | **Bit-exact with TensorFlow Lite**: 219 of 222 golden cases identical byte for byte, including the [MLPerf Tiny](https://github.com/mlcommons/tiny) keyword-spotting, streaming-wakeword, visual-wake-words and image-classification models ([why the other 3 differ](documentation/explanation/bit-exactness.md)) |
+| Accuracy | **Bit-exact with TensorFlow Lite**: 251 of 254 golden cases identical byte for byte, including the [MLPerf Tiny](https://github.com/mlcommons/tiny) keyword-spotting, streaming-wakeword, visual-wake-words and image-classification models ([why the other 3 differ](documentation/explanation/bit-exactness.md)) |
 | Memory | **One allocation per model, one per inference context, none per inference**, all from the allocator you pass: the global allocator, your own, or a static buffer. Keyword spotting needs **23.3 KiB** for the model ([measured](documentation/reference/memory.md)), 28.3 KiB with the stack in a Cortex-M4 firmware ([measured](documentation/reference/performance.md#keyword-spotting-firmware)) |
 | Speed | CMSIS-NN (Cortex-M DSP and Helium), ESP-NN (ESP32-S3 SIMD); in WebAssembly, SIMD128 makes the models **2 to 3.3 times faster** ([measured](documentation/reference/performance.md)). On a laptop CPU (Linux virtual machine), the fastest of the five Rust engines compared on the four MLPerf Tiny models ([compared](documentation/reference/performance.md#compared-with-other-rust-engines)) |
 | Types | int8 (the TinyML standard), int16 (16x8) and float32, 38 operators ([list](documentation/reference/supported-operators.md)) |
@@ -59,7 +59,7 @@ the table. `nanoglia` keeps the model a file and the firmware a plain Rust binar
   ahead of time with `MemoryRequirements`: no fragmentation, no surprises at run time.
 - **The same numbers as on your PC.** Every kernel reproduces TensorFlow Lite's fixed-point
   arithmetic bit for bit, so a model validated in Python gives the same outputs on the device.
-  222 golden cases generated with LiteRT's reference kernels run on every commit, on the host and in
+  254 golden cases generated with LiteRT's reference kernels run on every commit, on the host and in
   WebAssembly.
 - **Safe on untrusted input.** A corrupted or malicious `.tflite` file returns an error with a
   wasi-nn error code and a precise reason. It never panics, never reads out of bounds.

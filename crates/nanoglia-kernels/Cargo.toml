@@ -16,7 +16,7 @@ categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
 default = ["float", "int16"]
 ## float32 kernels (convolutions, fully-connected, pooling, softmax, activations...).
 float = []
-## int16 (16x8) kernels: fully-connected and softmax.
+## int16 (16x8) kernels: fully-connected, softmax, logistic and tanh.
 int16 = []
 ## Single-rounding requantization (`TFLITE_SINGLE_ROUNDING`).
 single-rounding = ["nanoglia-core/single-rounding"]

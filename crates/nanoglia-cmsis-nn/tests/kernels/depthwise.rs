@@ -250,3 +250,32 @@ fn depthwise_random_shapes() {
         run(&case, activation, 1000 + seed, false);
     }
 }
+
+#[test]
+fn depthwise_s8_window_origin_limit() {
+    // CMSIS-NN keeps the window origin in an `int16_t` for int8 too: a row of 40000 values is
+    // refused, one of 32768 claimed.
+    let point = Tensor::weights(&[1, 1, 1, 1], &[1], &[1.0], 3);
+    let pointwise = |width: i32| {
+        let input = Tensor::activation(DataType::I8, &[1, 1, width, 1], 1.0, 0);
+        let output = Tensor::activation(DataType::I8, &[1, 1, width, 1], 1.0, 0);
+        Op::new(
+            BuiltinOp::DEPTHWISE_CONV_2D,
+            OpOptions::DepthwiseConv2D(DepthwiseConv2DOptions {
+                padding: Padding::Valid,
+                stride_h: 1,
+                stride_w: 1,
+                depth_multiplier: 1,
+                dilation_h: 1,
+                dilation_w: 1,
+                activation: Activation::None,
+            }),
+        )
+        .input(&input)
+        .input(&point)
+        .output(&output)
+        .selected()
+    };
+    assert!(!pointwise(40000));
+    assert!(pointwise(32768));
+}

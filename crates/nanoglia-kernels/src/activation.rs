@@ -394,6 +394,194 @@ fixed_kernel!(
     lut_eval
 );
 
+/// TFLite `sigmoid_table_uint16` (`kernels/internal/common.h`): `65536 × sigmoid(x)` for 256
+/// values of `x` from 0 by steps of 1/24, the table of the int16 `LOGISTIC` and `TANH`.
+const SIGMOID_TABLE_U16: [u16; 256] = [
+    32768, 33451, 34133, 34813, 35493, 36169, 36843, 37513, 38180, 38841, 39498, 40149, 40794,
+    41432, 42064, 42688, 43304, 43912, 44511, 45102, 45683, 46255, 46817, 47369, 47911, 48443,
+    48964, 49475, 49975, 50464, 50942, 51409, 51865, 52311, 52745, 53169, 53581, 53983, 54374,
+    54755, 55125, 55485, 55834, 56174, 56503, 56823, 57133, 57433, 57724, 58007, 58280, 58544,
+    58800, 59048, 59288, 59519, 59743, 59959, 60168, 60370, 60565, 60753, 60935, 61110, 61279,
+    61441, 61599, 61750, 61896, 62036, 62172, 62302, 62428, 62549, 62666, 62778, 62886, 62990,
+    63090, 63186, 63279, 63368, 63454, 63536, 63615, 63691, 63765, 63835, 63903, 63968, 64030,
+    64090, 64148, 64204, 64257, 64308, 64357, 64405, 64450, 64494, 64536, 64576, 64614, 64652,
+    64687, 64721, 64754, 64786, 64816, 64845, 64873, 64900, 64926, 64950, 64974, 64997, 65019,
+    65039, 65060, 65079, 65097, 65115, 65132, 65149, 65164, 65179, 65194, 65208, 65221, 65234,
+    65246, 65258, 65269, 65280, 65291, 65301, 65310, 65319, 65328, 65337, 65345, 65352, 65360,
+    65367, 65374, 65381, 65387, 65393, 65399, 65404, 65410, 65415, 65420, 65425, 65429, 65433,
+    65438, 65442, 65445, 65449, 65453, 65456, 65459, 65462, 65465, 65468, 65471, 65474, 65476,
+    65479, 65481, 65483, 65485, 65488, 65489, 65491, 65493, 65495, 65497, 65498, 65500, 65501,
+    65503, 65504, 65505, 65507, 65508, 65509, 65510, 65511, 65512, 65513, 65514, 65515, 65516,
+    65517, 65517, 65518, 65519, 65520, 65520, 65521, 65522, 65522, 65523, 65523, 65524, 65524,
+    65525, 65525, 65526, 65526, 65526, 65527, 65527, 65528, 65528, 65528, 65529, 65529, 65529,
+    65529, 65530, 65530, 65530, 65530, 65531, 65531, 65531, 65531, 65531, 65532, 65532, 65532,
+    65532, 65532, 65532, 65533, 65533, 65533, 65533, 65533, 65533, 65533, 65533, 65534, 65534,
+    65534, 65534, 65534, 65534, 65534, 65534, 65534, 65534, 65535,
+];
+
+/// TFLite `CheckedLog2` (`kernels/internal/quantization_util.h`): `log2(x)` rounded half away
+/// from zero, and whether `x` is within `1e-3` (in `log2`) of that power of two, computed in
+/// `f32` with `logf` like TFLite.
+fn checked_log2(x: f32) -> (i32, bool) {
+    let x_log2 = libm::logf(x) * (1.0 / libm::logf(2.0));
+    let rounded = round_f32(x_log2);
+    (rounded as i32, (x_log2 - rounded).abs() < 1e-3)
+}
+
+pod_struct! {
+    /// Parameters of the int16 `LOGISTIC` and `TANH` (TFLite `reference_integer_ops::Logistic`
+    /// and `Tanh` for `int16_t`).
+    pub(crate) struct SigmoidI16Params {
+        len: u32,
+        /// Multiplier bringing the input to the scale 1/(3 × 4096) of the table, after the
+        /// power-of-two substitution `3 << input_left_shift` of the reference kernels.
+        input_multiplier: i32,
+        /// Right shift applied after the multiplier (`input_left_shift` in TFLite).
+        input_shift: i32,
+    }
+}
+
+/// TFLite `SigmoidPrepare` and `TanhPrepare` for int16 (`activations.cc`): zero points 0, an
+/// output scale of 2^-15 (exactly 1/32768 for `LOGISTIC`, as LiteRT's reference kernel checks),
+/// and the input multiplier and shift of the table lookup.
+fn sigmoid_i16_params(op: &OpDesc<'_, '_>) -> Result<SigmoidI16Params> {
+    let (input, output, len) = unary(op)?;
+    expect_type(input, DataType::I16)?;
+    let tanh = match op.builtin() {
+        Some(BuiltinOp::LOGISTIC) => false,
+        Some(BuiltinOp::TANH) => true,
+        _ => return Err(unsupported(op)),
+    };
+    let (input_scale, input_zero_point) = per_tensor(input)?;
+    let (output_scale, output_zero_point) = per_tensor(output)?;
+    if input_zero_point != 0 || output_zero_point != 0 {
+        return Err(unsupported(op));
+    }
+    // TFLite requires `CheckedLog2(output_scale) == -15`; LiteRT's reference `LOGISTIC` also
+    // requires the scale to be exactly 1/32768 (TensorFlow Lite Micro does not).
+    let (output_log2, output_pot) = checked_log2(output_scale);
+    if !output_pot || output_log2 != -15 || (!tanh && f64::from(output_scale) != 1.0 / 32768.0) {
+        return Err(unsupported(op));
+    }
+
+    // kInputIntegerBits = 3.
+    let (input_log2, input_pot) = checked_log2(input_scale);
+    let mut input_shift = 12 + input_log2;
+    let pot = input_pot && (input_shift == 0 || (tanh && input_shift == 1));
+    let mut input_multiplier = 0;
+    if !pot {
+        // Brings the input to the scale 1/(3 × 4096) of the table, in `double`.
+        let mut multiplier = f64::from(input_scale) * 4096.0 * 3.0;
+        input_shift = 0;
+        while multiplier <= 32767.0 / 2.0 && input_shift <= 30 {
+            input_shift += 1;
+            multiplier *= 2.0;
+        }
+        // TFLite truncates to `int32_t`. A multiplier of 0 (scales below about 3.8e-14) would be taken
+        // for the power-of-two case and shift 3 by 31 bits; one of 65536 or more (scales above
+        // 5.33) overflows the `int32_t` product `input × multiplier`: both are undefined in C.
+        if !(1.0..65536.0).contains(&multiplier) {
+            return Err(unsupported(op));
+        }
+        input_multiplier = multiplier as i32;
+    }
+    // The power-of-two case of the reference kernels.
+    if input_multiplier == 0 {
+        input_multiplier = 3 << input_shift;
+        input_shift = 0;
+    }
+    Ok(SigmoidI16Params {
+        len,
+        input_multiplier,
+        input_shift,
+    })
+}
+
+/// The input of the int16 table lookup: `(x × multiplier + round) >> shift`, at the scale
+/// 1/(3 × 4096). The parameters keep the product inside an `i32`.
+#[inline]
+fn sigmoid_i16_input(p: &SigmoidI16Params, x: i16) -> i32 {
+    let shift = p.input_shift.clamp(0, 31);
+    let round = if shift > 0 { 1 << (shift - 1) } else { 0 };
+    i32::from(x)
+        .wrapping_mul(p.input_multiplier)
+        .wrapping_add(round)
+        >> shift
+}
+
+/// TFLite `reference_integer_ops::Logistic` for one `int16_t` value.
+fn logistic_i16(p: &SigmoidI16Params, x: i16) -> i16 {
+    let input = sigmoid_i16_input(p, x);
+    let abs = input.unsigned_abs();
+    let uh = (abs >> 9) as usize;
+    let mut result: u32 = if uh >= 255 {
+        // Saturate to maximum.
+        0x7fff << 10
+    } else {
+        let ua = u32::from(SIGMOID_TABLE_U16[uh]);
+        let ub = u32::from(SIGMOID_TABLE_U16[uh + 1]);
+        let ut = abs & 0x1ff;
+        (ua << 9).wrapping_add(ut.wrapping_mul(ub.wrapping_sub(ua)))
+    };
+    result = if input >= 0 {
+        result.wrapping_add(1 << 9)
+    } else {
+        (1u32 << (16 + 9))
+            .wrapping_sub(result)
+            .wrapping_add((1 << 9) - 1)
+    };
+    (result >> 10) as i16
+}
+
+/// TFLite `reference_integer_ops::Tanh` for one `int16_t` value: `2 × sigmoid(2x) - 1` from the
+/// same table.
+fn tanh_i16(p: &SigmoidI16Params, x: i16) -> i16 {
+    let input = sigmoid_i16_input(p, x);
+    let abs = input.unsigned_abs();
+    let uh = (abs >> 8) as usize;
+    let result: i32 = if uh >= 255 {
+        // Saturate to maximum.
+        0xffff << 8
+    } else {
+        let ua = u32::from(SIGMOID_TABLE_U16[uh]);
+        let ub = u32::from(SIGMOID_TABLE_U16[uh + 1]);
+        let ut = abs & 0xff;
+        (ua << 8).wrapping_add(ut.wrapping_mul(ub.wrapping_sub(ua))) as i32
+    };
+    let result = if input >= 0 {
+        result - (1 << (14 + 9)) + (1 << (9 - 2))
+    } else {
+        -result + (1 << (14 + 9)) + (1 << (9 - 2)) - 1
+    };
+    (result >> (9 - 1)) as i16
+}
+
+fn logistic_i16_eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
+    let p: SigmoidI16Params = *pod::read(ctx.persist)?;
+    map(ctx, p.len as usize, |x: i16| logistic_i16(&p, x))
+}
+
+fn tanh_i16_eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
+    let p: SigmoidI16Params = *pod::read(ctx.persist)?;
+    map(ctx, p.len as usize, |x: i16| tanh_i16(&p, x))
+}
+
+fixed_kernel!(
+    /// `LOGISTIC` on `i16` (16x8 models), interpolating TFLite's 256-entry sigmoid table.
+    LOGISTIC_I16,
+    "rust/logistic_i16",
+    sigmoid_i16_params,
+    logistic_i16_eval
+);
+
+fixed_kernel!(
+    /// `TANH` on `i16` (16x8 models), interpolating TFLite's 256-entry sigmoid table.
+    TANH_I16,
+    "rust/tanh_i16",
+    sigmoid_i16_params,
+    tanh_i16_eval
+);
+
 pod_struct! {
     /// TFLite `HardSwishParams`.
     pub(crate) struct HardSwishQParams {

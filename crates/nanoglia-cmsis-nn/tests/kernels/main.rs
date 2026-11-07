@@ -9,6 +9,7 @@ mod depthwise;
 mod elementwise;
 mod fully_connected;
 mod int16;
+mod int16_spatial;
 mod minmax;
 mod pad;
 mod pooling;
