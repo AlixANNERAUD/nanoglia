@@ -107,6 +107,12 @@ int64 bias.
 | `MEAN` | f32, int8, uint8, int16 | `rust/mean` | — |
 | `SUM` | f32, int8, uint8, int16, int32, int64 | `rust/sum` | — |
 | `REDUCE_MAX`, `REDUCE_MIN` | f32, int8, uint8, int16, int32, int64 | `rust/reduce_min_max` | — |
+| `PACK` | f32, int8, uint8, int16, int32, uint32, int64 | `rust/pack` | — |
+| `UNPACK` | f32, f16, bf16, int8, uint8, int16, int32, bool | `rust/unpack` | — |
+| `SPACE_TO_DEPTH` | f32, int8, uint8, int32, int64 | `rust/space_to_depth` | — |
+| `DEPTH_TO_SPACE` | f32, int8, uint8, int32, int64 | `rust/depth_to_space` | — |
+| `SPACE_TO_BATCH_ND` | f32, int8, uint8, int16, int32, int64 | `rust/space_to_batch_nd` | — |
+| `BATCH_TO_SPACE_ND` | f32, int8, uint8, int16, int32, int64 | `rust/batch_to_space_nd` | — |
 | `RELU`, `RELU6`, `RELU_N1_TO_1` | f32 | `rust/relu_f32` | float |
 | | int8, uint8, int16 | `rust/relu_q` | — |
 | `LEAKY_RELU` | f32 | `rust/leaky_relu_f32` | float |
@@ -439,6 +445,39 @@ input, an output with the element count of the kept dimensions
   the first input instead). TensorFlow Lite Micro has f32 and int8 only;
   the other types follow LiteRT's reference kernel.
 
+### PACK, UNPACK
+
+`PACK` stacks `values_count` inputs of the same shape along a new axis
+of the output (`axis` in `-rank - 1..=rank` of the inputs, negative values
+wrap), at most 16 inputs; `UNPACK` splits the `num` slices of an input
+axis into as many outputs, which drop that axis, at most 8 outputs; the
+input must not be empty. Every tensor has the same type, scale and zero
+point (LiteRT refuses the other cases), and the declared output shapes
+must be the ones TFLite computes. TensorFlow Lite Micro has f32, int8,
+int16, int32 and int64 `PACK`, f32, int8, int16 and int32 `UNPACK`; the
+other types follow LiteRT's reference kernels.
+
+### SPACE_TO_DEPTH, DEPTH_TO_SPACE, SPACE_TO_BATCH_ND, BATCH_TO_SPACE_ND
+
+These operators only move bytes; the declared output shape must be the
+one TFLite computes. TensorFlow Lite Micro has f32 and int8 only; the
+other types follow LiteRT's reference kernels.
+
+- `rust/space_to_depth`, `rust/depth_to_space`: rank 4, a `block_size`
+  of at least 1 that divides the input height and width
+  (`SPACE_TO_DEPTH`), or whose square divides the input depth
+  (`DEPTH_TO_SPACE`). As in TFLite, quantization is not checked: values
+  are copied unchanged.
+- `rust/space_to_batch_nd`, `rust/batch_to_space_nd`: rank 3 or 4 (a
+  rank 3 tensor has one spatial dimension), a constant int32 block shape
+  of one value per spatial dimension, each at least 1, and constant int32
+  paddings or crops of shape `[spatial dimensions, 2]`, non-negative.
+  Padded (uncropped) sizes must fit an `i32`, and the crops must leave a
+  non-negative size. Quantized inputs and outputs share their scale and
+  zero point (int16: zero point 0). `SPACE_TO_BATCH_ND` pads 8-bit
+  tensors with the byte of the output zero point and other types with
+  zeros, as the reference kernel's `memset` does.
+
 ### Activations
 
 - `rust/relu_q`: int16 needs zero points 0 and is not supported for
@@ -465,7 +504,8 @@ input, an output with the element count of the kept dimensions
 The golden cases of `testdata/` exercise `CONV_2D`, `DEPTHWISE_CONV_2D`,
 `FULLY_CONNECTED`, `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`,
 `SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `SUM`,
-`REDUCE_MAX`, `REDUCE_MIN`, `LOGISTIC`,
+`REDUCE_MAX`, `REDUCE_MIN`, `PACK`, `UNPACK`, `SPACE_TO_DEPTH`,
+`DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `LOGISTIC`,
 `TANH`, `RELU`, `RELU6`, `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`,
 `TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`, `SPLIT`, `SPLIT_V`,
 `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR` and

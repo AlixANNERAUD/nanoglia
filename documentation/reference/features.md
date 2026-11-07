@@ -25,11 +25,14 @@ int16 operators stay available without them, because they share a
 kernel with other types:
 
 - without `float`: f32 `ADD`, `SUB`, `MUL`, `MAXIMUM`, `MINIMUM`, `MEAN`,
-  `SUM`, `REDUCE_MAX`, `REDUCE_MIN`, `PAD`, `CONCATENATION`, `RESHAPE`, `ARG_MAX`, `ARG_MIN`,
+  `SUM`, `REDUCE_MAX`, `REDUCE_MIN`, `PAD`, the layout operators (`PACK`,
+  `UNPACK`, `SPACE_TO_DEPTH`, `DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`,
+  `BATCH_TO_SPACE_ND`), `CONCATENATION`, `RESHAPE`, `ARG_MAX`, `ARG_MIN`,
   `RESIZE_NEAREST_NEIGHBOR` and the `QUANTIZE` / `DEQUANTIZE` conversions;
 - without `int16`: int16 `ADD`, `SUB` and `MUL` (Rust kernel, with
-  broadcasting), `MEAN`, `SUM`, `REDUCE_MAX`, `REDUCE_MIN`, `RELU`, `RELU6`, `LEAKY_RELU`, `MAXIMUM`,
-  `MINIMUM`, `PAD`, `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`,
+  broadcasting), `MEAN`, `SUM`, `REDUCE_MAX`, `REDUCE_MIN`, `PACK`,
+  `UNPACK`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `RELU`, `RELU6`,
+  `LEAKY_RELU`, `MAXIMUM`, `MINIMUM`, `PAD`, `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`,
   `RESIZE_BILINEAR` and `QUANTIZE` / `DEQUANTIZE`.
 
 The full matrix is in [Supported operators](supported-operators.md).

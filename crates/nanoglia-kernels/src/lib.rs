@@ -10,6 +10,7 @@ mod arg_min_max;
 mod concat;
 mod conv;
 mod copy;
+mod depth_space;
 mod elementwise;
 mod fully_connected;
 mod gather;
@@ -21,6 +22,7 @@ mod reduce;
 mod resize;
 mod slice;
 mod softmax;
+mod space_batch;
 mod split;
 mod strided;
 mod transpose;
@@ -97,6 +99,12 @@ impl RustKernels {
             BuiltinOp::MEAN => kernels!(reduce::MEAN),
             BuiltinOp::SUM => kernels!(reduce::SUM),
             BuiltinOp::REDUCE_MAX | BuiltinOp::REDUCE_MIN => kernels!(reduce::REDUCE_MIN_MAX),
+            BuiltinOp::PACK => kernels!(concat::PACK),
+            BuiltinOp::UNPACK => kernels!(split::UNPACK),
+            BuiltinOp::SPACE_TO_DEPTH => kernels!(depth_space::SPACE_TO_DEPTH),
+            BuiltinOp::DEPTH_TO_SPACE => kernels!(depth_space::DEPTH_TO_SPACE),
+            BuiltinOp::SPACE_TO_BATCH_ND => kernels!(space_batch::SPACE_TO_BATCH_ND),
+            BuiltinOp::BATCH_TO_SPACE_ND => kernels!(space_batch::BATCH_TO_SPACE_ND),
             BuiltinOp::PAD | BuiltinOp::PADV2 => kernels!(pad::PAD),
             BuiltinOp::CONCATENATION => kernels!(concat::CONCATENATION),
             BuiltinOp::TRANSPOSE => kernels!(transpose::TRANSPOSE),
