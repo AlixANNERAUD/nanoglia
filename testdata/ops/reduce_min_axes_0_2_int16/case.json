@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/reduce_min_axes_0_2_int16/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int16",
+      "shape": [
+        3,
+        4,
+        5
+      ],
+      "scale": 0.00024399999529123306,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int16",
+      "shape": [
+        4
+      ],
+      "scale": 0.00024399999529123306,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

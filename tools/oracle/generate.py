@@ -251,11 +251,21 @@ def tensor_json(d) -> dict:
     }
 
 
-def write_case(case_dir: Path, model_path: Path, inputs, tolerance: float) -> None:
-    """Run `model_path` on `inputs` and write the case files into `case_dir`."""
+def write_case(case_dir: Path, model_path: Path, inputs, tolerance: float,
+               expected=None) -> None:
+    """Run `model_path` on `inputs` and write the case files into `case_dir`.
+
+    `expected` replaces LiteRT's outputs, for the few cases its reference
+    kernels compute wrongly (see `quantized_sum`).
+    """
     case_dir.mkdir(parents=True, exist_ok=True)
     it = make_interpreter(model_path=model_path)
     outputs = invoke(it, inputs)
+    if expected is not None:
+        for got, want in zip(outputs, expected, strict=True):
+            if got.shape != want.shape or got.dtype != want.dtype:
+                raise ValueError(f"{case_dir.name}: expected {want.dtype}{want.shape}")
+        outputs = expected
     for i, x in enumerate(inputs):
         (case_dir / f"input_{i}.bin").write_bytes(x.astype(x.dtype.newbyteorder("<")).tobytes())
     for i, y in enumerate(outputs):
@@ -274,7 +284,7 @@ def write_case(case_dir: Path, model_path: Path, inputs, tolerance: float) -> No
 CASES: list[str] = []
 
 
-def save_op_case(name: str, model: bytes, inputs, tolerance=None) -> None:
+def save_op_case(name: str, model: bytes, inputs, tolerance=None, expected=None) -> None:
     if name in CASES:
         raise ValueError(f"duplicate case {name}")
     CASES.append(name)
@@ -285,7 +295,7 @@ def save_op_case(name: str, model: bytes, inputs, tolerance=None) -> None:
     if tolerance is None:
         outputs = make_interpreter(model_content=model).get_output_details()
         tolerance = FLOAT_TOLERANCE if any(d["dtype"] == np.float32 for d in outputs) else 0
-    write_case(case_dir, model_path, inputs, tolerance)
+    write_case(case_dir, model_path, inputs, tolerance, expected)
 
 
 def single_op(op, in_specs, in_shapes, out_spec, out_shape, options=None, consts=(), ver_spec=None):
@@ -1147,6 +1157,143 @@ def vision_cases():
                    act=Act.RELU)
 
 
+# --------------------------------------------------------------------------
+# Reductions, layout, PRELU, element-wise and comparison cases
+# --------------------------------------------------------------------------
+
+
+def to_uint8_spec(spec: Spec) -> Spec:
+    """The uint8 quantization whose values are those of int8 `spec` plus 128."""
+    return Spec("uint8", spec.scale, spec.zero_point + 128)
+
+
+def reduce_out_shape(shape, axis, keep_dims):
+    axes = {a % len(shape) for a in axis}
+    if keep_dims:
+        return [1 if i in axes else d for i, d in enumerate(shape)]
+    return [d for i, d in enumerate(shape) if i not in axes]
+
+
+def reduce_model(op, in_spec, shape, axis, axis_type, keep_dims, out_spec, version):
+    b = ModelBuilder()
+    xi = add_act(b, "input", in_spec, shape)
+    ai = b.add_tensor("axis", axis_type, [len(axis)], data=np.array(axis, dtype=axis_type))
+    y = add_act(b, "output", out_spec, reduce_out_shape(shape, axis, keep_dims))
+    b.add_operator(op, [xi, ai], [y], schema.ReducerOptionsT(keepDims=keep_dims),
+                   version=version)
+    return b.build([xi], [y])
+
+
+def reduce_min_max(name, op, t, shape, axis, keep_dims=False):
+    """REDUCE_MAX / REDUCE_MIN: the output keeps the input quantization (TFLite
+    requires it); checked against NumPy."""
+    spec = MOVE_SPECS[t]
+    x = move_data(rng_for(name), spec, shape)
+    ver = {"f32": 1, "int32": 1, "uint8": 1, "int8": 2, "int16": 3}[t]
+    model = reduce_model(op, spec, shape, axis, np.int32, keep_dims, spec, ver)
+    axes = tuple(a % len(shape) for a in axis)
+    want = (np.max if op == Op.REDUCE_MAX else np.min)(x, axis=axes, keepdims=keep_dims)
+    got = run(model, [x])[0]
+    if got.shape != want.shape or not np.array_equal(got, want):
+        raise AssertionError(f"{name}: LiteRT and NumPy disagree")
+    save_op_case(name, model, [x], tolerance=0)
+
+
+def quantized_sum(name, t, shape, axis, keep_dims=False, out_scale=None):
+    """Quantized SUM, its output range calibrated on the float sum (or
+    `out_scale`, to saturate).
+
+    Workaround (issue #27): LiteRT 2.3's reference SUM reads int8 (and int16)
+    data as uint8 bytes (tflite/kernels/reduce.cc, `QuantizedMeanOrSum` calls
+    the reference kernel with `GetTensorData<uint8_t>` for every type; fixed
+    on LiteRT's main branch). Its uint8 path is right, and computes exactly
+    what the int8 path should once the data and both zero points are shifted
+    by 128: the int8 golden outputs come from the equivalent uint8 model,
+    shifted back. Drop this (and `expected`) with a LiteRT release that
+    passes `GetTensorData<T>`.
+    """
+    rng = rng_for(name)
+    xf = uniform(rng, shape, -1.0, 3.0)
+    axes = tuple(a % len(shape) for a in axis)
+    yf = np.sum(xf, axis=axes, keepdims=keep_dims)
+    in8, out8 = range_spec(I8, xf), range_spec(I8, yf)
+    if out_scale is not None:
+        out8 = Spec(I8, out_scale, out8.zero_point)
+    in_u8, out_u8 = to_uint8_spec(in8), to_uint8_spec(out8)
+    xu = in_u8.quantize(xf)
+    model_u8 = reduce_model(Op.SUM, in_u8, shape, axis, np.int32, keep_dims, out_u8, 1)
+    if t == "uint8":
+        save_op_case(name, model_u8, [xu], tolerance=0)
+        return
+    yu = run(model_u8, [xu])[0]
+    model = reduce_model(Op.SUM, in8, shape, axis, np.int32, keep_dims, out8, 2)
+    x8 = (xu.astype(np.int16) - 128).astype(np.int8)
+    y8 = (yu.astype(np.int16) - 128).astype(np.int8)
+    save_op_case(name, model, [x8], tolerance=0, expected=[y8])
+
+
+def int16_sum(name, shape, axis, keep_dims=False):
+    """int16 SUM (zero points 0, as TFLite requires). LiteRT 2.3 reads int16
+    data as uint8 bytes too (see `quantized_sum`); the golden outputs come from
+    the uint8 model with zero points 128, whose values are those of the int16
+    model plus 128. Inputs stay in int8 range and outputs must not saturate in
+    uint8, so that both models compute the same sums and products."""
+    rng = rng_for(name)
+    xf = uniform(rng, shape, -1.0, 1.0)
+    axes = tuple(a % len(shape) for a in axis)
+    yf = np.sum(xf, axis=axes, keepdims=keep_dims)
+    in_scale = float(np.float32(np.abs(xf).max() / 127.0))
+    out_scale = float(np.float32(np.abs(yf).max() / 100.0))
+    in_u8, out_u8 = Spec("uint8", in_scale, 128), Spec("uint8", out_scale, 128)
+    xu = in_u8.quantize(xf)
+    model_u8 = reduce_model(Op.SUM, in_u8, shape, axis, np.int32, keep_dims, out_u8, 1)
+    yu = run(model_u8, [xu])[0]
+    if yu.min() == 0 or yu.max() == 255:
+        raise AssertionError(f"{name}: the uint8 sum saturates")
+    in16, out16 = Spec(I16, in_scale, 0), Spec(I16, out_scale, 0)
+    # LiteRT 2.3's BUILTIN_REF resolver registers SUM versions 1 and 2 only.
+    model = reduce_model(Op.SUM, in16, shape, axis, np.int32, keep_dims, out16, 2)
+    x16 = xu.astype(np.int16) - 128
+    y16 = yu.astype(np.int16) - 128
+    save_op_case(name, model, [x16], tolerance=0, expected=[y16])
+
+
+def float_sum(name, t, shape, axis, keep_dims=False):
+    spec = MOVE_SPECS[t]
+    x = move_data(rng_for(name), spec, shape)
+    model = reduce_model(Op.SUM, spec, shape, axis, np.int32, keep_dims, spec, 1)
+    save_op_case(name, model, [x])
+
+
+def reduce_cases():
+    MAX, MIN = Op.REDUCE_MAX, Op.REDUCE_MIN
+    # SUM
+    float_sum("sum_axes_1_2_keep_dims_f32", "f32", [2, 3, 4, 5], [1, 2], keep_dims=True)
+    float_sum("sum_negative_axis_f32", "f32", [3, 4, 5], [-1])
+    float_sum("sum_all_axes_f32", "f32", [2, 3, 4], [0, 1, 2])
+    float_sum("sum_duplicate_axes_int32", "int32", [4, 3, 5], [0, -3, 2])
+    quantized_sum("sum_axes_1_2_keep_dims_int8", "int8", [1, 4, 4, 8], [1, 2], keep_dims=True)
+    quantized_sum("sum_negative_axis_int8", "int8", [2, 3, 7], [-1])
+    quantized_sum("sum_saturated_int8", "int8", [2, 6, 5], [1], out_scale=0.01)
+    quantized_sum("sum_axis0_uint8", "uint8", [5, 3, 4], [0])
+    quantized_sum("sum_axes_0_2_uint8", "uint8", [3, 4, 5], [0, 2], keep_dims=True)
+    int16_sum("sum_axis1_int16", [3, 6, 4], [1])
+    int16_sum("sum_all_axes_keep_dims_int16", [2, 3, 4], [0, 1, 2], keep_dims=True)
+    # REDUCE_MAX / REDUCE_MIN
+    for op, opname in ((MAX, "reduce_max"), (MIN, "reduce_min")):
+        reduce_min_max(f"{opname}_axes_1_2_keep_dims_int8", op, "int8", [1, 4, 4, 6], [1, 2],
+                       keep_dims=True)
+        reduce_min_max(f"{opname}_negative_axis_f32", op, "f32", [2, 3, 7], [-1])
+        reduce_min_max(f"{opname}_all_axes_f32", op, "f32", [3, 4, 2], [0, 1, 2])
+        reduce_min_max(f"{opname}_axis0_uint8", op, "uint8", [5, 3, 4], [0])
+        reduce_min_max(f"{opname}_axes_0_2_int16", op, "int16", [3, 4, 5], [0, -1])
+        reduce_min_max(f"{opname}_axis1_int32", op, "int32", [4, 6, 3], [1], keep_dims=True)
+
+
+def extra_cases():
+    reduce_cases()
+
+
 def op_cases():
     for mode in (I8, F32, I16):
         s = "_" + {I8: "int8", F32: "f32", I16: "int16"}[mode]
@@ -1282,6 +1429,7 @@ def main():
     op_cases()
     movement_cases()
     vision_cases()
+    extra_cases()
     mlperf_cases()
     print(f"{len(CASES)} op cases in {OPS_DIR.relative_to(REPO)}")
     print(f"{len(MLPERF_MODELS)} x {MLPERF_SAMPLES} MLPerf Tiny cases in "

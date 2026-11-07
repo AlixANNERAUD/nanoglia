@@ -1,0 +1,29 @@
+{
+  "model": "testdata/ops/reduce_max_axis0_uint8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "uint8",
+      "shape": [
+        5,
+        3,
+        4
+      ],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "uint8",
+      "shape": [
+        3,
+        4
+      ],
+      "scale": 0.019600000232458115,
+      "zero_point": 131
+    }
+  ],
+  "tolerance": 0
+}

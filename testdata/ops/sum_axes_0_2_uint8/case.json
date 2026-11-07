@@ -1,0 +1,30 @@
+{
+  "model": "testdata/ops/sum_axes_0_2_uint8/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "uint8",
+      "shape": [
+        3,
+        4,
+        5
+      ],
+      "scale": 0.015030031092464924,
+      "zero_point": 57
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "uint8",
+      "shape": [
+        1,
+        4,
+        1
+      ],
+      "scale": 0.08792160451412201,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

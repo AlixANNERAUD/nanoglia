@@ -102,12 +102,24 @@ The vision operators:
   more and fewer than 16 input channels (the two CMSIS-NN paths), two batches,
   fused activations (version 4), with, without and with an omitted bias.
 
+The reductions `SUM`, `REDUCE_MAX` and `REDUCE_MIN` (`_f32`, `_int8`, `_uint8`,
+`_int16`, `_int32`) cover several ranks, negative and duplicate axes,
+`keep_dims`, reductions over every axis and a saturated int8 sum.
+`REDUCE_MAX` / `REDUCE_MIN` keep the input quantization (TFLite requires it)
+and the oracle checks them against NumPy. LiteRT 2.3's reference `SUM` reads
+int8 and int16 data as uint8 bytes, so its int8 and int16 outputs are wrong:
+the golden outputs of these cases come from the equivalent uint8 model (data
+and zero points plus 128), which LiteRT computes right, shifted back. The
+int16 cases keep their inputs in the int8 range and their sums from saturating
+in uint8 for that, and declare `SUM` version 2 (LiteRT 2.3 registers versions
+1 and 2 only).
+
 Operators covered: `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`,
 `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`, `SUB`, `MUL`, `MAXIMUM`,
 `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `LOGISTIC`, `TANH`, `RELU`, `RELU6`,
 `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`, `TRANSPOSE`, `SLICE`, `STRIDED_SLICE`,
 `GATHER`, `SPLIT`, `SPLIT_V`, `ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`,
-`RESIZE_BILINEAR`, `TRANSPOSE_CONV`.
+`RESIZE_BILINEAR`, `TRANSPOSE_CONV`, `SUM`, `REDUCE_MAX`, `REDUCE_MIN`.
 
 Not covered: int8 `CONCATENATION` with different input and output
 quantization, which the reference kernel rejects (as TensorFlow Lite Micro does).

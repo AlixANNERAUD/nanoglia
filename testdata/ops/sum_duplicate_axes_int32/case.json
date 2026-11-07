@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/sum_duplicate_axes_int32/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "int32",
+      "shape": [
+        4,
+        3,
+        5
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "int32",
+      "shape": [
+        3
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}
