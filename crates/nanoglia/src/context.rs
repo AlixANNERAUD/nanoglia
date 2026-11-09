@@ -56,17 +56,15 @@ impl<G: GraphHandle, B: Allocator> core::fmt::Debug for GraphExecutionContext<G,
     }
 }
 
-/// The original borrowed execution context; no ownership allocation is introduced.
+/// An execution context that borrows its graph; no ownership allocation is introduced.
+///
+/// [`Self::graph`] borrows the graph for as long as the context is borrowed, as for every
+/// [`GraphHandle`].
 pub type ExecutionContext<'g, 'm, A, B> = GraphExecutionContext<&'g Graph<'m, A>, B>;
 
 impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
     pub(crate) fn new(graph: &'g Graph<'m, A>, alloc: B) -> Result<Self> {
         Self::new_in(graph, alloc)
-    }
-
-    /// The graph this context borrows, retaining the original graph lifetime.
-    pub fn graph(&self) -> &'g Graph<'m, A> {
-        self.graph
     }
 }
 
@@ -79,6 +77,11 @@ impl<G: GraphHandle, B: Allocator> GraphExecutionContext<G, B> {
             arena: Block::new_zeroed(bytes, alloc)?,
             next: None,
         })
+    }
+
+    /// The graph this context runs.
+    pub fn graph(&self) -> &Graph<'_, G::Allocator> {
+        self.graph.graph()
     }
 
     /// The retained graph handle, for example to check shared-owner identity.
