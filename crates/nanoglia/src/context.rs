@@ -1,5 +1,5 @@
 use crate::graph::{Graph, GraphTensors, Location};
-use crate::{TensorMut, TensorRef};
+use crate::{GraphHandle, TensorMut, TensorRef};
 use core::future::Future;
 use core::ops::ControlFlow;
 use core::pin::Pin;
@@ -41,14 +41,17 @@ use nanoglia_core::{
 /// # Ok(())
 /// # }
 /// ```
-pub struct ExecutionContext<'g, 'm, A: Allocator, B: Allocator> {
-    graph: &'g Graph<'m, A>,
+pub struct GraphExecutionContext<G: GraphHandle<A>, A: Allocator, B: Allocator> {
+    graph: G,
+    _allocator: core::marker::PhantomData<A>,
     arena: Block<B>,
     /// The next operator of the inference run step by step, if one is in progress.
     next: Option<usize>,
 }
 
-impl<A: Allocator, B: Allocator> core::fmt::Debug for ExecutionContext<'_, '_, A, B> {
+impl<G: GraphHandle<A>, A: Allocator, B: Allocator> core::fmt::Debug
+    for GraphExecutionContext<G, A, B>
+{
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ExecutionContext")
             .field("arena_bytes", &self.arena.len())
@@ -56,18 +59,35 @@ impl<A: Allocator, B: Allocator> core::fmt::Debug for ExecutionContext<'_, '_, A
     }
 }
 
+/// The original borrowed execution context; no ownership allocation is introduced.
+pub type ExecutionContext<'g, 'm, A, B> = GraphExecutionContext<&'g Graph<'m, A>, A, B>;
+
 impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
     pub(crate) fn new(graph: &'g Graph<'m, A>, alloc: B) -> Result<Self> {
+        Self::new_in(graph, alloc)
+    }
+
+    /// The graph this context borrows, retaining the original graph lifetime.
+    pub fn graph(&self) -> &'g Graph<'m, A> {
+        self.graph
+    }
+}
+
+impl<G: GraphHandle<A>, A: Allocator, B: Allocator> GraphExecutionContext<G, A, B> {
+    /// Retains `graph` and allocates one arena from `alloc`. Inference allocates nothing.
+    pub fn new_in(graph: G, alloc: B) -> Result<Self> {
+        let bytes = graph.graph().context_bytes();
         Ok(Self {
             graph,
-            arena: Block::new_zeroed(graph.context_bytes(), alloc)?,
+            arena: Block::new_zeroed(bytes, alloc)?,
+            _allocator: core::marker::PhantomData,
             next: None,
         })
     }
 
-    /// The graph this context runs.
-    pub fn graph(&self) -> &'g Graph<'m, A> {
-        self.graph
+    /// The retained graph handle, for example to check shared-owner identity.
+    pub fn graph_handle(&self) -> &G {
+        &self.graph
     }
 
     /// Copies `data` (raw little-endian bytes) into input `index`. Its length must match the
@@ -88,7 +108,7 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
 
     /// A writable view of input `index`, directly in the arena (no copy).
     pub fn input_mut(&mut self, index: usize) -> Result<TensorMut<'_>> {
-        let (desc, location) = self.graph.input_tensor(index)?;
+        let (desc, location) = self.graph.graph().input_tensor(index)?;
         let Location::Arena { offset, len } = location else {
             return Err(Error::invalid_argument(Detail::IndexOutOfRange {
                 index: index as u32,
@@ -101,13 +121,13 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
 
     /// A read-only view of output `index`.
     pub fn output(&self, index: usize) -> Result<TensorRef<'_>> {
-        let (desc, location) = self.graph.output_tensor(index)?;
+        let (desc, location) = self.graph.graph().output_tensor(index)?;
         let data: &[u8] = match location {
             Location::Arena { offset, len } => {
                 &self.arena.as_slice()[offset as usize..offset as usize + len as usize]
             }
             Location::Const { offset, len } => {
-                &self.graph.model()[offset as usize..offset as usize + len as usize]
+                &self.graph.graph().model()[offset as usize..offset as usize + len as usize]
             }
             Location::Unused => &[],
         };
@@ -116,7 +136,7 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
 
     /// A read-only view of the output named `name`.
     pub fn output_by_name(&self, name: &str) -> Result<TensorRef<'_>> {
-        self.output(self.graph.output_index(name)?)
+        self.output(self.graph.graph().output_index(name)?)
     }
 
     /// Runs the graph on the current inputs. Allocates nothing.
@@ -186,7 +206,7 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
     #[inline]
     pub fn compute_with<O: Observer + ?Sized>(&mut self, observer: &mut O) -> Result<()> {
         self.next = None;
-        for index in 0..self.graph.operator_count() {
+        for index in 0..self.graph.graph().operator_count() {
             self.run_operator(index, observer)?;
         }
         Ok(())
@@ -235,7 +255,7 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
 
     /// [`Self::step`], calling `observer` around the operator it runs.
     pub fn step_with<O: Observer + ?Sized>(&mut self, observer: &mut O) -> Result<Step> {
-        let count = self.graph.operator_count();
+        let count = self.graph.graph().operator_count();
         let index = self.next.take().unwrap_or(0);
         if index >= count {
             return Ok(Step::Done);
@@ -288,7 +308,7 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
     /// Runs operator `index`, with the observer around it.
     #[inline]
     fn run_operator<O: Observer + ?Sized>(&mut self, index: usize, observer: &mut O) -> Result<()> {
-        let graph = self.graph;
+        let graph = self.graph.graph();
         let model = graph.model();
         let io = graph.io_table();
         let tensors = graph.tensors();

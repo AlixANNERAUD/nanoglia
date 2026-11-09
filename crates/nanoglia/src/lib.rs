@@ -7,12 +7,14 @@ extern crate alloc as _;
 
 mod context;
 mod graph;
+mod ownership;
 mod planner;
 mod registry;
 mod tensor;
 
 pub use context::*;
 pub use graph::*;
+pub use ownership::*;
 pub use registry::*;
 pub use tensor::*;
 
