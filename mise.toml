@@ -53,6 +53,7 @@ env.RUSTFLAGS = "-D warnings"
 run = [
   "cargo test --workspace",
   "cargo test -p nanoglia --features esp-nn --test golden",
+  "cargo test -p nanoglia --features alloc --test ownership --test memory",
 ]
 
 [tasks.oracle]

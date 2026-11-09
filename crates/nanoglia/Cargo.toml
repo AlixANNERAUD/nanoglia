@@ -51,3 +51,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [lints]
 workspace = true
+
+[[test]]
+name = "ownership"
+required-features = ["alloc"]

@@ -61,6 +61,14 @@ let scores = ctx.output(0)?.as_slice::<i8>()?;
 
 An int8-only firmware can use `default-features = false, features = ["cmsis-nn", "kernels"]`.
 
+## Owned models and persistent contexts
+
+`OwnedGraph::load_in` takes an aligned `nanoglia::core::Block` filled by the caller,
+retaining its allocation without copying model bytes. `GraphExecutionContext::new_in`
+accepts an owned graph handle (including `alloc::sync::Arc` with feature `alloc`) and
+allocates its arena once. Borrowed `Graph` / `ExecutionContext` APIs remain unchanged.
+See the workspace documentation's memory reference for ownership and allocation details.
+
 **Learn more:** the [repository](https://github.com/AlixANNERAUD/nanoglia), the
 [first-inference tutorial](https://github.com/AlixANNERAUD/nanoglia/blob/main/documentation/tutorials/first-inference.md),
 [supported operators](https://github.com/AlixANNERAUD/nanoglia/blob/main/documentation/reference/supported-operators.md),
@@ -69,11 +77,3 @@ An int8-only firmware can use `default-features = false, features = ["cmsis-nn",
 and [writing a backend](https://github.com/AlixANNERAUD/nanoglia/blob/main/documentation/how-to-guides/write-a-backend.md).
 
 Licensed under Apache-2.0.
-
-## Owned models and persistent contexts
-
-`OwnedGraph::load_in` takes an aligned `nanoglia::core::Block` filled by the caller,
-retaining its allocation without copying model bytes. `GraphExecutionContext::new_in`
-accepts an owned graph handle (including `alloc::sync::Arc` with feature `alloc`) and
-allocates its arena once. Borrowed `Graph` / `ExecutionContext` APIs remain unchanged.
-See the workspace documentation's memory reference for ownership and allocation details.

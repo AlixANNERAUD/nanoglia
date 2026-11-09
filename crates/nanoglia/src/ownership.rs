@@ -12,19 +12,26 @@ use nanoglia_core::{Allocator, Block, Result};
 /// entire lifetime of the handle. The graph and all borrowed storage must remain valid for
 /// each returned borrow. Switching graphs would invalidate the execution arena's bounds
 /// and aliasing guarantees, even when both graphs have the same arena size.
-pub unsafe trait GraphHandle<A: Allocator> {
+pub unsafe trait GraphHandle {
+    /// The allocator of the prepared graph.
+    type Allocator: Allocator;
+
     /// Borrows the same prepared graph for the lifetime of this handle.
-    fn graph(&self) -> &Graph<'_, A>;
+    fn graph(&self) -> &Graph<'_, Self::Allocator>;
 }
 
 // SAFETY: direct access always borrows this same immutable graph.
-unsafe impl<A: Allocator> GraphHandle<A> for Graph<'_, A> {
+unsafe impl<A: Allocator> GraphHandle for Graph<'_, A> {
+    type Allocator = A;
+
     fn graph(&self) -> &Graph<'_, A> {
         self
     }
 }
 // SAFETY: direct access always borrows this same immutable graph.
-unsafe impl<A: Allocator> GraphHandle<A> for &Graph<'_, A> {
+unsafe impl<A: Allocator> GraphHandle for &Graph<'_, A> {
+    type Allocator = A;
+
     fn graph(&self) -> &Graph<'_, A> {
         self
     }
@@ -34,6 +41,9 @@ unsafe impl<A: Allocator> GraphHandle<A> for &Graph<'_, A> {
 ///
 /// Both allocations use caller-provided allocators. No additional metadata allocation is
 /// required. Custom borrowed registries continue to use `Graph::load_with`.
+///
+/// `OwnedGraph` is `Send` and `Sync` when both allocators are, so an `Arc<OwnedGraph>` can be
+/// shared between tasks or threads.
 ///
 /// Model views borrow this owner and cannot outlive it:
 /// ```compile_fail
@@ -75,7 +85,9 @@ impl<A: Allocator, M: Allocator> OwnedGraph<A, M> {
     }
 }
 // SAFETY: the owned model and prepared graph are immutable until this owner is dropped.
-unsafe impl<A: Allocator, M: Allocator> GraphHandle<A> for OwnedGraph<A, M> {
+unsafe impl<A: Allocator, M: Allocator> GraphHandle for OwnedGraph<A, M> {
+    type Allocator = A;
+
     fn graph(&self) -> &Graph<'_, A> {
         self.graph()
     }
@@ -87,8 +99,10 @@ mod shared {
     use super::*;
     use alloc::sync::Arc;
     // SAFETY: Arc retains the same immutable GraphHandle and cannot replace its value.
-    unsafe impl<A: Allocator, G: GraphHandle<A>> GraphHandle<A> for Arc<G> {
-        fn graph(&self) -> &Graph<'_, A> {
+    unsafe impl<G: GraphHandle> GraphHandle for Arc<G> {
+        type Allocator = G::Allocator;
+
+        fn graph(&self) -> &Graph<'_, G::Allocator> {
             self.as_ref().graph()
         }
     }

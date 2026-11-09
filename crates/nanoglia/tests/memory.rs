@@ -223,6 +223,7 @@ fn arena_bytes_saturates_instead_of_overflowing() {
     assert_eq!(small.arena_bytes(2), 15 + 16 + 2 * 32);
 }
 
+#[cfg(feature = "alloc")]
 #[test]
 fn owning_contexts_use_only_the_supplied_allocators_and_release_every_block() {
     use nanoglia::core::Block;

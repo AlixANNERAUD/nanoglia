@@ -56,3 +56,10 @@ fn owning_a_borrowed_rom_graph_preserves_the_borrowed_api() {
     context.compute().unwrap();
     assert!(!context.output(0).unwrap().bytes().is_empty());
 }
+
+#[test]
+fn owned_graphs_and_their_contexts_can_move_between_threads() {
+    fn send_sync<T: Send + Sync>() {}
+    send_sync::<OwnedGraph<Global>>();
+    send_sync::<GraphExecutionContext<Arc<OwnedGraph<Global>>, Global>>();
+}

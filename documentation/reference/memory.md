@@ -56,8 +56,7 @@ bytes and prepared parameters can be shared. `input_mut` and `output` access ten
 storage directly; adapters need not allocate staging tensors.
 
 Inputs must be written before every inference: memory planning can reuse their storage.
-An adapter must invalidate results and input-completeness tracking before executing,
-including on an execution error.
+After a failed `compute`, the outputs are not valid.
 
 ### Allocators
 

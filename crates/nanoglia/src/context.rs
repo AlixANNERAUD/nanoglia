@@ -41,26 +41,23 @@ use nanoglia_core::{
 /// # Ok(())
 /// # }
 /// ```
-pub struct GraphExecutionContext<G: GraphHandle<A>, A: Allocator, B: Allocator> {
+pub struct GraphExecutionContext<G: GraphHandle, B: Allocator> {
     graph: G,
-    _allocator: core::marker::PhantomData<A>,
     arena: Block<B>,
     /// The next operator of the inference run step by step, if one is in progress.
     next: Option<usize>,
 }
 
-impl<G: GraphHandle<A>, A: Allocator, B: Allocator> core::fmt::Debug
-    for GraphExecutionContext<G, A, B>
-{
+impl<G: GraphHandle, B: Allocator> core::fmt::Debug for GraphExecutionContext<G, B> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("ExecutionContext")
+        f.debug_struct("GraphExecutionContext")
             .field("arena_bytes", &self.arena.len())
             .finish()
     }
 }
 
 /// The original borrowed execution context; no ownership allocation is introduced.
-pub type ExecutionContext<'g, 'm, A, B> = GraphExecutionContext<&'g Graph<'m, A>, A, B>;
+pub type ExecutionContext<'g, 'm, A, B> = GraphExecutionContext<&'g Graph<'m, A>, B>;
 
 impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
     pub(crate) fn new(graph: &'g Graph<'m, A>, alloc: B) -> Result<Self> {
@@ -73,14 +70,13 @@ impl<'g, 'm, A: Allocator, B: Allocator> ExecutionContext<'g, 'm, A, B> {
     }
 }
 
-impl<G: GraphHandle<A>, A: Allocator, B: Allocator> GraphExecutionContext<G, A, B> {
+impl<G: GraphHandle, B: Allocator> GraphExecutionContext<G, B> {
     /// Retains `graph` and allocates one arena from `alloc`. Inference allocates nothing.
     pub fn new_in(graph: G, alloc: B) -> Result<Self> {
         let bytes = graph.graph().context_bytes();
         Ok(Self {
             graph,
             arena: Block::new_zeroed(bytes, alloc)?,
-            _allocator: core::marker::PhantomData,
             next: None,
         })
     }
