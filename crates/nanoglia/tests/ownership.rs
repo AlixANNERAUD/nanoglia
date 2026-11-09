@@ -18,6 +18,8 @@ fn heap_model_survives_device_owner_and_contexts_are_independent() {
     let mut first = GraphExecutionContext::new_in(graph.clone(), Global).unwrap();
     let mut second = GraphExecutionContext::new_in(graph.clone(), Global).unwrap();
     drop(graph);
+    assert_eq!(first.graph().input_count(), 1);
+    assert_eq!(first.graph().input_count(), second.graph().input_count());
     for value in [3, -2, 5] {
         first
             .input_mut(0)

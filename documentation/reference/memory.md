@@ -45,8 +45,11 @@ Handles may be borrowed graphs, graphs moved by value, `OwnedGraph`, or (`alloc`
 `alloc::sync::Arc` handles shared between contexts on targets with pointer atomics.
 Custom shared pointers can implement the unsafe `GraphHandle` contract: every borrow
 must refer to the same immutable prepared graph and model. Creating the `Arc` is the caller's
-allocation; cloning it does not allocate. The original borrowed API remains available
-without `alloc` and adds no ownership wrapper. The handle cannot switch graphs while
+allocation; cloning it does not allocate. The borrowed `ExecutionContext` alias remains available
+without `alloc` and adds no ownership wrapper. `graph()` is available on every context;
+its graph and model views borrow the context. Unlike the previous borrowed-only accessor,
+these views cannot be retained past dropping the context, even if its graph lives longer.
+Borrow the original graph directly when that longer lifetime is required. The handle cannot switch graphs while
 its arena exists.
 
 For a file-loaded model, allocate one aligned `Block`, read the file into its mutable

@@ -79,7 +79,21 @@ impl<G: GraphHandle, B: Allocator> GraphExecutionContext<G, B> {
         })
     }
 
-    /// The graph this context runs.
+    /// Borrows the prepared graph through this context's retained handle.
+    ///
+    /// Graph and model views are tied to this borrow of the context, for both borrowed
+    /// and owning handles. They cannot outlive an owning context's model storage.
+    ///
+    /// ```compile_fail
+    /// # use nanoglia::{GraphExecutionContext, OwnedGraph};
+    /// # use nanoglia::core::allocator_api2::alloc::Global;
+    /// # use std::sync::Arc;
+    /// fn cannot_escape(context: GraphExecutionContext<Arc<OwnedGraph<Global>>, Global>) {
+    ///     let input = context.graph().input(0).unwrap();
+    ///     drop(context);
+    ///     println!("{:?}", input);
+    /// }
+    /// ```
     pub fn graph(&self) -> &Graph<'_, G::Allocator> {
         self.graph.graph()
     }
