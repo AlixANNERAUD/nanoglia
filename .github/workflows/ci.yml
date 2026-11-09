@@ -214,3 +214,24 @@ jobs:
           name: pytorch-export
           path: target/pytorch-export
           if-no-files-found: ignore
+
+  # The one check branch protection requires (with `pr-title`, from its own workflow): add a
+  # job to `needs` to make it required. `fuzz` and `pytorch-export` are left out on purpose:
+  # the first is random, the second depends on upstream converters (#32).
+  required:
+    name: Required checks
+    if: always()
+    needs: [fmt, clippy, test, c, cross, esp32s3, deny, msrv, docs]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every needed job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: $RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" != success ]; then
+              echo "::error::A required job ended with '$result'."
+              exit 1
+            fi
+          done
