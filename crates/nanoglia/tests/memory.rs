@@ -222,3 +222,44 @@ fn arena_bytes_saturates_instead_of_overflowing() {
     };
     assert_eq!(small.arena_bytes(2), 15 + 16 + 2 * 32);
 }
+
+#[cfg(feature = "alloc")]
+#[test]
+fn owning_contexts_use_only_the_supplied_allocators_and_release_every_block() {
+    use nanoglia::core::Block;
+    use nanoglia::{GraphExecutionContext, OwnedGraph};
+    use std::sync::Arc;
+
+    let source = kws();
+    let counting = Counting::default();
+    let mut model = Block::new_zeroed(source.bytes().len(), &counting).unwrap();
+    model.as_mut_slice().copy_from_slice(source.bytes());
+    let graph =
+        Arc::new(OwnedGraph::load_in(model, Encoding::Autodetect, Target::Cpu, &counting).unwrap());
+    assert_eq!(counting.allocations.load(Ordering::SeqCst), 2);
+    let mut ctx = GraphExecutionContext::new_in(graph.clone(), &counting).unwrap();
+    assert_eq!(counting.allocations.load(Ordering::SeqCst), 3);
+    drop(graph);
+    for value in [1, -3, 7] {
+        ctx.input_mut(0)
+            .unwrap()
+            .as_mut_slice::<i8>()
+            .unwrap()
+            .fill(value);
+        ctx.compute().unwrap();
+        assert!(!ctx.output(0).unwrap().bytes().is_empty());
+    }
+    assert_eq!(counting.allocations.load(Ordering::SeqCst), 3);
+    drop(ctx);
+    assert_eq!(counting.live_bytes.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn invalid_owned_model_releases_its_allocation() {
+    use nanoglia::OwnedGraph;
+    use nanoglia::core::Block;
+    let counting = Counting::default();
+    let model = Block::new_zeroed(32, &counting).unwrap();
+    assert!(OwnedGraph::load_in(model, Encoding::Autodetect, Target::Cpu, &counting).is_err());
+    assert_eq!(counting.live_bytes.load(Ordering::SeqCst), 0);
+}

@@ -60,6 +60,10 @@ jobs:
           - name: ESP-NN
             key: esp-nn
             args: -p nanoglia --features esp-nn --test golden
+          # Owned models and Arc-shared graphs, behind the `alloc` feature.
+          - name: alloc
+            key: alloc
+            args: -p nanoglia --features alloc --test ownership --test memory
     steps:
       - uses: actions/checkout@v7
         with:

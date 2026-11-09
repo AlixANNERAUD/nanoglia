@@ -30,6 +30,37 @@ there, followed by an `Arena` holding the two blocks, so it needs
 `arena_bytes(1)` plus the handle
 ([Use nanoglia from C](../how-to-guides/use-from-c.md#the-memory)).
 
+### Owning models and execution contexts
+
+`OwnedGraph::load_in(model, encoding, target, allocator)` takes an aligned
+`Block` containing model bytes, without copying them. It makes the same prepared-graph
+allocation as `Graph::load_in`; the model allocation is supplied by the caller and is
+released after the prepared graph. Model views borrow the owner, including constant outputs.
+The owning loader uses the default static kernel registry; borrowed registries still use
+`Graph::load_with`.
+
+`GraphExecutionContext::new_in(handle, allocator)` retains a stable graph handle and
+makes one arena allocation, just like the original borrowed `ExecutionContext`.
+Handles may be borrowed graphs, graphs moved by value, `OwnedGraph`, or (`alloc`)
+`alloc::sync::Arc` handles shared between contexts on targets with pointer atomics.
+Custom shared pointers can implement the unsafe `GraphHandle` contract: every borrow
+must refer to the same immutable prepared graph and model. Creating the `Arc` is the caller's
+allocation; cloning it does not allocate. The borrowed `ExecutionContext` alias remains available
+without `alloc` and adds no ownership wrapper. `graph()` is available on every context;
+its graph and model views borrow the context. Unlike the previous borrowed-only accessor,
+these views cannot be retained past dropping the context, even if its graph lives longer.
+Borrow the original graph directly when that longer lifetime is required. The handle cannot switch graphs while
+its arena exists.
+
+For a file-loaded model, allocate one aligned `Block`, read the file into its mutable
+slice, then move it into `OwnedGraph`. This avoids an intermediate file-sized buffer.
+Each execution context owns independent activations and scratch space; immutable model
+bytes and prepared parameters can be shared. `input_mut` and `output` access tensor
+storage directly; adapters need not allocate staging tensors.
+
+Inputs must be written before every inference: memory planning can reuse their storage.
+After a failed `compute`, the outputs are not valid.
+
 ### Allocators
 
 Any type implementing `allocator_api2::alloc::Allocator` (re-exported as
