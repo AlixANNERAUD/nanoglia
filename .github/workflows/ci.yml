@@ -177,6 +177,36 @@ jobs:
       # emulation/tools/.python-version and the packages from its uv.lock (`--locked`).
       - run: mise run test-emulated
 
+  hardware:
+    name: Board runner (host tests, emulated Cortex-M4F, Nano 33 BLE images)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      # The C toolchain of `[bootstrap.packages]`, for CMSIS-NN and arm-none-eabi-size.
+      - name: Install system packages
+        run: sudo apt-get update && mise bootstrap packages apply --yes
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: hardware
+      # What runs the golden cases on a board (hardware/), without a board: clippy, the runner on
+      # the host behind a link in memory, the tests of the host tool, then every golden case
+      # through the protocol on the runner emulated under Unicorn, its ways out of a panic, a
+      # fault and a hang, and the dry run of the host tool against a simulated device.
+      - run: mise run test-hardware
+      # The two images of the Arduino Nano 33 BLE: each must link with real code and its models,
+      # and fit in the 960 KiB after the bootloader. No job has the board: `mise run
+      # test-hardware-nano33ble` flashes and runs them where it is plugged in.
+      - run: mise run build-hardware-nano33ble
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hardware-nano33ble-images
+          path: hardware/target/images/*.elf
+          if-no-files-found: error
+
   esp32s3:
     name: Cross (ESP32-S3, ESP-NN optimized)
     runs-on: ubuntu-latest
@@ -298,7 +328,7 @@ jobs:
   required:
     name: Required checks
     if: always()
-    needs: [fmt, clippy, test, c, cross, op-features, emulated, esp32s3, deny, msrv, docs]
+    needs: [fmt, clippy, test, c, cross, op-features, emulated, hardware, esp32s3, deny, msrv, docs]
     runs-on: ubuntu-latest
     steps:
       - name: Every needed job succeeded

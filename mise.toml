@@ -44,6 +44,9 @@ run = [
   "cargo fmt --check --manifest-path emulation/Cargo.toml",
   # The program of the train-and-deploy tutorial, its own workspace too.
   "cargo fmt --check --manifest-path examples/train-to-device/Cargo.toml",
+  # The runner of the boards and its firmwares, their own workspace too; their clippy runs in
+  # test-hardware.
+  "cargo fmt --all --check --manifest-path hardware/Cargo.toml",
 ]
 
 [tasks.clippy]
@@ -101,7 +104,12 @@ run = "cargo llvm-cov --workspace --lcov --output-path coverage.lcov"
 [tasks.deny]
 description = "Check licenses, security advisories, bans and sources of the dependencies (cargo-deny)"
 tools = { "aqua:EmbarkStudios/cargo-deny" = "latest" }
-run = "cargo deny check"
+run = [
+  "cargo deny check",
+  # The firmwares of hardware/, which are not published: licenses, bans and sources, with their
+  # own allow-list (hardware/deny.toml adds the BSD-3-Clause register definitions of the nRF52840).
+  "cargo deny --manifest-path hardware/Cargo.toml check licenses bans sources",
+]
 
 [tasks.cross-arm]
 description = "Build the libraries for Cortex-M0+ (thumbv6m), Cortex-M4F (thumbv7em, Arduino Nano 33 BLE) and Cortex-M33 (thumbv8m.main), without any global allocator"
@@ -205,6 +213,73 @@ run = [
   "cargo build --release --target riscv32imc-unknown-none-elf",
   "uv run --locked --project tools python -I tools/run.py --cpu riscv32 target/riscv32imc-unknown-none-elf/release/nanoglia-emulation",
 ]
+
+[tasks.test-hardware]
+description = "Test what runs the golden cases on a board, without a board: the runner on the host, then on an emulated Cortex-M4F driven by the host tool (every golden case, crashes and recovery), the host tool against a simulated device"
+# Its own Cargo workspace (hardware/Cargo.toml) and uv project (hardware/tools/, dependencies
+# locked by uv.lock). One Cargo package at a time: built together, the firmware of the board and
+# the emulated one would share the features of cortex-m-rt, and the second would not link.
+dir = "{{config_root}}/hardware"
+env.RUSTFLAGS = "-D warnings"
+env.NANOGLIA_REVISION = "{{exec(command='git describe --always --dirty --abbrev=12 --exclude=*')}}"
+env.NANOGLIA_EMULATED_ELF = "{{config_root}}/hardware/target/thumbv7em-none-eabihf/release/nanoglia-hardware-emulated"
+run = [
+  "cargo clippy -p nanoglia-hardware-runner --all-targets",
+  "cargo clippy --release --target thumbv7em-none-eabihf -p nanoglia-hardware-emulated",
+  "cargo clippy --release --target thumbv7em-none-eabihf -p nanoglia-hardware-nano33ble --all-features",
+  "cargo test -p nanoglia-hardware-runner",
+  "cargo build --release --target thumbv7em-none-eabihf -p nanoglia-hardware-emulated",
+  # The tests of the host tool: its link, the run against a simulated device that corrupts frames,
+  # hangs, crashes or dies, the bossac command, and the emulated firmware.
+  "uv run --locked --project tools pytest tools/tests",
+  # Every golden case through the protocol, on the emulated firmware; then its ways out of a
+  # panic, a fault and a hang; then the dry run against the simulated device.
+  "uv run --locked --project tools python -I tools/hardware.py --device emulated --elf \"$NANOGLIA_EMULATED_ELF\" --results target/results/emulated.json",
+  "uv run --locked --project tools python -I tools/hardware.py --device emulated --elf \"$NANOGLIA_EMULATED_ELF\" --self-test",
+  "uv run --locked --project tools python -I tools/hardware.py --dry-run --results target/results/simulated.json",
+]
+
+[tasks.build-hardware-nano33ble]
+description = "Build the two firmware images that run the golden cases on an Arduino Nano 33 BLE: every kernel family, and the MLPerf Tiny models linked in (they do not fit in one image)"
+# The images land in hardware/target/images. The linker refuses an image larger than the 960 KiB
+# after the bootloader; an image linked without its linker scripts is empty and still "builds":
+# require real code and the models.
+dir = "{{config_root}}/hardware"
+env.RUSTFLAGS = "-D warnings"
+env.NANOGLIA_REVISION = "{{exec(command='git describe --always --dirty --abbrev=12 --exclude=*')}}"
+run = """
+set -e
+mkdir -p target/images
+build() {
+  cargo build --release --target thumbv7em-none-eabihf -p nanoglia-hardware-nano33ble --features "$2"
+  cp target/thumbv7em-none-eabihf/release/nanoglia-hardware-nano33ble "target/images/nano33ble-image-$1.elf"
+}
+build 1 model-kws,model-resnet,model-ad
+build 2 model-vww,model-str-ww
+arm-none-eabi-size target/images/nano33ble-image-1.elf target/images/nano33ble-image-2.elf
+for image in 1 2; do
+  text=$(arm-none-eabi-size "target/images/nano33ble-image-$image.elf" | awk 'NR==2 {print $1}')
+  test "$text" -gt 700000
+  test "$text" -le 983040
+done
+"""
+
+[tasks.hardware]
+description = "The host tool of hardware/: `mise run hardware -- --list-ports`, `--info`, `--bootloader`, `--self-test`, `--dry-run`... (see its --help)"
+dir = "{{config_root}}/hardware"
+tools = { "http:bossac" = { version = "1.9.1-arduino2", bin_path = "bin", platforms = { linux-x64 = { url = "https://downloads.arduino.cc/tools/bossac-1.9.1-arduino2-linux64.tar.gz" }, linux-arm64 = { url = "https://downloads.arduino.cc/tools/bossac-1.9.1-arduino2-linuxaarch64.tar.gz" }, macos-x64 = { url = "https://downloads.arduino.cc/tools/bossac-1.9.1-arduino2-osx.tar.gz" }, macos-arm64 = { url = "https://downloads.arduino.cc/tools/bossac-1.9.1-arduino2-osx.tar.gz" } } } }
+run = "uv run --locked --project tools python -I tools/hardware.py"
+
+[tasks.test-hardware-nano33ble]
+description = "On an Arduino Nano 33 BLE plugged in over USB: build the two firmware images, flash each through the bootloader (bossac) and run the golden cases on the board, with the time of each operator of the models in flash; results in hardware/target/results/nano33ble.json"
+# Arduino's fork of bossac (the mainline one does not know the nRF52840), installed by mise. The
+# board must run this firmware, a sketch of the Arduino core, or sit in its bootloader (a double
+# tap on the reset button): see documentation/how-to-guides/run-the-golden-cases-on-a-board.md.
+# Arguments after `--` go to the host tool (`--filter`, `--repeat`, `--port`...).
+dir = "{{config_root}}/hardware"
+depends = ["build-hardware-nano33ble"]
+tools = { "http:bossac" = { version = "1.9.1-arduino2", bin_path = "bin", platforms = { linux-x64 = { url = "https://downloads.arduino.cc/tools/bossac-1.9.1-arduino2-linux64.tar.gz" }, linux-arm64 = { url = "https://downloads.arduino.cc/tools/bossac-1.9.1-arduino2-linuxaarch64.tar.gz" }, macos-x64 = { url = "https://downloads.arduino.cc/tools/bossac-1.9.1-arduino2-osx.tar.gz" }, macos-arm64 = { url = "https://downloads.arduino.cc/tools/bossac-1.9.1-arduino2-osx.tar.gz" } } } }
+run = "uv run --locked --project tools python -I tools/hardware.py --image target/images/nano33ble-image-1.elf --image target/images/nano33ble-image-2.elf --results target/results/nano33ble.json"
 
 [tasks.no-malloc]
 description = "Check that no C library linked into nanoglia, nor the C API's static library, references malloc/calloc/realloc/free"

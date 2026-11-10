@@ -294,3 +294,58 @@ These are sizes of a linked firmware; it has not run on the board
 ([issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2)). The
 sizes of a firmware compared with other engines are in
 [Performance](performance.md#keyword-spotting-firmware).
+
+## The Nano 33 BLE test bench
+
+The firmware that runs the golden cases on an Arduino Nano 33 BLE
+(`hardware/nano33ble`,
+[Run the golden cases on a board](../how-to-guides/run-the-golden-cases-on-a-board.md))
+links every kernel family (`cmsis-nn`, `kernels`, `float`, `int16`,
+`all-ops`) and a USB stack, at `opt-level = 3` with fat LTO, and keeps
+the MLPerf Tiny models in flash, where they run in place. The five
+models (837216 bytes) and the code do not fit together in the 983040
+bytes of flash after the bootloader: two images are built. `text` of
+`arm-none-eabi-size`, in bytes, models included; `data` is 0 and `bss`
+332 in each:
+
+| Image | Models in flash | `text` | Left of 983040 |
+| --- | --- | ---: | ---: |
+| none | — | 433180 | 549860 |
+| 1 | `kws_ref_model`, `pretrainedResnet_quant`, `ad01_int8` | 862724 | 120316 |
+| 2 | `vww_96_int8`, `str_ww_ref_model` | 841100 | 141940 |
+
+With the model in flash, a case needs RAM for its inputs and for the
+arena (the graph and context blocks) only. Of the 262144 bytes of RAM,
+the firmware keeps 24576 for the stack and 336 for its static data;
+the rest, 237232 bytes, receives the inputs and holds the arena. What
+each model takes of it, measured on the same code under emulation
+(`hardware/emulated`: the same memory layout, 176 bytes of static data):
+
+| Model | Inputs | Graph | Context | Arena used | Peak stack | Inputs + arena, of 237232 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `kws_ref_model` | 490 | 7616 | 16256 | 23872 | 8224 | 24362 |
+| `pretrainedResnet_quant` | 3072 | 6064 | 51456 | 57520 | 8224 | 60592 |
+| `str_ww_ref_model` | 1200 | 9248 | 10496 | 19744 | 7952 | 20944 |
+| `ad01_int8` | 640 | 16208 | 768 | 16976 | 7952 | 17616 |
+| `vww_96_int8` | 27648 | 29280 | 65536 | 94816 | 8224 | 122464 |
+
+All five run: the largest, visual wake words, takes about half of what
+is free. The contexts differ from the 32-bit column of the
+[footprints](#mlperf-tiny-footprints) where CMSIS-NN's DSP kernels ask
+for other scratch sizes than its portable C code (keyword spotting,
+visual wake words). The single-operator cases of `testdata/ops/` are
+received into the same RAM with their model: the largest model is 7648
+bytes, the largest arena 4352 bytes, and the deepest stack over every
+golden case is 8468 bytes of the 24576.
+
+Measured on 2026-11-10, with the change that added `hardware/`, on top
+of commit `d98b750`, on a Linux aarch64 host with rustc 1.99.1,
+`arm-none-eabi-gcc` 14.2.1 and Unicorn 2.1.4: the sizes with `mise run
+build-hardware-nano33ble` (and `cargo build --release --target
+thumbv7em-none-eabihf -p nanoglia-hardware-nano33ble` for the image
+without model); the RAM with `mise run test-hardware`, from
+`hardware/target/results/emulated.json` (fields `inputs_bytes`,
+`graph_bytes`, `context_bytes`, `arena_used`, `stack_peak`). The stack
+is measured by painting it. These are figures of a linked firmware and
+of an emulated run: the firmware has not run on the board
+([issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2)).

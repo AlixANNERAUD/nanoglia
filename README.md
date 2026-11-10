@@ -165,6 +165,9 @@ Every library builds without any global allocator, and a CI job checks that no C
 code paths), M0+ and riscv32imc (`mise run test-emulated`); the ESP32-S3 SIMD code paths are only
 built. Nothing has run on hardware yet: an emulator says nothing about timing, caches, flash wait
 states or alignment faults, and [issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2) tracks that validation.
+`mise run test-hardware-nano33ble` is the tool for it: it flashes an Arduino Nano 33 BLE over USB, runs
+every golden case on it and times each operator
+([run the golden cases on a board](documentation/how-to-guides/run-the-golden-cases-on-a-board.md)); it has not run on a board yet either.
 
 ## Compared to other options
 
@@ -211,7 +214,7 @@ The [documentation](documentation/README.md) follows the [Diátaxis](https://dia
 | | |
 | --- | --- |
 | **Tutorials** | [Run your first inference](documentation/tutorials/first-inference.md), [from training to the device](documentation/tutorials/train-and-deploy.md) |
-| **How-to guides** | [Check whether a model runs](documentation/how-to-guides/check-whether-a-model-runs.md), [size the memory](documentation/how-to-guides/size-memory.md), [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [reduce the code size](documentation/how-to-guides/reduce-code-size.md), [run in the browser](documentation/how-to-guides/run-in-the-browser.md), [run long inferences without blocking](documentation/how-to-guides/run-long-inferences.md), [write a backend](documentation/how-to-guides/write-a-backend.md), [use nanoglia from C](documentation/how-to-guides/use-from-c.md) |
+| **How-to guides** | [Check whether a model runs](documentation/how-to-guides/check-whether-a-model-runs.md), [size the memory](documentation/how-to-guides/size-memory.md), [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [run the golden cases on a board](documentation/how-to-guides/run-the-golden-cases-on-a-board.md), [reduce the code size](documentation/how-to-guides/reduce-code-size.md), [run in the browser](documentation/how-to-guides/run-in-the-browser.md), [run long inferences without blocking](documentation/how-to-guides/run-long-inferences.md), [write a backend](documentation/how-to-guides/write-a-backend.md), [use nanoglia from C](documentation/how-to-guides/use-from-c.md) |
 | **Explanation** | [Architecture](documentation/explanation/architecture.md), [bit-exactness with TensorFlow Lite](documentation/explanation/bit-exactness.md) |
 | **Reference** | [Supported operators](documentation/reference/supported-operators.md), [Cargo features](documentation/reference/features.md), [errors](documentation/reference/errors.md), [memory](documentation/reference/memory.md), [performance](documentation/reference/performance.md), [development tasks](documentation/reference/development-tasks.md) |
 
