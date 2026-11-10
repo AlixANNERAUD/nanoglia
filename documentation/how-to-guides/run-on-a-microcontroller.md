@@ -8,11 +8,14 @@ ESP32-S3.
 > **Status: not yet validated on hardware.** The firmware builds in CI
 > (`mise run example-nano33ble`, and `mise run cross-esp32s3` for the
 > ESP32-S3 libraries) and the same code runs bit-exact on the host, where
-> CMSIS-NN and ESP-NN compile their portable C code. CMSIS-NN's DSP
-> (Cortex-M4, M7, M33) and Helium code paths and ESP-NN's ESP32-S3
-> kernels have not yet been run and compared with the golden outputs on
-> a board: this is tracked in issue #2. Check the results on your device
-> against the host before relying on them.
+> CMSIS-NN and ESP-NN compile their portable C code. The golden cases
+> also pass under an instruction-set emulator for Cortex-M4F, M33 (with
+> CMSIS-NN's DSP code paths), M0+ and riscv32imc (`mise run
+> test-emulated`). Nothing has been run and compared with the golden
+> outputs on a board yet, and CMSIS-NN's Helium paths and ESP-NN's
+> ESP32-S3 kernels not even in an emulator: this is tracked in issue #2.
+> Check the results on your device against the host before relying on
+> them.
 
 ## The Nano 33 BLE example
 

@@ -151,18 +151,20 @@ layout, lifetimes, the step API and errors.
 
 | Target | Example hardware | Kernels | Checked in CI |
 | --- | --- | --- | --- |
-| `thumbv7em-none-eabihf` | Cortex-M4F/M7: nRF52840 (Arduino Nano 33 BLE), STM32F4/H7 | CMSIS-NN with DSP | Library build and the Nano 33 BLE firmware |
-| `thumbv8m.main-none-eabihf` | Cortex-M33: nRF5340, STM32U5, RP2350 | CMSIS-NN (DSP with `-C target-cpu=cortex-m33`) | Library build |
-| `thumbv6m-none-eabi` | Cortex-M0+: RP2040, STM32G0 | CMSIS-NN, portable C | Library build |
+| `thumbv7em-none-eabihf` | Cortex-M4F/M7: nRF52840 (Arduino Nano 33 BLE), STM32F4/H7 | CMSIS-NN with DSP | Library build, the Nano 33 BLE firmware, golden cases under an emulator |
+| `thumbv8m.main-none-eabihf` | Cortex-M33: nRF5340, STM32U5, RP2350 | CMSIS-NN (DSP with `-C target-cpu=cortex-m33`) | Library build, golden cases under an emulator (with DSP) |
+| `thumbv6m-none-eabi` | Cortex-M0+: RP2040, STM32G0 | CMSIS-NN, portable C | Library build, golden cases under an emulator |
 | `xtensa-esp32s3-none-elf` | ESP32-S3 | ESP-NN with PIE SIMD (feature `esp-nn`), CMSIS-NN | Library build with the optimized ESP-NN kernels |
-| `riscv32imc-unknown-none-elf` | ESP32-C3 and other RV32 cores | CMSIS-NN, portable C | Library build |
+| `riscv32imc-unknown-none-elf` | ESP32-C3 and other RV32 cores | CMSIS-NN, portable C | Library build, golden cases under an emulator |
 | `wasm32-unknown-unknown` | Browsers | Portable C and Rust, SIMD128 | Library build |
 | `wasm32-wasip1` | WASI runtimes (wasmtime...) | Portable C and Rust | Whole test suite under wasmtime |
 | Linux, macOS, Windows | Desktop, CI, embedded Linux | Portable C and Rust | Whole test suite (Linux) |
 
 Every library builds without any global allocator, and a CI job checks that no C code references
-`malloc`. The Arm DSP and ESP32-S3 SIMD code paths are built in CI but have not run on hardware
-yet: [issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2) tracks that validation.
+`malloc`. The golden cases run in CI under the Unicorn emulator for Cortex-M4F, M33 (CMSIS-NN's DSP
+code paths), M0+ and riscv32imc (`mise run test-emulated`); the ESP32-S3 SIMD code paths are only
+built. Nothing has run on hardware yet: an emulator says nothing about timing, caches, flash wait
+states or alignment faults, and [issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2) tracks that validation.
 
 ## Compared to other options
 

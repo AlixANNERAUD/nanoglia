@@ -69,20 +69,39 @@ There are 376 cases:
 
 `crates/nanoglia/tests/golden.rs` runs every case end to end and
 requires quantized outputs to match exactly. 373 cases pass; the 3
-`ad01_int8` samples are listed in its `PENDING` table (see below). The
-test fails if a pending case starts to pass, so the list stays current.
-The same tests run compiled to WebAssembly under wasmtime (`mise run
-test-wasip1`).
+`ad01_int8` samples are listed in `testdata/pending.json` (see below).
+The test fails if a pending case starts to pass, so the list stays
+current. The same tests run compiled to WebAssembly under wasmtime
+(`mise run test-wasip1`).
+
+`mise run test-emulated` runs the same cases, compared the same way, on
+a firmware built for Cortex-M4F, Cortex-M33 (with the DSP extension),
+Cortex-M0+ and riscv32imc, under the Unicorn instruction-set emulator.
+On the M4 and M33 builds, CMSIS-NN compiles its DSP code paths, and the
+run checks that their packed-SIMD instructions (`smlad`, `sxtb16`,
+`pkhbt`...) execute. A fifth build, Cortex-M33 with the DSP extension
+turned off, and the M0+ build must hold no DSP instruction at all. All
+five builds passed the 373 cases and failed the 3 pending ones on their
+output values, as the host does (`mise run test-emulated`, Unicorn
+2.1.4, on a Linux 6.12 aarch64 virtual machine, 2026-11-10, this
+change on top of commit `3d382f8`).
+
+The emulator runs the instructions, not the chip: it has no timing,
+caches or flash wait states. Unicorn's Cortex-M0 faults on an unaligned
+access, as Armv6-M does, but an unaligned `ldm` on the Cortex-M4 or M33,
+or a misaligned load on a RISC-V core without support for it, faults on
+hardware and runs unnoticed here.
 
 The golden cases run a second time with the ESP-NN backend first
 (`cargo test -p nanoglia --features esp-nn --test golden`, part of
 `mise run test`), and the test checks that ESP-NN ran some operators.
 
 What the oracle does not cover: on the host, CMSIS-NN compiles its
-portable C code and ESP-NN its ANSI C kernels. CMSIS-NN's DSP and Helium
-code paths and ESP-NN's ESP32-S3 kernels are written to give the same
-results, but they have not run against the golden data on hardware yet
-(issue #2).
+portable C code and ESP-NN its ANSI C kernels. CMSIS-NN's DSP code paths
+match the golden data under the emulator only; its Helium paths and
+ESP-NN's ESP32-S3 kernels are written to give the same results but have
+not run against the golden data at all. Nothing has run on hardware yet
+(issue #2): an emulator checks the instructions, not the chip.
 
 ## Single and double rounding
 

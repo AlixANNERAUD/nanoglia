@@ -630,6 +630,8 @@ among them: LiteRT has no int16 version to compare with), and
 sizes, with ports of the reference kernels. The golden cases also run
 with the `esp-nn` backend first (its ANSI C kernels on the host), and
 `crates/nanoglia-esp-nn/tests/kernels/` checks its kernels against a
-TFLite reference. The Arm DSP and Helium code paths of CMSIS-NN and the
-ESP32-S3 kernels of ESP-NN have not run on hardware yet (issue #2): host
-tests run their portable C code.
+TFLite reference. Host tests run the portable C code of CMSIS-NN and
+ESP-NN. `mise run test-emulated` runs the golden cases with CMSIS-NN's
+DSP code paths (Cortex-M4F, M33) under an emulator; its Helium code
+paths and the ESP32-S3 kernels of ESP-NN have not run, and nothing has
+run on hardware yet (issue #2).

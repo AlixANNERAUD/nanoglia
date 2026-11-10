@@ -36,8 +36,13 @@ description = "Check out the CMSIS-NN and ESP-NN submodules (run it after clonin
 run = "git submodule update --init --recursive"
 
 [tasks.fmt]
-description = "Check formatting"
-run = "cargo fmt --all --check"
+description = "Check formatting, of the library workspace and of the emulation firmware"
+run = [
+  "cargo fmt --all --check",
+  # Its own workspace (emulation/Cargo.toml); its clippy runs in test-emulated, which has its
+  # bare-metal C toolchains.
+  "cargo fmt --check --manifest-path emulation/Cargo.toml",
+]
 
 [tasks.clippy]
 description = "Run clippy on the workspace, with all and no features"
@@ -162,6 +167,41 @@ run = [
   "cargo test --workspace --target wasm32-wasip1 --release",
   # SIMD128 (Rust, and the C code through the build scripts) must give the same bytes.
   "RUSTFLAGS=\"$RUSTFLAGS -C target-feature=+simd128\" CARGO_TARGET_DIR=target/wasip1-simd128 cargo test -p nanoglia --target wasm32-wasip1 --release --test golden --test memory",
+]
+
+[tasks.test-emulated]
+description = "Run the golden cases of testdata/ on a test-runner firmware under the Unicorn emulator: Cortex-M4F and M33 (CMSIS-NN DSP code paths, checked to execute), M33 without DSP and Cortex-M0+ (no DSP instruction), riscv32imc"
+# Its own Cargo workspace (emulation/Cargo.toml) and uv project (emulation/tools/, Python version in
+# its .python-version, dependencies locked by uv.lock). Clippy first, for both runtimes (Arm and
+# RISC-V). One firmware per target, built and run in turn; run.py prints each case, then the wall
+# time of the architecture.
+dir = "{{config_root}}/emulation"
+env.RUSTFLAGS = "-D warnings"
+run = [
+  "cargo clippy --release --target thumbv7em-none-eabihf",
+  "cargo clippy --release --target riscv32imc-unknown-none-elf",
+  "cargo build --release --target thumbv7em-none-eabihf",
+  "uv run --locked --project tools python -I tools/run.py --cpu cortex-m4 --expect-dsp target/thumbv7em-none-eabihf/release/nanoglia-emulation",
+  # `target-cpu=cortex-m33` turns on the optional DSP extension, for the Rust code and, through
+  # nanoglia-cmsis-nn-sys's build script, for CMSIS-NN. Generic TARGET_* variables: see
+  # ARM_NEWLIB_FLAGS.
+  "RUSTFLAGS=\"$RUSTFLAGS -C target-cpu=cortex-m33\" TARGET_CC=arm-none-eabi-gcc TARGET_AR=arm-none-eabi-ar TARGET_CFLAGS=\"$ARM_NEWLIB_FLAGS\" cargo build --release --target thumbv8m.main-none-eabihf",
+  "uv run --locked --project tools python -I tools/run.py --cpu cortex-m33 --expect-dsp target/thumbv8m.main-none-eabihf/release/nanoglia-emulation",
+  # The same CPU with the extension turned off, the feature first: the build script must let an
+  # explicit `-dsp` win over what the CPU implies, whatever the order, and CMSIS-NN must then
+  # compile its portable C code. run.py fails if the ELF holds one DSP instruction. A target
+  # directory of its own, not to rebuild the firmware above at each run.
+  # rustc warns here that `dsp` is an unstable target feature ("its behavior can change in the future");
+  # the warning is not a lint, so `-D warnings` lets it through.
+  "RUSTFLAGS=\"$RUSTFLAGS -C target-feature=-dsp -C target-cpu=cortex-m33\" CARGO_TARGET_DIR=target/no-dsp TARGET_CC=arm-none-eabi-gcc TARGET_AR=arm-none-eabi-ar TARGET_CFLAGS=\"$ARM_NEWLIB_FLAGS\" cargo build --release --target thumbv8m.main-none-eabihf",
+  "uv run --locked --project tools python -I tools/run.py --cpu cortex-m33 --expect-no-dsp target/no-dsp/thumbv8m.main-none-eabihf/release/nanoglia-emulation",
+  # Negative control: the Cortex-M4F firmware must not run on the Cortex-M0 model (Unicorn once ran
+  # every Arm firmware on its Cortex-M33, whatever model was asked for).
+  "! uv run --locked --project tools python -I tools/run.py --cpu cortex-m0 --filter kws_ref_model/sample_0 target/thumbv7em-none-eabihf/release/nanoglia-emulation > /dev/null 2>&1",
+  "cargo build --release --target thumbv6m-none-eabi",
+  "uv run --locked --project tools python -I tools/run.py --cpu cortex-m0 --expect-no-dsp target/thumbv6m-none-eabi/release/nanoglia-emulation",
+  "cargo build --release --target riscv32imc-unknown-none-elf",
+  "uv run --locked --project tools python -I tools/run.py --cpu riscv32 target/riscv32imc-unknown-none-elf/release/nanoglia-emulation",
 ]
 
 [tasks.no-malloc]

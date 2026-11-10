@@ -106,7 +106,8 @@ archive is self-contained: it brings its own `memcpy` and `memset`
 (from Rust's `compiler_builtins`) and references no `malloc`, `free` or
 any other C library function. `mise run cross-c` checks it by linking
 it with `arm-none-eabi-gcc -nostdlib` into a program that calls every
-function; the Cortex-M4F DSP code paths of CMSIS-NN have not run on
+function; the Cortex-M4F DSP code paths of CMSIS-NN match the golden
+data under an emulator (`mise run test-emulated`) but have not run on
 hardware yet ([issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2)).
 
 `NANOGLIA_INT8_ONLY` is enough for fully quantized int8 models such as
