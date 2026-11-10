@@ -3,7 +3,7 @@ use crate::{Encoding, ExecutionContext, Registry, Target, TensorRef};
 use core::alloc::Layout;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
-use nanoglia_core::backend::{BackendKind, Kernel};
+use nanoglia_core::backend::{BackendKind, Kernel, KernelPlan};
 use nanoglia_core::le::LeSlice;
 use nanoglia_core::{
     ALIGN, Allocator, Block, DataType, Detail, Dims, Error, ErrorCode, MAX_OP_INPUTS,
@@ -161,7 +161,7 @@ fn malformed() -> Error {
     )
 }
 
-fn tensor_index(raw: i32, count: usize) -> Result<Option<usize>> {
+pub(crate) fn tensor_index(raw: i32, count: usize) -> Result<Option<usize>> {
     match raw {
         -1 => Ok(None),
         i if i >= 0 && (i as usize) < count => Ok(Some(i as usize)),
@@ -329,7 +329,7 @@ impl<'m, A: Allocator> Graph<'m, A> {
                 outputs: [NO_TENSOR; MAX_OP_OUTPUTS],
             };
             let (desc, input_ids, output_ids) = describe(&subgraph, index, &mut descs)?;
-            let (kernel, _) = select(registry, target, &desc)?;
+            let kernel = select(registry, target, &desc)?.kernel;
             let plan = kernel.plan(&desc)?;
             if plan.scratch > sizing.scratch_size {
                 // The backend selected or planned differently in the first pass.
@@ -703,38 +703,13 @@ impl MemoryRequirements {
         alloc: A,
     ) -> Result<Self> {
         let (_, subgraph) = open(builders, encoding)?;
-        let sizing = Sizing::compute(registry, target, &subgraph)?;
-        // Reject the models loading would reject for their constants, too.
-        for t in 0..subgraph.tensor_count() {
-            let desc = subgraph.tensor(t)?;
-            if let Some(data) = desc.data
-                && data.as_ptr().align_offset(desc.dtype.size().unwrap_or(1)) != 0
-            {
-                return Err(Error::invalid_argument(Detail::Misaligned {
-                    tensor: t as u32,
-                }));
-            }
-        }
-
         // Only the planner's working memory: the intervals and the order, laid out as in the
         // graph block.
-        let tensor_count = subgraph.tensor_count();
         let mut layout = Layout::from_size_align(0, ALIGN).map_err(|_| Error::out_of_memory(0))?;
-        let sections = WorkingSections {
-            intervals: Section::new(&mut layout, tensor_count)?,
-            order: Section::new(&mut layout, tensor_count)?,
-        };
+        let working = WorkingSections::new(&mut layout, subgraph.tensor_count())?;
         let mut block = Block::new_zeroed(layout.size(), alloc)?;
-        let (intervals, order) = sections.working_memory(block.as_mut_slice());
-        let activations = plan_activations(&subgraph, intervals, order)?;
-
-        let context_bytes = align_up(activations)
-            .and_then(|a| a.checked_add(align_up(sizing.scratch_size)?))
-            .ok_or_else(|| Error::out_of_memory(usize::MAX))?;
-        Ok(Self {
-            graph_bytes: sizing.block_size,
-            context_bytes,
-        })
+        let breakdown = measure(registry, target, &subgraph, &working, block.as_mut_slice())?;
+        Ok(breakdown.requirements())
     }
 
     /// Computes the requirements of a model with the default [`Registry`], taking the planner's
@@ -750,6 +725,76 @@ impl MemoryRequirements {
     }
 }
 
+/// Where the memory of a model goes: the sizes of [`MemoryRequirements`] and what they are made
+/// of. Reported by [`ModelReport`](crate::ModelReport) for a model that loads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct MemoryBreakdown {
+    /// Bytes of the graph block ([`Graph::graph_bytes`]): the operator table, the tensor
+    /// locations, the memory plan and [`Self::persistent_bytes`].
+    pub graph_bytes: usize,
+    /// Bytes of each execution context ([`Graph::context_bytes`]): [`Self::activation_bytes`]
+    /// plus [`Self::scratch_bytes`].
+    pub context_bytes: usize,
+    /// Part of the graph block: the prepared parameters of the kernels, each rounded up to
+    /// [`ALIGN`] bytes.
+    pub persistent_bytes: usize,
+    /// Part of each context: the activation tensors, as the memory planner packs them.
+    pub activation_bytes: usize,
+    /// Part of each context: the scratch area shared by all operators, the largest scratch any
+    /// kernel asks for.
+    pub scratch_bytes: usize,
+}
+
+impl MemoryBreakdown {
+    /// The two sizes an application reserves: the graph block and each execution context.
+    pub const fn requirements(&self) -> MemoryRequirements {
+        MemoryRequirements {
+            graph_bytes: self.graph_bytes,
+            context_bytes: self.context_bytes,
+        }
+    }
+}
+
+/// What loading `subgraph` allocates, computed as [`Graph::load_with`] does (kernel selection and
+/// planning, constant alignment, dataflow and memory plan) without preparing the kernels.
+/// `memory` is a zeroed block laid out with `working`.
+pub(crate) fn measure(
+    registry: &Registry<'_>,
+    target: Target,
+    subgraph: &SubGraph<'_>,
+    working: &WorkingSections,
+    memory: &mut [u8],
+) -> Result<MemoryBreakdown> {
+    // In the order of loading, so that a model refused for several reasons gets the same error.
+    let sizing = Sizing::compute(registry, target, subgraph)?;
+    let (intervals, order) = working.working_memory(memory);
+    let activations = plan_activations(subgraph, intervals, order)?;
+    // Reject the models loading would reject for their constants, too.
+    for t in 0..subgraph.tensor_count() {
+        let desc = subgraph.tensor(t)?;
+        if let Some(data) = desc.data
+            && data.as_ptr().align_offset(desc.dtype.size().unwrap_or(1)) != 0
+        {
+            return Err(Error::invalid_argument(Detail::Misaligned {
+                tensor: t as u32,
+            }));
+        }
+    }
+    let overflow = || Error::out_of_memory(usize::MAX);
+    let activation_bytes = align_up(activations).ok_or_else(overflow)?;
+    let scratch_bytes = align_up(sizing.scratch_size).ok_or_else(overflow)?;
+    Ok(MemoryBreakdown {
+        graph_bytes: sizing.block_size,
+        context_bytes: activation_bytes
+            .checked_add(scratch_bytes)
+            .ok_or_else(overflow)?,
+        persistent_bytes: sizing.block_size - sizing.persist_start,
+        activation_bytes,
+        scratch_bytes,
+    })
+}
+
 /// `n` rounded up to a multiple of [`ALIGN`], saturating at `usize::MAX`.
 const fn round_up_saturating(n: usize) -> usize {
     match n.checked_next_multiple_of(ALIGN) {
@@ -759,7 +804,10 @@ const fn round_up_saturating(n: usize) -> usize {
 }
 
 /// Checks the encoding, verifies the model and returns its bytes and its only subgraph.
-fn open<'m>(builders: &[&'m [u8]], encoding: Encoding) -> Result<(&'m [u8], SubGraph<'m>)> {
+pub(crate) fn open<'m>(
+    builders: &[&'m [u8]],
+    encoding: Encoding,
+) -> Result<(&'m [u8], SubGraph<'m>)> {
     let [bytes] = builders else {
         return Err(Error::invalid_argument(Detail::None));
     };
@@ -801,12 +849,20 @@ impl BlockSections<'_> {
 }
 
 /// The memory planner's working memory.
-struct WorkingSections {
+pub(crate) struct WorkingSections {
     intervals: Section<Interval>,
     order: Section<u32>,
 }
 
 impl WorkingSections {
+    /// Appends the two working arrays of a model of `tensor_count` tensors to `layout`.
+    pub(crate) fn new(layout: &mut Layout, tensor_count: usize) -> Result<Self> {
+        Ok(Self {
+            intervals: Section::new(layout, tensor_count)?,
+            order: Section::new(layout, tensor_count)?,
+        })
+    }
+
     /// The two working arrays, in a zeroed block laid out with these sections.
     fn working_memory<'b>(&self, memory: &'b mut [u8]) -> (&'b mut [Interval], &'b mut [u32]) {
         assert!(
@@ -850,21 +906,16 @@ impl Sizing<'_> {
         let mut io_total = 0usize;
         let mut npu_ops = 0usize;
         for index in 0..op_count {
-            let mut descs = OpDescs {
-                inputs: [None; MAX_OP_INPUTS],
-                outputs: [NO_TENSOR; MAX_OP_OUTPUTS],
-            };
-            let (desc, _, _) = describe(subgraph, index, &mut descs)?;
-            let (kernel, kind) = select(registry, target, &desc)?;
-            npu_ops += usize::from(kind == BackendKind::Npu);
-            let plan = kernel.plan(&desc)?;
+            let choice = choose(registry, target, subgraph, index, None)?;
+            npu_ops += usize::from(choice.kind == BackendKind::Npu);
+            let plan = choice.plan;
             persist_total = persist_total
                 .checked_add(
                     align_up(plan.persistent).ok_or_else(|| Error::out_of_memory(usize::MAX))?,
                 )
                 .ok_or_else(|| Error::out_of_memory(usize::MAX))?;
             scratch_size = scratch_size.max(plan.scratch);
-            io_total += desc.inputs.len() + desc.outputs.len();
+            io_total += choice.io;
         }
         if target == Target::Npu && npu_ops == 0 {
             return Err(Error::unsupported(Detail::None));
@@ -874,8 +925,7 @@ impl Sizing<'_> {
         let ops = Section::new(&mut layout, op_count)?;
         let locations = Section::new(&mut layout, tensor_count)?;
         let io = Section::new(&mut layout, io_total)?;
-        let intervals = Section::new(&mut layout, tensor_count)?;
-        let order = Section::new(&mut layout, tensor_count)?;
+        let working = WorkingSections::new(&mut layout, tensor_count)?;
         let persist_start =
             align_up(layout.size()).ok_or_else(|| Error::out_of_memory(usize::MAX))?;
         let block_size = persist_start
@@ -886,7 +936,7 @@ impl Sizing<'_> {
                 ops,
                 locations,
                 io,
-                working: WorkingSections { intervals, order },
+                working,
             },
             persist_start,
             block_size,
@@ -1014,22 +1064,80 @@ fn describe<'m, 'd>(
     Ok((desc, op.inputs, op.outputs))
 }
 
+/// The kernel a backend selected for an operator.
+#[derive(Clone, Copy)]
+struct Selected<'r> {
+    kernel: &'r dyn Kernel,
+    backend: &'static str,
+    kind: BackendKind,
+}
+
 fn select<'r>(
     registry: &Registry<'r>,
     target: Target,
     desc: &OpDesc<'_, '_>,
-) -> Result<(&'r dyn Kernel, BackendKind)> {
+) -> Result<Selected<'r>> {
     for &backend in registry.backends() {
         let kind = backend.kind();
         if target == Target::Cpu && kind == BackendKind::Npu {
             continue;
         }
         if let Some(kernel) = backend.select(desc) {
-            return Ok((kernel, kind));
+            return Ok(Selected {
+                kernel,
+                backend: backend.name(),
+                kind,
+            });
         }
     }
     Err(Error::unsupported(Detail::UnsupportedOp {
         op_index: desc.index,
         opcode: desc.opcode_number(),
     }))
+}
+
+/// The kernel of an operator and its memory needs: what loading checks for each operator.
+#[derive(Clone, Copy)]
+pub(crate) struct Choice<'r> {
+    pub kernel: &'r dyn Kernel,
+    /// Name of the backend the kernel comes from.
+    pub backend: &'static str,
+    pub kind: BackendKind,
+    pub plan: KernelPlan,
+    /// Number of inputs and outputs.
+    pub io: usize,
+}
+
+/// Describes operator `index`, selects its kernel and plans it, as loading does: an error is the
+/// one loading returns for this operator. With `persist`, a buffer aligned to [`ALIGN`] and at
+/// least as large as the persistent parameters, the kernel is prepared in it too.
+pub(crate) fn choose<'r>(
+    registry: &Registry<'r>,
+    target: Target,
+    subgraph: &SubGraph<'_>,
+    index: usize,
+    persist: Option<&mut [u8]>,
+) -> Result<Choice<'r>> {
+    let mut descs = OpDescs {
+        inputs: [None; MAX_OP_INPUTS],
+        outputs: [NO_TENSOR; MAX_OP_OUTPUTS],
+    };
+    let (desc, _, _) = describe(subgraph, index, &mut descs)?;
+    let selected = select(registry, target, &desc)?;
+    let plan = selected.kernel.plan(&desc)?;
+    if let Some(persist) = persist {
+        // As loading: the planned size exactly, zeroed.
+        let region = persist
+            .get_mut(..plan.persistent)
+            .ok_or_else(|| Error::new(ErrorCode::Unknown, Detail::None))?;
+        region.fill(0);
+        selected.kernel.prepare(&desc, region)?;
+    }
+    Ok(Choice {
+        kernel: selected.kernel,
+        backend: selected.backend,
+        kind: selected.kind,
+        plan,
+        io: desc.inputs.len() + desc.outputs.len(),
+    })
 }
