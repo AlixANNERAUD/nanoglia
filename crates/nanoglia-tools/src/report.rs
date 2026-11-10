@@ -119,6 +119,10 @@ fn operator(op: &OperatorReport<'_>) -> Operator {
     }
 }
 
+/// The largest working memory the check may ask for: a model that needs more is refused rather
+/// than left to exhaust the computer's memory.
+const MAX_WORKING_BYTES: usize = 1 << 30;
+
 /// Checks `model` (aligned to 16 bytes) against `backends`, tried in the order of nanoglia's
 /// default registry: ESP-NN, CMSIS-NN, then the Rust kernels.
 ///
@@ -164,7 +168,7 @@ pub fn check(model: &[u8], backends: Backends) -> Result<Report, Error> {
             Err(Error {
                 detail: Detail::OutOfMemory { requested },
                 ..
-            }) if requested > size / 2 && requested <= isize::MAX as usize / 4 => {
+            }) if requested > size / 2 && requested <= MAX_WORKING_BYTES / 2 => {
                 // Room for the block and for aligning it.
                 size = requested * 2;
             }

@@ -301,9 +301,8 @@ fn option(value: Option<String>) -> String {
 
 fn error_json(error: Error) -> String {
     format!(
-        "{{\"code\": {}, \"detail\": {}, \"message\": {}}}",
+        "{{\"code\": {}, \"message\": {}}}",
         string(code_name(error.code)),
-        string(&format!("{:?}", error.detail)),
         string(&explain(error))
     )
 }

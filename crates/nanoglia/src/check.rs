@@ -203,7 +203,7 @@ impl ModelReport {
     /// When the operators cannot be walked at all: the bytes are not a TFLite model
     /// ([`Detail::UnknownEncoding`], [`Detail::MalformedModel`], [`Detail::UnsupportedSchema`]),
     /// the model has several subgraphs ([`Detail::UnsupportedStructure`]), or `alloc` cannot
-    /// lend the working memory ([`Detail::OutOfMemory`]). `visit` is not called then. A model
+    /// lend the working memory ([`Detail::OutOfMemory`]). `visit` may have been called for the first operators. A model
     /// that parses but does not run is not an error: see [`Self::memory`].
     pub fn check_in<'m, A: Allocator, F: FnMut(&OperatorReport<'m>)>(
         builders: &[&'m [u8]],

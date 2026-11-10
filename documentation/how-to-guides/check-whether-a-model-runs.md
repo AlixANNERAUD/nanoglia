@@ -12,10 +12,8 @@ MLPerf Tiny keyword spotting model of `testdata/mlperf-tiny/`.
 
 ## 1. Run the check
 
-The tool is the crate `nanoglia-tools`: `cargo install nanoglia-tools`
-installs its `nanoglia` command (a C compiler is needed), and
-`nanoglia check model.tflite` then does what the commands below do. From
-a clone of the repository (with the submodules: `mise run submodules`):
+The tool is the crate `nanoglia-tools`. From a clone of the repository
+(with the submodules: `mise run submodules`):
 
 ```sh
 cargo run -p nanoglia-tools -- check testdata/mlperf-tiny/kws_ref_model.tflite

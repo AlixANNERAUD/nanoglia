@@ -8,6 +8,7 @@ mod report;
 
 use args::{Check, Command};
 use output::Outcome;
+use std::io::Write;
 use std::process::ExitCode;
 
 /// Exit status when the model does not run, or does not fit the RAM budget.
@@ -57,14 +58,18 @@ fn check(args: &Check) -> ExitCode {
         model_bytes: model.len,
         report: report::check(model.bytes(), args.backends),
     };
-    print!(
-        "{}",
-        if args.json {
-            output::json(&outcome)
-        } else {
-            output::text(&outcome)
-        }
-    );
+    let text = if args.json {
+        output::json(&outcome)
+    } else {
+        output::text(&outcome)
+    };
+    // A reader that closes the pipe early (`| head`) is not an error.
+    if let Err(error) = std::io::stdout().write_all(text.as_bytes())
+        && error.kind() != std::io::ErrorKind::BrokenPipe
+    {
+        eprintln!("nanoglia: {error}");
+        return ExitCode::from(USAGE);
+    }
     if outcome.passes() {
         ExitCode::SUCCESS
     } else {

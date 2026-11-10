@@ -17,7 +17,7 @@ the pieces fit and why they are built this way.
 | `nanoglia-esp-nn-sys` | ESP-NN v1.4.2 (a git submodule in the repository, its sources shipped in the package) compiled with `cc` (ANSI C kernels everywhere, ESP32-S3 optimized kernels on Xtensa), hand-written FFI bindings and the lock of its global scratch buffers. | — (build: `cc`) |
 | `nanoglia-esp-nn` | The `esp-nn` backend (feature `esp-nn`): the int8 operators ESP-NN computes exactly like TFLite, with CMSIS-NN as fallback. | `nanoglia-core`, `nanoglia-cmsis-nn`, `nanoglia-esp-nn-sys` |
 | `nanoglia-kernels` | The `rust` backend: what CMSIS-NN lacks (shape and quantization operators, broadcasting, activations, int16 softmax, fully-connected, logistic and tanh) and the f32 operators. | `nanoglia-core`, `libm` |
-| `nanoglia-tools` | The `nanoglia check` command for your computer ([Check whether a model runs](../how-to-guides/check-whether-a-model-runs.md)): prints what `ModelReport` finds. The only crate that uses `std`; not published. | `nanoglia` and the three backends |
+| `nanoglia-tools` | The `nanoglia check` command for your computer ([Check whether a model runs](../how-to-guides/check-whether-a-model-runs.md)): prints what `ModelReport` finds. The only crate that uses `std`. | `nanoglia` and the three backends |
 
 Everything else is `#![no_std]`, with no dependency on a HAL, an RTOS or a
 vendor SDK. The only C code is CMSIS-NN and ESP-NN (compiled without

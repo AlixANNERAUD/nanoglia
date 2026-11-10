@@ -1,6 +1,6 @@
 [package]
 name = "nanoglia-tools"
-version = "0.1.1"
+version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -30,7 +30,7 @@ single-rounding = ["nanoglia/single-rounding", "nanoglia-cmsis-nn/single-roundin
 # The three backends are always built and chosen at run time (`--backends`), in a registry of the
 # tool's own: no feature of `nanoglia` is enabled, so building the tool with the workspace does
 # not change the default registry the other crates are tested with. No other dependency:
-# arguments and JSON are handled by hand (five options, one flat document).
+# arguments and JSON are handled by hand (a few options, one flat document).
 [dependencies]
 nanoglia = { workspace = true }
 nanoglia-cmsis-nn = { workspace = true }

@@ -177,10 +177,6 @@ fn every_operator_without_a_kernel_is_listed() {
     assert_eq!(softmax["backend"], Value::Null);
     assert_eq!(softmax["persistent_bytes"], Value::Null);
     assert_eq!(softmax["error"]["code"], "unsupported-operation");
-    assert_eq!(
-        softmax["error"]["detail"],
-        "UnsupportedOp { op_index: 12, opcode: 25 }"
-    );
     assert!(
         softmax["error"]["message"]
             .as_str()

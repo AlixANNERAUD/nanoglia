@@ -27,7 +27,7 @@ memory (bytes):
 
 (MLPerf Tiny keyword spotting, on a Linux aarch64 computer, 2026-11-10; the lines cut here and the closing notes are in the guide.)
 
-Install the `nanoglia` command with `cargo install nanoglia-tools` (a C compiler is needed: the tool builds CMSIS-NN and ESP-NN), or run it from a clone of the repository (`mise run submodules` first) with `cargo run -p nanoglia-tools -- check <MODEL.tflite>`.
+Run it from a clone of the repository (`mise run submodules` first) with `cargo run -p nanoglia-tools -- check <MODEL.tflite>`, or, from the tool's first release on crates.io, install the `nanoglia` command with `cargo install nanoglia-tools` (a C compiler is needed: the tool builds CMSIS-NN and ESP-NN).
 
 ## Usage
 
@@ -53,7 +53,7 @@ nanoglia check [OPTIONS] <MODEL.tflite>
 The tool calls `nanoglia::ModelReport::check_with`, which selects, plans and prepares the kernel of every operator as `Graph::load_with` does: a model that passes loads, given the memory. The verdict depends on what the firmware is built with, and the first lines of the output say what the tool used:
 
 - **backends**: chosen at run time with `--backends`;
-- **features**: `float`, `int16` and `single-rounding` are Cargo features of the tool, as they are features of `nanoglia`. Both are on by default, like in `nanoglia`; for an int8-only firmware, run `cargo run -p nanoglia-tools --no-default-features -- check <MODEL.tflite>`.
+- **features**: `float`, `int16` and `single-rounding` are Cargo features of the tool, as they are features of `nanoglia`. `float` and `int16` are on by default, like in `nanoglia`; for an int8-only firmware, run `cargo run -p nanoglia-tools --no-default-features -- check <MODEL.tflite>`.
 
 The check runs on your computer, not on the microcontroller:
 
@@ -72,7 +72,7 @@ The check runs on your computer, not on the microcontroller:
 | `passes` | Whether the exit status is 0. |
 | `runs` | Whether the model loads. |
 | `unsupported` | Number of operators without a kernel; `null` when the operators could not be listed. |
-| `error` | Why the model does not load when no operator is to blame, else `null`: `code` (the wasi-nn name of the `ErrorCode`), `detail` (the `Detail`) and a `message`. |
+| `error` | Why the model does not load when no operator is to blame, else `null`: `code` (the wasi-nn name of the `ErrorCode`) and a `message`. |
 | `memory` | When the model runs: `graph_bytes`, `context_bytes`, `persistent_bytes` (part of the graph block), `activation_bytes` and `scratch_bytes` (the two parts of a context), `arena_bytes` (`arena_bytes(1)`). Else `null`. |
 | `ram_budget_bytes`, `fits` | The budget and whether `arena_bytes` fits it; `null` without `--ram` (and `fits` when the model does not run). |
 | `operators` | One object per operator: `index`, `opcode` (TFLite builtin code, 32 for a custom operator), `name`, `custom`, `version`, `inputs` and `outputs` (`tensor` index, `type`, `shape`, `constant`; `null` for an omitted optional input), then `kernel`, `backend`, `persistent_bytes` and `scratch_bytes`, or `null` for these four and an `error` as above. |
@@ -81,8 +81,8 @@ The guide [Check whether a model runs](https://github.com/AlixANNERAUD/nanoglia/
 
 ## Dependencies
 
-Only the nanoglia crates: the arguments (one command, three options) and the JSON document are handled by hand. The three backends are always built, into a registry of the tool's own, so building the workspace with the tool does not change the features of the library the other crates are tested with.
+Only the nanoglia crates: the arguments (one command, a few options) and the JSON document are handled by hand. The three backends are always built, into a registry of the tool's own, so building the workspace with the tool does not change the features of the library the other crates are tested with.
 
 ## Versions
 
-The tool is released with the libraries and checks with the kernels of its own version: install the version of `nanoglia-tools` that matches the `nanoglia` your firmware uses.
+The tool is released with the libraries, under its own version number, and checks with the kernels of the `nanoglia` release it was built on (its `nanoglia` dependency on crates.io). Use a release of the tool built on the `nanoglia` version of your firmware.

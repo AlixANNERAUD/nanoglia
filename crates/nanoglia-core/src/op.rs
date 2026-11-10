@@ -456,3 +456,31 @@ impl<'a> OpDesc<'a, '_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_follow_the_schema() {
+        // LiteRT 2.3.0 defines the codes 0 to 209.
+        assert_eq!(BUILTIN_NAMES.len(), 210);
+        assert_eq!(
+            BuiltinOp(209).name().is_some(),
+            BuiltinOp(210).name().is_none()
+        );
+        // The constants are named after the schema: spot checks across the table.
+        for (op, name) in [
+            (BuiltinOp::ADD, "ADD"),
+            (BuiltinOp::CONV_2D, "CONV_2D"),
+            (BuiltinOp::FULLY_CONNECTED, "FULLY_CONNECTED"),
+            (BuiltinOp::SOFTMAX, "SOFTMAX"),
+            (BuiltinOp::CUSTOM, "CUSTOM"),
+            (BuiltinOp::HARD_SWISH, "HARD_SWISH"),
+            (BuiltinOp::SELECT_V2, "SELECT_V2"),
+            (BuiltinOp::BATCH_MATMUL, "BATCH_MATMUL"),
+        ] {
+            assert_eq!(op.name(), Some(name));
+        }
+    }
+}

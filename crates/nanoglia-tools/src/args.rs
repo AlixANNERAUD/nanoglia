@@ -144,6 +144,9 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command, String
             }
         };
         match name {
+            "-h" | "--help" | "-V" | "--version" | "--json" if inline.is_some() => {
+                return Err(format!("`{name}` takes no value"));
+            }
             "-h" | "--help" => return Ok(Command::Help),
             "-V" | "--version" => return Ok(Command::Version),
             "--json" => json = true,
