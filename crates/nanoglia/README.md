@@ -70,7 +70,7 @@ Models are loaded at run time, so the linker keeps the kernels of every enabled 
 only those of your models, replace `all-ops` with the feature of each of their operators:
 
 ```toml
-nanoglia = { version = "0.2", default-features = false, features = [
+nanoglia = { version = "0.3", default-features = false, features = [
   "cmsis-nn", "kernels",
   "op-conv-2d", "op-depthwise-conv-2d", "op-average-pool-2d", "op-reshape", "op-fully-connected", "op-softmax",
 ] }

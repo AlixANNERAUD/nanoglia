@@ -268,6 +268,17 @@ fn every_feature_is_forwarded_to_the_backends_that_have_the_operator() {
             assert_eq!(features[feature], expected, "{name}: {feature}");
         }
     }
+    // The facade refuses to build with a backend and no operator: its guard names every feature.
+    let guard = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../nanoglia/src/lib.rs"),
+    )
+    .unwrap();
+    for feature in &all {
+        assert!(
+            guard.contains(&format!("feature = \"{feature}\"")),
+            "nanoglia/src/lib.rs: {feature} is missing from the no-operator guard"
+        );
+    }
     // The C API forwards to `nanoglia`.
     let features = manifest("nanoglia-c");
     assert_eq!(operators(&features), all, "nanoglia-c: the `op-*` features");

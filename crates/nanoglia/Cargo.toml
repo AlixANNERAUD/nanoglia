@@ -51,7 +51,7 @@ all-ops = [
 # One feature per operator (`BuiltinOp::feature`), forwarded to every enabled backend that has
 # kernels for it: without it no backend claims the operator (loading a model that uses it fails
 # with `UnsupportedOp`) and its kernels are not linked. The float32 and int16 kernels of an
-# operator need `float` and `int16` too. `tests/op_features.rs` checks this list against the
+# operator need `float` and `int16` too. `crates/nanoglia-tools/tests/op_features.rs` checks this list against the
 # backends.
 op-abs = ["nanoglia-kernels?/op-abs"]
 op-add = ["nanoglia-cmsis-nn?/op-add", "nanoglia-esp-nn?/op-add", "nanoglia-kernels?/op-add"]

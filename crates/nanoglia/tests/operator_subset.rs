@@ -4,8 +4,8 @@
 //!
 //! The test adapts to the features it is built with. `mise run op-features` runs it with the
 //! operators of the keyword-spotting model only (that model runs, the ResNet one is refused at
-//! its first `ADD`) and with no operator at all (both are refused at their first operator); the
-//! default build runs both models.
+//! its first `ADD`); the default build runs both models. `nanoglia` does not build with a
+//! backend and no operator at all.
 
 use nanoglia::core::allocator_api2::alloc::Global;
 use nanoglia::{BuiltinOp, Detail, Encoding, ErrorCode, Graph, ModelReport, OpCode, Target};

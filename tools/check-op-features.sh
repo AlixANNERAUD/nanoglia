@@ -27,12 +27,20 @@ for feature in "" $features; do
   cargo check --quiet -p nanoglia-tools --no-default-features --features "float,int16,$feature"
 done
 
-# The facade and the C API forward the features: without any operator, and with those of the
-# keyword-spotting model, which must then run and give LiteRT's bytes while another model is
-# refused (crates/nanoglia/tests/operator_subset.rs).
+# The facade refuses to build with a backend and no operator, with a message naming `all-ops`.
+echo "op-features: nanoglia without any operator must not build"
+if output=$(cargo check --quiet -p nanoglia --no-default-features --features cmsis-nn,kernels 2>&1); then
+  echo "op-features: nanoglia built with a backend and no operator" >&2
+  exit 1
+fi
+echo "$output" | grep -q "all-ops" || { echo "$output" >&2; exit 1; }
+
+# The facade and the C API forward the features: with those of the keyword-spotting model, which
+# must then run and give LiteRT's bytes while another model is refused
+# (crates/nanoglia/tests/operator_subset.rs).
 kws=op-conv-2d,op-depthwise-conv-2d,op-average-pool-2d,op-reshape,op-fully-connected,op-softmax
-for set in "" "$kws"; do
-  echo "op-features: nanoglia with ${set:-no operator}"
+for set in "$kws"; do
+  echo "op-features: nanoglia with $set"
   cargo test --quiet -p nanoglia --no-default-features --features "cmsis-nn,kernels,$set" --lib --test operator_subset
   cargo test --quiet -p nanoglia --no-default-features --features "cmsis-nn,esp-nn,kernels,$set" --test operator_subset
   cargo check --quiet -p nanoglia-c --no-default-features --features "cmsis-nn,kernels,$set"
