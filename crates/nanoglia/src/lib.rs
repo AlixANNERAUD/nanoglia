@@ -107,6 +107,10 @@ pub use nanoglia_core::{
     OpCode, Quantization, Result, TensorDesc,
 };
 
+/// The version of this crate (`CARGO_PKG_VERSION`), as a dependency on it names it:
+/// `nanoglia check` prints it in the dependency line of a firmware.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// How the model bytes are encoded, as in wasi-nn's `graph-encoding`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
