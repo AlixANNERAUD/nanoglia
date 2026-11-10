@@ -18,7 +18,7 @@ path = "src/main.rs"
 doc = false
 
 [features]
-default = ["float", "int16"]
+default = ["float", "int16", "all-ops"]
 ## Check with the float32 kernels (feature `float` of `nanoglia`).
 float = ["nanoglia-kernels/float"]
 ## Check with the int16 (16x8) kernels (feature `int16` of `nanoglia`).
@@ -26,6 +26,87 @@ int16 = ["nanoglia-cmsis-nn/int16", "nanoglia-kernels/int16"]
 ## Check with single-rounding requantization (feature `single-rounding` of `nanoglia`): ESP-NN
 ## then claims no operator.
 single-rounding = ["nanoglia/single-rounding", "nanoglia-cmsis-nn/single-rounding", "nanoglia-kernels/single-rounding"]
+## Check with every operator (feature `all-ops` of `nanoglia`): all the `op-*` features below. On
+## by default.
+all-ops = [
+  "op-abs", "op-add", "op-arg-max", "op-arg-min", "op-average-pool-2d", "op-batch-to-space-nd",
+  "op-cast", "op-concatenation", "op-conv-2d", "op-depthwise-conv-2d", "op-depth-to-space",
+  "op-dequantize", "op-div", "op-equal", "op-exp", "op-expand-dims", "op-fully-connected",
+  "op-gather", "op-greater", "op-greater-equal", "op-hard-swish", "op-leaky-relu", "op-less",
+  "op-less-equal", "op-log", "op-logistic", "op-maximum", "op-max-pool-2d", "op-mean",
+  "op-minimum", "op-mul", "op-neg", "op-not-equal", "op-pack", "op-pad", "op-padv2", "op-prelu",
+  "op-quantize", "op-reduce-max", "op-reduce-min", "op-relu", "op-relu6", "op-relu-n1-to-1",
+  "op-reshape", "op-resize-bilinear", "op-resize-nearest-neighbor", "op-rsqrt", "op-select-v2",
+  "op-slice", "op-softmax", "op-space-to-batch-nd", "op-space-to-depth", "op-split", "op-split-v",
+  "op-sqrt", "op-squared-difference", "op-squeeze", "op-strided-slice", "op-sub", "op-sum",
+  "op-tanh", "op-transpose", "op-transpose-conv", "op-unpack",
+]
+# One feature per operator, those of `nanoglia`: build the tool without the default features and
+# with the `op-*` features of a firmware to check models against that firmware's operators.
+op-abs = ["nanoglia-kernels/op-abs"]
+op-add = ["nanoglia-cmsis-nn/op-add", "nanoglia-esp-nn/op-add", "nanoglia-kernels/op-add"]
+op-arg-max = ["nanoglia-kernels/op-arg-max"]
+op-arg-min = ["nanoglia-kernels/op-arg-min"]
+op-average-pool-2d = ["nanoglia-cmsis-nn/op-average-pool-2d", "nanoglia-esp-nn/op-average-pool-2d", "nanoglia-kernels/op-average-pool-2d"]
+op-batch-to-space-nd = ["nanoglia-kernels/op-batch-to-space-nd"]
+op-cast = ["nanoglia-kernels/op-cast"]
+op-concatenation = ["nanoglia-kernels/op-concatenation"]
+op-conv-2d = ["nanoglia-cmsis-nn/op-conv-2d", "nanoglia-esp-nn/op-conv-2d", "nanoglia-kernels/op-conv-2d"]
+op-depthwise-conv-2d = ["nanoglia-cmsis-nn/op-depthwise-conv-2d", "nanoglia-esp-nn/op-depthwise-conv-2d", "nanoglia-kernels/op-depthwise-conv-2d"]
+op-depth-to-space = ["nanoglia-kernels/op-depth-to-space"]
+op-dequantize = ["nanoglia-kernels/op-dequantize"]
+op-div = ["nanoglia-kernels/op-div"]
+op-equal = ["nanoglia-kernels/op-equal"]
+op-exp = ["nanoglia-kernels/op-exp"]
+op-expand-dims = ["nanoglia-kernels/op-expand-dims"]
+op-fully-connected = ["nanoglia-cmsis-nn/op-fully-connected", "nanoglia-esp-nn/op-fully-connected", "nanoglia-kernels/op-fully-connected"]
+op-gather = ["nanoglia-kernels/op-gather"]
+op-greater = ["nanoglia-kernels/op-greater"]
+op-greater-equal = ["nanoglia-kernels/op-greater-equal"]
+op-hard-swish = ["nanoglia-kernels/op-hard-swish"]
+op-leaky-relu = ["nanoglia-kernels/op-leaky-relu"]
+op-less = ["nanoglia-kernels/op-less"]
+op-less-equal = ["nanoglia-kernels/op-less-equal"]
+op-log = ["nanoglia-kernels/op-log"]
+op-logistic = ["nanoglia-kernels/op-logistic"]
+op-maximum = ["nanoglia-cmsis-nn/op-maximum", "nanoglia-kernels/op-maximum"]
+op-max-pool-2d = ["nanoglia-cmsis-nn/op-max-pool-2d", "nanoglia-esp-nn/op-max-pool-2d", "nanoglia-kernels/op-max-pool-2d"]
+op-mean = ["nanoglia-kernels/op-mean"]
+op-minimum = ["nanoglia-cmsis-nn/op-minimum", "nanoglia-kernels/op-minimum"]
+op-mul = ["nanoglia-cmsis-nn/op-mul", "nanoglia-esp-nn/op-mul", "nanoglia-kernels/op-mul"]
+op-neg = ["nanoglia-kernels/op-neg"]
+op-not-equal = ["nanoglia-kernels/op-not-equal"]
+op-pack = ["nanoglia-kernels/op-pack"]
+op-pad = ["nanoglia-cmsis-nn/op-pad", "nanoglia-kernels/op-pad"]
+op-padv2 = ["nanoglia-cmsis-nn/op-padv2", "nanoglia-kernels/op-padv2"]
+op-prelu = ["nanoglia-kernels/op-prelu"]
+op-quantize = ["nanoglia-kernels/op-quantize"]
+op-reduce-max = ["nanoglia-kernels/op-reduce-max"]
+op-reduce-min = ["nanoglia-kernels/op-reduce-min"]
+op-relu = ["nanoglia-kernels/op-relu"]
+op-relu6 = ["nanoglia-kernels/op-relu6"]
+op-relu-n1-to-1 = ["nanoglia-kernels/op-relu-n1-to-1"]
+op-reshape = ["nanoglia-kernels/op-reshape"]
+op-resize-bilinear = ["nanoglia-kernels/op-resize-bilinear"]
+op-resize-nearest-neighbor = ["nanoglia-kernels/op-resize-nearest-neighbor"]
+op-rsqrt = ["nanoglia-kernels/op-rsqrt"]
+op-select-v2 = ["nanoglia-kernels/op-select-v2"]
+op-slice = ["nanoglia-kernels/op-slice"]
+op-softmax = ["nanoglia-cmsis-nn/op-softmax", "nanoglia-esp-nn/op-softmax", "nanoglia-kernels/op-softmax"]
+op-space-to-batch-nd = ["nanoglia-kernels/op-space-to-batch-nd"]
+op-space-to-depth = ["nanoglia-kernels/op-space-to-depth"]
+op-split = ["nanoglia-kernels/op-split"]
+op-split-v = ["nanoglia-kernels/op-split-v"]
+op-sqrt = ["nanoglia-kernels/op-sqrt"]
+op-squared-difference = ["nanoglia-kernels/op-squared-difference"]
+op-squeeze = ["nanoglia-kernels/op-squeeze"]
+op-strided-slice = ["nanoglia-kernels/op-strided-slice"]
+op-sub = ["nanoglia-kernels/op-sub"]
+op-sum = ["nanoglia-kernels/op-sum"]
+op-tanh = ["nanoglia-kernels/op-tanh"]
+op-transpose = ["nanoglia-kernels/op-transpose"]
+op-transpose-conv = ["nanoglia-cmsis-nn/op-transpose-conv", "nanoglia-kernels/op-transpose-conv"]
+op-unpack = ["nanoglia-kernels/op-unpack"]
 
 # The three backends are always built and chosen at run time (`--backends`), in a registry of the
 # tool's own: no feature of `nanoglia` is enabled, so building the tool with the workspace does

@@ -62,6 +62,7 @@ fn a_supported_model_passes() {
     assert_eq!(json["backends"], serde_json::json!(["cmsis-nn", "kernels"]));
     assert_eq!(json["features"]["float"], cfg!(feature = "float"));
     assert_eq!(json["features"]["int16"], cfg!(feature = "int16"));
+    assert_eq!(json["features"]["all-ops"], cfg!(feature = "all-ops"));
     assert_eq!(
         json["features"]["single-rounding"],
         cfg!(feature = "single-rounding")

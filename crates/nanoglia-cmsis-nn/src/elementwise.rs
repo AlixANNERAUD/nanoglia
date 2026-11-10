@@ -147,19 +147,33 @@ fn analyze(op: &OpDesc<'_, '_>) -> Option<Params> {
     Some(p)
 }
 
-/// The kernel running `op`, if any.
-pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static FnKernel> {
+/// The kernel running the `ADD` operator `op`, if any.
+#[cfg(feature = "op-add")]
+pub(crate) fn select_add(op: &OpDesc<'_, '_>) -> Option<&'static FnKernel> {
+    Some(if is_int16(op)? && crate::INT16 {
+        &ADD_S16
+    } else {
+        &ADD
+    })
+}
+
+/// The kernel running the `MUL` operator `op`, if any.
+#[cfg(feature = "op-mul")]
+pub(crate) fn select_mul(op: &OpDesc<'_, '_>) -> Option<&'static FnKernel> {
+    Some(if is_int16(op)? && crate::INT16 {
+        &MUL_S16
+    } else {
+        &MUL
+    })
+}
+
+/// Whether the supported operator `op` is an int16 one; `None` if no kernel runs it. The callers
+/// test [`crate::INT16`] again, a constant, so that without the `int16` feature the compiler sees
+/// that nothing references the int16 kernels.
+fn is_int16(op: &OpDesc<'_, '_>) -> Option<bool> {
     analyze(op)?;
     let int16 = op.output(0)?.dtype == DataType::I16;
-    if int16 && !crate::INT16 {
-        return None;
-    }
-    Some(match (op.builtin()?, int16) {
-        (BuiltinOp::ADD, false) => &ADD,
-        (BuiltinOp::ADD, true) => &ADD_S16,
-        (BuiltinOp::MUL, false) => &MUL,
-        _ => &MUL_S16,
-    })
+    (!int16 || crate::INT16).then_some(int16)
 }
 
 fn plan(op: &OpDesc<'_, '_>) -> Result<KernelPlan> {

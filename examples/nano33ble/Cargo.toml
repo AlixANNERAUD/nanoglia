@@ -6,8 +6,19 @@ publish = false
 description = "Runs the MLPerf Tiny keyword-spotting model with nanoglia on an Arduino Nano 33 BLE (nRF52840) and reports the inference time."
 
 [dependencies]
-# int8-only model: the float32 and int16 kernels are left out to save flash.
-nanoglia = { path = "../../crates/nanoglia", default-features = false, features = ["cmsis-nn", "kernels", "defmt"] }
+# To save flash: only the kernels of the six operators of the keyword-spotting model, and, the
+# model being int8, neither the float32 nor the int16 kernels (`float`, `int16`).
+nanoglia = { path = "../../crates/nanoglia", default-features = false, features = [
+  "cmsis-nn",
+  "kernels",
+  "defmt",
+  "op-average-pool-2d",
+  "op-conv-2d",
+  "op-depthwise-conv-2d",
+  "op-fully-connected",
+  "op-reshape",
+  "op-softmax",
+] }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 defmt = "1"

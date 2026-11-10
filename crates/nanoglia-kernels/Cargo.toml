@@ -13,13 +13,94 @@ keywords = ["neural-network", "no-std", "embedded", "tinyml", "tflite"]
 categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
 
 [features]
-default = ["float", "int16"]
+default = ["float", "int16", "all-ops"]
 ## float32 kernels (convolutions, fully-connected, pooling, softmax, activations...).
 float = []
 ## int16 (16x8) kernels: fully-connected, softmax, logistic and tanh.
 int16 = []
 ## Single-rounding requantization (`TFLITE_SINGLE_ROUNDING`).
 single-rounding = ["nanoglia-core/single-rounding"]
+## Every operator the crate has kernels for: all the `op-*` features below.
+all-ops = [
+  "op-abs", "op-add", "op-arg-max", "op-arg-min", "op-average-pool-2d", "op-batch-to-space-nd",
+  "op-cast", "op-concatenation", "op-conv-2d", "op-depthwise-conv-2d", "op-depth-to-space",
+  "op-dequantize", "op-div", "op-equal", "op-exp", "op-expand-dims", "op-fully-connected",
+  "op-gather", "op-greater", "op-greater-equal", "op-hard-swish", "op-leaky-relu", "op-less",
+  "op-less-equal", "op-log", "op-logistic", "op-maximum", "op-max-pool-2d", "op-mean",
+  "op-minimum", "op-mul", "op-neg", "op-not-equal", "op-pack", "op-pad", "op-padv2", "op-prelu",
+  "op-quantize", "op-reduce-max", "op-reduce-min", "op-relu", "op-relu6", "op-relu-n1-to-1",
+  "op-reshape", "op-resize-bilinear", "op-resize-nearest-neighbor", "op-rsqrt", "op-select-v2",
+  "op-slice", "op-softmax", "op-space-to-batch-nd", "op-space-to-depth", "op-split", "op-split-v",
+  "op-sqrt", "op-squared-difference", "op-squeeze", "op-strided-slice", "op-sub", "op-sum",
+  "op-tanh", "op-transpose", "op-transpose-conv", "op-unpack",
+]
+# One feature per operator (`BuiltinOp::feature` of nanoglia-core): without it the backend does not
+# claim the operator and its kernels are not compiled. The float32 and int16 kernels of an
+# operator need `float` and `int16` too.
+op-abs = []
+op-add = []
+op-arg-max = []
+op-arg-min = []
+op-average-pool-2d = []
+op-batch-to-space-nd = []
+op-cast = []
+op-concatenation = []
+op-conv-2d = []
+op-depthwise-conv-2d = []
+op-depth-to-space = []
+op-dequantize = []
+op-div = []
+op-equal = []
+op-exp = []
+op-expand-dims = []
+op-fully-connected = []
+op-gather = []
+op-greater = []
+op-greater-equal = []
+op-hard-swish = []
+op-leaky-relu = []
+op-less = []
+op-less-equal = []
+op-log = []
+op-logistic = []
+op-maximum = []
+op-max-pool-2d = []
+op-mean = []
+op-minimum = []
+op-mul = []
+op-neg = []
+op-not-equal = []
+op-pack = []
+op-pad = []
+op-padv2 = []
+op-prelu = []
+op-quantize = []
+op-reduce-max = []
+op-reduce-min = []
+op-relu = []
+op-relu6 = []
+op-relu-n1-to-1 = []
+op-reshape = []
+op-resize-bilinear = []
+op-resize-nearest-neighbor = []
+op-rsqrt = []
+op-select-v2 = []
+op-slice = []
+op-softmax = []
+op-space-to-batch-nd = []
+op-space-to-depth = []
+op-split = []
+op-split-v = []
+op-sqrt = []
+op-squared-difference = []
+op-squeeze = []
+op-strided-slice = []
+op-sub = []
+op-sum = []
+op-tanh = []
+op-transpose = []
+op-transpose-conv = []
+op-unpack = []
 
 [dependencies]
 nanoglia-core = { workspace = true }

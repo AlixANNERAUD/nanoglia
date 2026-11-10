@@ -153,6 +153,91 @@ impl BuiltinOp {
     pub fn name(self) -> Option<&'static str> {
         BUILTIN_NAMES.get(usize::try_from(self.0).ok()?).copied()
     }
+
+    /// The Cargo feature that compiles the kernels of the operator into the bundled backends
+    /// (`"op-conv-2d"`): the schema name in lower case, with dashes, after `op-`. `None` for an
+    /// operator no bundled backend has a kernel for.
+    ///
+    /// Every such feature is on by default (feature `all-ops`); a firmware that turns the default
+    /// features off enables those of the operators of its models. A backend only declares the
+    /// features of the operators it has kernels for; the `nanoglia` crate declares them all.
+    ///
+    /// ```
+    /// use nanoglia_core::BuiltinOp;
+    ///
+    /// assert_eq!(BuiltinOp::CONV_2D.feature(), Some("op-conv-2d"));
+    /// assert_eq!(BuiltinOp::RELU_N1_TO_1.feature(), Some("op-relu-n1-to-1"));
+    /// assert_eq!(BuiltinOp::LSTM.feature(), None);
+    /// ```
+    pub const fn feature(self) -> Option<&'static str> {
+        Some(match self {
+            Self::ABS => "op-abs",
+            Self::ADD => "op-add",
+            Self::ARG_MAX => "op-arg-max",
+            Self::ARG_MIN => "op-arg-min",
+            Self::AVERAGE_POOL_2D => "op-average-pool-2d",
+            Self::BATCH_TO_SPACE_ND => "op-batch-to-space-nd",
+            Self::CAST => "op-cast",
+            Self::CONCATENATION => "op-concatenation",
+            Self::CONV_2D => "op-conv-2d",
+            Self::DEPTHWISE_CONV_2D => "op-depthwise-conv-2d",
+            Self::DEPTH_TO_SPACE => "op-depth-to-space",
+            Self::DEQUANTIZE => "op-dequantize",
+            Self::DIV => "op-div",
+            Self::EQUAL => "op-equal",
+            Self::EXP => "op-exp",
+            Self::EXPAND_DIMS => "op-expand-dims",
+            Self::FULLY_CONNECTED => "op-fully-connected",
+            Self::GATHER => "op-gather",
+            Self::GREATER => "op-greater",
+            Self::GREATER_EQUAL => "op-greater-equal",
+            Self::HARD_SWISH => "op-hard-swish",
+            Self::LEAKY_RELU => "op-leaky-relu",
+            Self::LESS => "op-less",
+            Self::LESS_EQUAL => "op-less-equal",
+            Self::LOG => "op-log",
+            Self::LOGISTIC => "op-logistic",
+            Self::MAXIMUM => "op-maximum",
+            Self::MAX_POOL_2D => "op-max-pool-2d",
+            Self::MEAN => "op-mean",
+            Self::MINIMUM => "op-minimum",
+            Self::MUL => "op-mul",
+            Self::NEG => "op-neg",
+            Self::NOT_EQUAL => "op-not-equal",
+            Self::PACK => "op-pack",
+            Self::PAD => "op-pad",
+            Self::PADV2 => "op-padv2",
+            Self::PRELU => "op-prelu",
+            Self::QUANTIZE => "op-quantize",
+            Self::REDUCE_MAX => "op-reduce-max",
+            Self::REDUCE_MIN => "op-reduce-min",
+            Self::RELU => "op-relu",
+            Self::RELU6 => "op-relu6",
+            Self::RELU_N1_TO_1 => "op-relu-n1-to-1",
+            Self::RESHAPE => "op-reshape",
+            Self::RESIZE_BILINEAR => "op-resize-bilinear",
+            Self::RESIZE_NEAREST_NEIGHBOR => "op-resize-nearest-neighbor",
+            Self::RSQRT => "op-rsqrt",
+            Self::SELECT_V2 => "op-select-v2",
+            Self::SLICE => "op-slice",
+            Self::SOFTMAX => "op-softmax",
+            Self::SPACE_TO_BATCH_ND => "op-space-to-batch-nd",
+            Self::SPACE_TO_DEPTH => "op-space-to-depth",
+            Self::SPLIT => "op-split",
+            Self::SPLIT_V => "op-split-v",
+            Self::SQRT => "op-sqrt",
+            Self::SQUARED_DIFFERENCE => "op-squared-difference",
+            Self::SQUEEZE => "op-squeeze",
+            Self::STRIDED_SLICE => "op-strided-slice",
+            Self::SUB => "op-sub",
+            Self::SUM => "op-sum",
+            Self::TANH => "op-tanh",
+            Self::TRANSPOSE => "op-transpose",
+            Self::TRANSPOSE_CONV => "op-transpose-conv",
+            Self::UNPACK => "op-unpack",
+            _ => return None,
+        })
+    }
 }
 
 /// The code identifying an operator.
@@ -482,5 +567,32 @@ mod tests {
         ] {
             assert_eq!(op.name(), Some(name));
         }
+    }
+
+    #[test]
+    fn features_are_named_after_the_schema() {
+        let mut count = 0;
+        for code in 0..BUILTIN_NAMES.len() as i32 {
+            let op = BuiltinOp(code);
+            let Some(feature) = op.feature() else {
+                continue;
+            };
+            count += 1;
+            // "op-" then the schema name in lower case, dashes for underscores.
+            let name = op.name().unwrap();
+            let rest = feature.strip_prefix("op-").unwrap();
+            assert_eq!(rest.len(), name.len(), "{feature}");
+            for (f, n) in rest.bytes().zip(name.bytes()) {
+                let expected = if n == b'_' {
+                    b'-'
+                } else {
+                    n.to_ascii_lowercase()
+                };
+                assert_eq!(f, expected, "{feature}");
+            }
+        }
+        assert_eq!(count, 64);
+        assert_eq!(BuiltinOp(-1).feature(), None);
+        assert_eq!(BuiltinOp(210).feature(), None);
     }
 }
