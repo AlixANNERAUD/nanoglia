@@ -26,9 +26,10 @@ Options:
 Exit status: 0 if the model runs (and fits the budget), 1 if it does not,
 2 if the arguments are wrong or the file cannot be read.
 
-The float32 and int16 kernels, and the rounding mode, are Cargo features of this
-tool (float, int16, single-rounding), as they are features of nanoglia: build it
-with the features of your firmware. The output says which ones were built in.";
+The float32 and int16 kernels, the rounding mode and the operators are Cargo
+features of this tool (float, int16, single-rounding, all-ops or the op-* feature
+of each operator), as they are features of nanoglia: build it with the features
+of your firmware. The output says which ones were built in.";
 
 /// The backends a check considers: the Cargo features `esp-nn`, `cmsis-nn` and `kernels` of
 /// `nanoglia`.

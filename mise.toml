@@ -282,8 +282,14 @@ run = [
   "cmake --build target/c-thumbv7em",
   "arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -std=c11 -Wall -Wextra -Werror -Os -ffreestanding -nostdlib -Wl,--gc-sections -Wl,-e,main -Wl,-z,noexecstack -Icrates/nanoglia-c/include crates/nanoglia-c/tests/firmware.c target/thumbv7em-none-eabihf/release/libnanoglia_c.a -o target/c-thumbv7em/firmware.elf",
   "arm-none-eabi-size target/c-thumbv7em/firmware.elf",
-  "cargo rustc -p nanoglia-c --release --lib --crate-type staticlib --target thumbv7em-none-eabihf --target-dir target/c-thumbv7em-int8 --no-default-features --features panic-handler,cmsis-nn,kernels",
+  "cargo rustc -p nanoglia-c --release --lib --crate-type staticlib --target thumbv7em-none-eabihf --target-dir target/c-thumbv7em-int8 --no-default-features --features panic-handler,cmsis-nn,kernels,all-ops",
 ]
+
+[tasks.op-features]
+description = "Build and test each `op-*` feature alone (the three backends claim exactly the operators of the enabled features), no operator at all, and the operators of the keyword-spotting model on the host and for Cortex-M4F"
+# About 130 small Cargo runs, one at a time (see the script).
+env.RUSTFLAGS = "-D warnings"
+run = "tools/check-op-features.sh"
 
 [tasks.check]
 description = "Checks to run before pushing"
@@ -301,6 +307,8 @@ dir = "{{config_root}}/examples/nano33ble"
 run = [
   "cargo build --release",
   "arm-none-eabi-size target/thumbv7em-none-eabihf/release/nanoglia-example-nano33ble",
+  # A firmware linked without its linker scripts is empty and still "builds": require real code.
+  "test $(arm-none-eabi-size target/thumbv7em-none-eabihf/release/nanoglia-example-nano33ble | awk 'NR==2 {print $1}') -gt 100000",
 ]
 
 [tasks.example-train-to-device]

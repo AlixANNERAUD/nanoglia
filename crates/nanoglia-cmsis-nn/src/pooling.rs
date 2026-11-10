@@ -159,17 +159,32 @@ fn analyze(op: &OpDesc<'_, '_>) -> Option<(Params, bool)> {
     Some((params, int16))
 }
 
-/// The kernel running `op`, if any.
-pub(crate) fn select(op: &OpDesc<'_, '_>) -> Option<&'static FnKernel> {
-    let (_, int16) = analyze(op)?;
-    let average = op.builtin()? == BuiltinOp::AVERAGE_POOL_2D;
-    Some(match (average, int16) {
-        (_, true) if !crate::INT16 => return None,
-        (true, true) => &AVERAGE_S16,
-        (false, true) => &MAX_S16,
-        (true, false) => &AVERAGE,
-        (false, false) => &MAX,
+/// The kernel running the `AVERAGE_POOL_2D` operator `op`, if any.
+#[cfg(feature = "op-average-pool-2d")]
+pub(crate) fn select_average(op: &OpDesc<'_, '_>) -> Option<&'static FnKernel> {
+    Some(if is_int16(op)? && crate::INT16 {
+        &AVERAGE_S16
+    } else {
+        &AVERAGE
     })
+}
+
+/// The kernel running the `MAX_POOL_2D` operator `op`, if any.
+#[cfg(feature = "op-max-pool-2d")]
+pub(crate) fn select_max(op: &OpDesc<'_, '_>) -> Option<&'static FnKernel> {
+    Some(if is_int16(op)? && crate::INT16 {
+        &MAX_S16
+    } else {
+        &MAX
+    })
+}
+
+/// Whether the supported operator `op` is an int16 one; `None` if no kernel runs it. The callers
+/// test [`crate::INT16`] again, a constant, so that without the `int16` feature the compiler sees
+/// that nothing references the int16 kernels.
+fn is_int16(op: &OpDesc<'_, '_>) -> Option<bool> {
+    let (_, int16) = analyze(op)?;
+    (!int16 || crate::INT16).then_some(int16)
 }
 
 fn plan(op: &OpDesc<'_, '_>) -> Result<KernelPlan> {

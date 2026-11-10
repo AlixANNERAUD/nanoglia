@@ -21,7 +21,7 @@ cargo run -p nanoglia-tools -- check testdata/mlperf-tiny/kws_ref_model.tflite
 
 ```text
 model: testdata/mlperf-tiny/kws_ref_model.tflite (53936 bytes)
-checked with: backends cmsis-nn, kernels; features float, int16
+checked with: backends cmsis-nn, kernels; features float, int16, all-ops
 
  #  operator              inputs                    outputs          kernel
  0  CONV_2D v3            int8[1,49,10,1] +2 const  int8[1,25,5,64]  cmsis-nn/conv2d_s8
@@ -86,11 +86,17 @@ the output says what the check used; make it match:
 - **`float`, `int16`, `single-rounding`**, at build time: they are
   features of the tool too, with the defaults of `nanoglia` (`float` and
   `int16` on). For an int8-only firmware (`default-features = false,
-  features = ["cmsis-nn", "kernels"]`):
+  features = ["cmsis-nn", "kernels", "all-ops"]`):
 
   ```sh
-  cargo run -p nanoglia-tools --no-default-features -- check model.tflite
+  cargo run -p nanoglia-tools --no-default-features --features all-ops -- check model.tflite
   ```
+
+- **`all-ops` and the `op-*` features**, at build time too: the tool
+  checks with every operator by default. Built with the `op-*` features
+  of a firmware in place of `all-ops`, it reports the operators that
+  firmware leaves out without a kernel
+  ([Reduce the code size](reduce-code-size.md)).
 
 ## 3. Read a model that does not run
 
@@ -100,7 +106,7 @@ kernels`), which the Rust kernels cannot run alone:
 
 ```text
 model: testdata/mlperf-tiny/kws_ref_model.tflite (53936 bytes)
-checked with: backends kernels; features float, int16
+checked with: backends kernels; features float, int16, all-ops
 
  #  operator              inputs                    outputs          kernel
  0  CONV_2D v3            int8[1,49,10,1] +2 const  int8[1,25,5,64]  NONE: no kernel for these types, shapes and options

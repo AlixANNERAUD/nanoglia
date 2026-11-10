@@ -13,11 +13,33 @@ keywords = ["cmsis-nn", "neural-network", "no-std", "embedded", "tinyml"]
 categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
 
 [features]
-default = ["int16"]
+default = ["int16", "all-ops"]
 ## int16 (16x8) kernels: convolution, depthwise convolution, fully-connected, pooling, add and mul.
 int16 = []
 ## Single-rounding requantization (`TFLITE_SINGLE_ROUNDING`).
 single-rounding = ["nanoglia-cmsis-nn-sys/single-rounding", "nanoglia-core/single-rounding"]
+## Every operator the crate has kernels for: all the `op-*` features below.
+all-ops = [
+  "op-add", "op-average-pool-2d", "op-conv-2d", "op-depthwise-conv-2d", "op-fully-connected",
+  "op-maximum", "op-max-pool-2d", "op-minimum", "op-mul", "op-pad", "op-padv2", "op-softmax",
+  "op-transpose-conv",
+]
+# One feature per operator (`BuiltinOp::feature` of nanoglia-core): without it the backend does not
+# claim the operator, and its kernels and the CMSIS-NN functions they call are not linked. The
+# int16 kernels of an operator need `int16` too.
+op-add = []
+op-average-pool-2d = []
+op-conv-2d = []
+op-depthwise-conv-2d = []
+op-fully-connected = []
+op-maximum = []
+op-max-pool-2d = []
+op-minimum = []
+op-mul = []
+op-pad = []
+op-padv2 = []
+op-softmax = []
+op-transpose-conv = []
 
 [dependencies]
 nanoglia-core = { workspace = true }

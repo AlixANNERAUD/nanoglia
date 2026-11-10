@@ -42,12 +42,14 @@ impl Outcome<'_> {
     }
 }
 
-/// The Cargo features this build checks with, besides the backends.
-fn features() -> [(&'static str, bool); 3] {
+/// The Cargo features this build checks with, besides the backends. Without `all-ops`, the tool
+/// was built with some `op-*` features only and the other operators have no kernel.
+fn features() -> [(&'static str, bool); 4] {
     [
         ("float", cfg!(feature = "float")),
         ("int16", cfg!(feature = "int16")),
         ("single-rounding", cfg!(feature = "single-rounding")),
+        ("all-ops", cfg!(feature = "all-ops")),
     ]
 }
 

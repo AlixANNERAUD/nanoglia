@@ -284,7 +284,7 @@ cargo run -p nanoglia-tools -- check target/train-to-device/keras/model.tflite -
 
 ```text
 model: target/train-to-device/keras/model.tflite (5048 bytes)
-checked with: backends cmsis-nn, kernels; features float, int16
+checked with: backends cmsis-nn, kernels; features float, int16, all-ops
 
 #  operator            inputs                    outputs          kernel
 0  CONV_2D v3          int8[1,50,3,1] +2 const   int8[1,46,1,8]   cmsis-nn/conv2d_s8
@@ -326,14 +326,21 @@ the clone, add nanoglia from the clone, and copy the model into it:
 cd ..
 cargo new gesture
 cd gesture
-cargo add nanoglia --path ../nanoglia/crates/nanoglia --no-default-features --features cmsis-nn,kernels
+cargo add nanoglia --path ../nanoglia/crates/nanoglia --no-default-features \
+    --features cmsis-nn,kernels,op-conv-2d,op-depthwise-conv-2d,op-fully-connected,op-max-pool-2d,op-mean,op-reshape,op-softmax
 cp ../nanoglia/target/train-to-device/keras/model.tflite .
 ```
 
-The two features are all an int8 model needs: `cmsis-nn` for the C
-kernels and `kernels` for the operators CMSIS-NN lacks. Leaving out the
-default `float` and `int16` features keeps their code out of the
-firmware ([Cargo features](../reference/features.md)).
+These features are all the model needs. `cmsis-nn` brings the C kernels
+and `kernels` the operators CMSIS-NN lacks. Each `op-` feature brings
+the kernels of one operator of the list the training script printed:
+`op-conv-2d` for `CONV_2D`, and so on (the PyTorch model needs neither
+`op-depthwise-conv-2d` nor `op-reshape`). nanoglia loads models at run
+time, so it cannot know which operators a firmware needs: by default it
+builds them all, with the float32 and int16 kernels. Naming the
+operators, and leaving out the default `float` and `int16` features,
+keeps the rest out of the firmware
+([Reduce the code size](../how-to-guides/reduce-code-size.md)).
 
 Replace the content of `src/main.rs` with:
 
@@ -403,7 +410,8 @@ the graph and 720 bytes for an execution context, on this 64-bit
 computer; [Size the memory](../how-to-guides/size-memory.md) shows how
 to compute the size of the buffer for your target.
 
-Had the model held an operator nanoglia cannot run, `load_in` would have
+Had the model held an operator nanoglia cannot run, or one whose `op-`
+feature you left out, `load_in` would have
 returned `UnsupportedOp` with the index of the operator in the list
 above: [Convert a PyTorch model](../how-to-guides/convert-a-pytorch-model.md#3-check-that-nanoglia-runs-it)
 says what to do then.
@@ -531,7 +539,8 @@ memory of this model.
 The same model runs through nanoglia's C API, a static library with one
 header. The clone holds the C counterpart of your Rust program,
 `examples/train-to-device/c/gesture.c`, with a CMake project that builds
-nanoglia's library and embeds the model. Build it for your model and run
+nanoglia's library, with the kernels of the same operators
+(`NANOGLIA_OPERATORS`), and embeds the model. Build it for your model and run
 it on the same vectors:
 
 ```sh

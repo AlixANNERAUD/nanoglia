@@ -12,12 +12,32 @@ readme = "README.md"
 keywords = ["esp-nn", "esp32", "neural-network", "no-std", "tinyml"]
 categories = ["science", "embedded", "no-std", "no-std::no-alloc"]
 
+[features]
+default = ["all-ops"]
+## Every operator the crate has kernels for: all the `op-*` features below.
+all-ops = [
+  "op-add", "op-average-pool-2d", "op-conv-2d", "op-depthwise-conv-2d", "op-fully-connected",
+  "op-max-pool-2d", "op-mul", "op-softmax",
+]
+# One feature per operator (`BuiltinOp::feature` of nanoglia-core): without it the backend does not
+# claim the operator, and its kernels and the ESP-NN functions they call are not linked. Each one
+# turns on the same feature of nanoglia-cmsis-nn, whose kernel runs when ESP-NN is busy.
+op-add = ["nanoglia-cmsis-nn/op-add"]
+op-average-pool-2d = ["nanoglia-cmsis-nn/op-average-pool-2d"]
+op-conv-2d = ["nanoglia-cmsis-nn/op-conv-2d"]
+op-depthwise-conv-2d = ["nanoglia-cmsis-nn/op-depthwise-conv-2d"]
+op-fully-connected = ["nanoglia-cmsis-nn/op-fully-connected"]
+op-max-pool-2d = ["nanoglia-cmsis-nn/op-max-pool-2d"]
+op-mul = ["nanoglia-cmsis-nn/op-mul"]
+op-softmax = ["nanoglia-cmsis-nn/op-softmax"]
+
 [dependencies]
 nanoglia-core = { workspace = true }
 nanoglia-cmsis-nn = { workspace = true }
 nanoglia-esp-nn-sys = { workspace = true }
 
 [package.metadata.docs.rs]
+all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [lints]

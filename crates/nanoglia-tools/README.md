@@ -5,7 +5,7 @@
 ```console
 $ nanoglia check testdata/mlperf-tiny/kws_ref_model.tflite --ram 256k
 model: testdata/mlperf-tiny/kws_ref_model.tflite (53936 bytes)
-checked with: backends cmsis-nn, kernels; features float, int16
+checked with: backends cmsis-nn, kernels; features float, int16, all-ops
 
  #  operator              inputs                    outputs          kernel
  0  CONV_2D v3            int8[1,49,10,1] +2 const  int8[1,25,5,64]  cmsis-nn/conv2d_s8
@@ -53,7 +53,7 @@ nanoglia check [OPTIONS] <MODEL.tflite>
 The tool calls `nanoglia::ModelReport::check_with`, which selects, plans and prepares the kernel of every operator as `Graph::load_with` does: a model that passes loads, given the memory. The verdict depends on what the firmware is built with, and the first lines of the output say what the tool used:
 
 - **backends**: chosen at run time with `--backends`;
-- **features**: `float`, `int16` and `single-rounding` are Cargo features of the tool, as they are features of `nanoglia`. `float` and `int16` are on by default, like in `nanoglia`; for an int8-only firmware, run `cargo run -p nanoglia-tools --no-default-features -- check <MODEL.tflite>`.
+- **features**: `float`, `int16`, `single-rounding`, `all-ops` and the `op-*` features (one per operator) are Cargo features of the tool, as they are features of `nanoglia`. `float`, `int16` and `all-ops` are on by default, like in `nanoglia`; for an int8-only firmware, run `cargo run -p nanoglia-tools --no-default-features --features all-ops -- check <MODEL.tflite>`. For a firmware built with some operators only, name its `op-*` features in place of `all-ops`: the other operators are then reported without a kernel.
 
 The check runs on your computer, not on the microcontroller:
 

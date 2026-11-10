@@ -7,6 +7,15 @@ project(nanoglia_gesture LANGUAGES C)
 set(GESTURE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../reference" CACHE PATH
     "Directory written by a training script: model.tflite and its test vectors (default: the reference model)")
 
+# Only the kernels of the operators of the model are built into the library: those of the PyTorch
+# model, plus DEPTHWISE_CONV_2D and RESHAPE for the Keras one. `nanoglia check model.tflite` lists
+# the operators of a model.
+set(NANOGLIA_OPERATORS
+    "CONV_2D;DEPTHWISE_CONV_2D;FULLY_CONNECTED;MAX_POOL_2D;MEAN;RESHAPE;SOFTMAX" CACHE STRING
+    "Operators to build kernels for")
+# int8 model: no float32 nor int16 kernel.
+set(NANOGLIA_INT8_ONLY ON CACHE BOOL "Leave out the float32 and int16 operators")
+
 # nanoglia's C library, built by Cargo, as the target nanoglia::nanoglia.
 add_subdirectory(../../../crates/nanoglia-c nanoglia)
 

@@ -47,3 +47,7 @@ They cover what the optimized C libraries lack: shape, data-movement and quantiz
 | `SOFTMAX` | `f32`, `i16` |
 
 Everything is computed when the operator is prepared; evaluation reads only the prepared parameters and the tensors, never allocates and never panics. `#![no_std]`, no allocation; the only dependency besides `nanoglia-core` is [`libm`](https://crates.io/crates/libm) for `expf`, `tanhf` and the `exp` of the int16 softmax tables.
+
+## Operator features
+
+Each operator has a Cargo feature (`op-reshape`, `op-mean`, `op-conv-2d`...: its name in lower case with dashes after `op-`, 64 in this crate), all on by default through `all-ops`. Without the default features, the backend only has the operators whose feature is named: the others are not claimed and their kernels are not linked, which saves flash when the models are known. `RustKernels::has_operator` tells whether a build has an operator. The [`nanoglia`](https://crates.io/crates/nanoglia) crate forwards these features.

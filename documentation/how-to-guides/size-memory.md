@@ -26,7 +26,7 @@ need) plus `alloc`:
 
 ```toml
 [dev-dependencies]
-nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features = false, features = ["cmsis-nn", "kernels", "alloc"] }
+nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features = false, features = ["cmsis-nn", "kernels", "all-ops", "alloc"] }
 ```
 
 ```rust

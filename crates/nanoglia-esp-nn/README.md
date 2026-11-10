@@ -32,3 +32,7 @@ On targets without atomic compare-and-swap (Cortex-M0, `riscv32imc`) the lock ca
 ESP-NN requantizes with the double rounding of TensorFlow Lite Micro (gemmlowp's `SaturatingRoundingDoublingHighMul` then `RoundingDivideByPOT`; `CONFIG_NN_SKIP_NUDGE` is never set). It has no single-rounding mode: with the `single-rounding` feature of `nanoglia-core`, the backend claims nothing.
 
 The crate depends on [`nanoglia-esp-nn-sys`](https://crates.io/crates/nanoglia-esp-nn-sys), which compiles ESP-NN with a C compiler for the target.
+
+## Operator features
+
+Each operator has a Cargo feature (`op-conv-2d`, `op-fully-connected`, `op-softmax`...: its name in lower case with dashes after `op-`, 8 in this crate), all on by default through `all-ops`. Without the default features, the backend only has the operators whose feature is named: the others are not claimed and their kernels are not linked, which saves flash when the models are known. Each one turns on the same feature of `nanoglia-cmsis-nn`, whose kernel runs while another context uses ESP-NN. `EspNn::has_operator` tells whether a build has an operator. The [`nanoglia`](https://crates.io/crates/nanoglia) crate forwards these features.

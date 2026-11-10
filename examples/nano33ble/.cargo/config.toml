@@ -5,7 +5,8 @@ target = "thumbv7em-none-eabihf"
 # Flash with a debug probe on the SWD pads. The application starts at 0x10000, after the
 # Arduino bootloader, which stays usable.
 runner = "probe-rs run --chip nRF52840_xxAA"
-rustflags = ["-C", "link-arg=-Tlink.x", "-C", "link-arg=-Tdefmt.x", "-C", "target-cpu=cortex-m4"]
+# The linker scripts are passed by build.rs.
+rustflags = ["-C", "target-cpu=cortex-m4"]
 
 [env]
 DEFMT_LOG = "info"

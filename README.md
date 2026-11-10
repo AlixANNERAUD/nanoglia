@@ -199,8 +199,10 @@ bench-compare` reproduces everything, and corrections are welcome in an issue.
 Pick `nanoglia` when the model must stay a file (updates, several models, user-provided models),
 the firmware must stay a plain Rust binary without a vendor SDK, outputs must match TensorFlow
 Lite, and memory use must be known ahead of time. Pick an ahead-of-time engine when the model
-never changes and flash is tight: their keyword-spotting firmware is 3.6 to 4.5 times smaller,
-since nanoglia carries every int8 kernel to run models it only sees at run time.
+never changes and flash is tight: their keyword-spotting firmware is 3.6 to 4.5 times smaller
+than nanoglia's with every int8 kernel, which runs models it only sees at run time. A firmware
+that knows the operators of its models can leave the other kernels out
+([reduce the code size](documentation/how-to-guides/reduce-code-size.md)).
 
 ## Documentation
 
@@ -209,7 +211,7 @@ The [documentation](documentation/README.md) follows the [Diátaxis](https://dia
 | | |
 | --- | --- |
 | **Tutorials** | [Run your first inference](documentation/tutorials/first-inference.md), [from training to the device](documentation/tutorials/train-and-deploy.md) |
-| **How-to guides** | [Check whether a model runs](documentation/how-to-guides/check-whether-a-model-runs.md), [size the memory](documentation/how-to-guides/size-memory.md), [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [run in the browser](documentation/how-to-guides/run-in-the-browser.md), [run long inferences without blocking](documentation/how-to-guides/run-long-inferences.md), [write a backend](documentation/how-to-guides/write-a-backend.md), [use nanoglia from C](documentation/how-to-guides/use-from-c.md) |
+| **How-to guides** | [Check whether a model runs](documentation/how-to-guides/check-whether-a-model-runs.md), [size the memory](documentation/how-to-guides/size-memory.md), [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [reduce the code size](documentation/how-to-guides/reduce-code-size.md), [run in the browser](documentation/how-to-guides/run-in-the-browser.md), [run long inferences without blocking](documentation/how-to-guides/run-long-inferences.md), [write a backend](documentation/how-to-guides/write-a-backend.md), [use nanoglia from C](documentation/how-to-guides/use-from-c.md) |
 | **Explanation** | [Architecture](documentation/explanation/architecture.md), [bit-exactness with TensorFlow Lite](documentation/explanation/bit-exactness.md) |
 | **Reference** | [Supported operators](documentation/reference/supported-operators.md), [Cargo features](documentation/reference/features.md), [errors](documentation/reference/errors.md), [memory](documentation/reference/memory.md), [performance](documentation/reference/performance.md), [development tasks](documentation/reference/development-tasks.md) |
 
@@ -254,7 +256,10 @@ exports produce (`TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`, `SPLIT`, `SPLI
 
 **How much RAM and flash does it need?** RAM is exactly what `MemoryRequirements` reports for your
 model: 23.3 KiB for MLPerf Tiny keyword spotting, 92 KiB for visual wake words. The Nano 33 BLE
-example firmware is 181 KB of flash, 54 KB of which is the model.
+example firmware, built with the kernels of the six operators of its model only, is 138 KB of
+flash, 54 KB of which is the model; with every int8 operator it is 274 KB
+([code size](documentation/reference/memory.md#code-size),
+[reduce the code size](documentation/how-to-guides/reduce-code-size.md)).
 
 **Why TensorFlow Lite and not ONNX?** A `.tflite` file can be read in place, without parsing or
 copying, and its int8 arithmetic is defined precisely enough to be reproduced bit for bit; the

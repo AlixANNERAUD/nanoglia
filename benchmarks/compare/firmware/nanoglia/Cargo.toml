@@ -13,8 +13,8 @@ full = ["nanoglia/float", "nanoglia/int16"]
 
 [dependencies]
 fw-common = { path = "../common" }
-# int8 only, as in examples/nano33ble.
-nanoglia = { workspace = true, features = ["cmsis-nn", "kernels"] }
+# int8 only, with every operator: the model is loaded at run time, the firmware does not know it.
+nanoglia = { workspace = true, features = ["cmsis-nn", "kernels", "all-ops"] }
 cortex-m = { workspace = true, features = ["critical-section-single-core"] }
 cortex-m-rt = { workspace = true }
 panic-halt = { workspace = true }

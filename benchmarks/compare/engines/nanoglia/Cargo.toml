@@ -8,5 +8,5 @@ description = "Host benchmark of nanoglia (default features: CMSIS-NN portable C
 
 [dependencies]
 harness = { workspace = true }
-# The default features (cmsis-nn, kernels, float, int16), plus `alloc` for the global allocator.
-nanoglia = { workspace = true, features = ["cmsis-nn", "kernels", "float", "int16", "alloc"] }
+# The default features (cmsis-nn, kernels, float, int16, all-ops), plus `alloc` for the global allocator.
+nanoglia = { workspace = true, features = ["cmsis-nn", "kernels", "float", "int16", "all-ops", "alloc"] }

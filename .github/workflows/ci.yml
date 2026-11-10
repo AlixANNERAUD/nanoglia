@@ -55,7 +55,7 @@ jobs:
           # int8-only build, as in the Nano 33 BLE firmware.
           - name: int8 only
             key: int8-only
-            args: -p nanoglia --no-default-features --features cmsis-nn,kernels --lib --test memory
+            args: -p nanoglia --no-default-features --features cmsis-nn,kernels,all-ops --lib --test memory
           # The golden cases with the ESP-NN backend first (its ANSI C kernels on the host).
           - name: ESP-NN
             key: esp-nn
@@ -135,6 +135,24 @@ jobs:
         with:
           cache-key-suffix: cross-${{ matrix.task }}
       - run: mise run ${{ matrix.task }}
+
+  # Each `op-*` feature alone, no operator, and the operators of one model: a firmware picks the
+  # operators of its models, so each feature must build and work without the others.
+  op-features:
+    name: Operator features
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      # C toolchains declared in `[bootstrap.packages]` of mise.toml, for the Cortex-M4F builds.
+      - name: Install system packages
+        run: sudo apt-get update && mise bootstrap packages apply --yes
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: op-features
+      - run: mise run op-features
 
   emulated:
     name: Golden cases emulated (Cortex-M4F, M33, M0+, riscv32imc)
@@ -280,7 +298,7 @@ jobs:
   required:
     name: Required checks
     if: always()
-    needs: [fmt, clippy, test, c, cross, emulated, esp32s3, deny, msrv, docs]
+    needs: [fmt, clippy, test, c, cross, op-features, emulated, esp32s3, deny, msrv, docs]
     runs-on: ubuntu-latest
     steps:
       - name: Every needed job succeeded

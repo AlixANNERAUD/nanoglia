@@ -42,7 +42,7 @@ The crate is an rlib for Cargo: the static library is built with `cargo rustc --
 
 | Feature | Default | Enables |
 | --- | :---: | --- |
-| `cmsis-nn`, `kernels`, `float`, `int16`, `esp-nn`, `single-rounding` | as in `nanoglia` | The backends and operators of [`nanoglia`](https://crates.io/crates/nanoglia). |
+| `cmsis-nn`, `kernels`, `float`, `int16`, `esp-nn`, `single-rounding`, `all-ops`, `op-*` | as in `nanoglia` | The backends and operators of [`nanoglia`](https://crates.io/crates/nanoglia). `all-ops` (default) builds the kernels of every operator; without it, the `op-*` features name the operators to build (`op-conv-2d`...), to save flash. The CMake option `NANOGLIA_OPERATORS` (`CONV_2D;SOFTMAX`) sets them. |
 | `std` | no | Links the standard library, needed to build the static library for a host; a panic (a bug) returns `NANOGLIA_STATUS_UNKNOWN` instead of aborting. |
 | `panic-handler` | no | A panic handler that loops forever, for a static library built for a target without `std`. |
 

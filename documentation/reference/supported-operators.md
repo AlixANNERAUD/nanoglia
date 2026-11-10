@@ -31,9 +31,16 @@ in the order of the tables below. `Graph::kernel_name(index)` returns the
 name of the kernel chosen for an operator (the names are in the tables).
 
 Which kernels exist also depends on the Cargo features
-([Cargo features](features.md)): kernels marked *float* need feature
-`float`, kernels marked *int16* need feature `int16`. Everything else is
-always there when its backend is.
+([Cargo features](features.md)):
+
+- every operator has a feature of its own, its name in lower case with
+  dashes after `op-`: `op-conv-2d` for `CONV_2D`, `op-padv2` for
+  `PADV2` (`BuiltinOp::feature()`; the list is in
+  [Operator features](features.md#operator-features)). They are all on
+  by default (`all-ops`). Without the feature of an operator, none of
+  the three backends claims it, whatever its types;
+- kernels marked *float* also need feature `float`, kernels marked
+  *int16* feature `int16` (the Feature column of the tables below).
 
 ## Conditions shared by all kernels
 

@@ -32,7 +32,7 @@ export CFLAGS_wasm32_unknown_unknown="-isystem $WASI_SDK/share/wasi-sysroot/incl
 Make sure the `clang` and `llvm-ar` found on the `PATH` are wasi-sdk's,
 or give their full paths.
 
-Without `cmsis-nn` (`default-features = false, features = ["kernels"]`),
+Without `cmsis-nn` (`default-features = false, features = ["kernels", "all-ops"]`),
 no C compiler is needed, but the int8 convolutions, fully-connected
 layers, pooling and int8 softmax are then unsupported
 ([Cargo features](../reference/features.md)).

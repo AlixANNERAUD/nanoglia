@@ -28,3 +28,7 @@ Fused activations: none, `RELU`, `RELU6`, `RELU_N1_TO_1`.
 16x8 operators take int64 biases only: LiteRT chooses how to read the bias from the `quantized_bias_type` option, which nanoglia does not decode, and defaults to int64. `SOFTMAX` on int16 is left to the Rust backend: `arm_softmax_s16` does not clamp its result (a row of one element gives -32768 where LiteRT gives 32767) and can overflow while normalizing the sum of the exponentials.
 
 The crate depends on [`nanoglia-cmsis-nn-sys`](https://crates.io/crates/nanoglia-cmsis-nn-sys), which compiles CMSIS-NN with a C compiler for the target.
+
+## Operator features
+
+Each operator has a Cargo feature (`op-conv-2d`, `op-fully-connected`, `op-softmax`...: its name in lower case with dashes after `op-`, 13 in this crate), all on by default through `all-ops`. Without the default features, the backend only has the operators whose feature is named: the others are not claimed and their kernels are not linked, which saves flash when the models are known. `CmsisNn::has_operator` tells whether a build has an operator. The [`nanoglia`](https://crates.io/crates/nanoglia) crate forwards these features.
