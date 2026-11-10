@@ -201,7 +201,7 @@ jobs:
       # and fit in the 960 KiB after the bootloader. No job has the board: `mise run
       # test-hardware-nano33ble` flashes and runs them where it is plugged in.
       - run: mise run build-hardware-nano33ble
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: hardware-nano33ble-images
           path: hardware/target/images/*.elf
@@ -286,7 +286,7 @@ jobs:
       # dependency group, writes golden outputs with LiteRT's reference kernels, then runs them
       # with nanoglia. The models are not committed: they may change with torch and litert-torch.
       - run: mise run pytorch-export
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: pytorch-export
@@ -312,7 +312,7 @@ jobs:
       # programs on both. Fails below 90 % accuracy, on a float operator, or on an output that
       # differs from LiteRT's. The models are not committed: they change with the frameworks.
       - run: mise run train-to-device
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: train-to-device
