@@ -244,6 +244,8 @@ description = "Build the two firmware images that run the golden cases on an Ard
 # The images land in hardware/target/images. The linker refuses an image larger than the 960 KiB
 # after the bootloader; an image linked without its linker scripts is empty and still "builds":
 # require real code and the models.
+# `NANOGLIA_NANO33BLE_FEATURES=icache` adds features of the firmware to both images: `icache`
+# turns on the instruction cache of the flash, off by default as after a reset.
 dir = "{{config_root}}/hardware"
 env.RUSTFLAGS = "-D warnings"
 env.NANOGLIA_REVISION = "{{exec(command='git describe --always --dirty --abbrev=12 --exclude=*')}}"
@@ -251,7 +253,7 @@ run = """
 set -e
 mkdir -p target/images
 build() {
-  cargo build --release --target thumbv7em-none-eabihf -p nanoglia-hardware-nano33ble --features "$2"
+  cargo build --release --target thumbv7em-none-eabihf -p nanoglia-hardware-nano33ble --features "$2${NANOGLIA_NANO33BLE_FEATURES:+,$NANOGLIA_NANO33BLE_FEATURES}"
   cp target/thumbv7em-none-eabihf/release/nanoglia-hardware-nano33ble "target/images/nano33ble-image-$1.elf"
 }
 build 1 model-kws,model-resnet,model-ad

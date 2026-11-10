@@ -111,8 +111,13 @@ do not run several builds in the same target directory at once.
   cases on a board plugged in over USB: **it has never run**, and neither has anything in
   `hardware/nano33ble/src/main.rs` (USB, clock, cycle counter, watchdog, resets); the how-to
   "run the golden cases on a board" lists it. Keep the hardware-only code there, thin, and
-  everything else in `runner` or the host tool, where it is tested. The firmware never writes
-  to flash. The protocol is described in `hardware/runner/src/lib.rs` and `frame.rs`, and
+  everything else in `runner` or the host tool, where it is tested. The firmware has no code
+  that erases or writes a page of flash; `embassy_nrf::init` holds a UICR routine that the
+  configuration of the firmware keeps from writing (`reset-pin-as-gpio`, debug port and regulator
+  left alone): keep it so. Every crash handler counts the crash itself (`boot::crash`) and resets
+  into the bootloader at the third in a row; the waits of the host tool are derived from the
+  constants of the firmware (`WATCHDOG_S`, `MAX_FAILED_BOOTS`, `NO_CONTACT_S` in
+  `protocol.py`): change them together. The protocol is described in `hardware/runner/src/lib.rs` and `frame.rs`, and
   mirrored in `hardware/tools/nanoglia_hardware/protocol.py` and `simulated.py`: change them
   together. Do not write a time or a result as measured on a board unless it was.
 

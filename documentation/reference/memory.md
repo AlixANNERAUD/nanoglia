@@ -310,24 +310,25 @@ bytes of flash after the bootloader: two images are built. `text` of
 
 | Image | Models in flash | `text` | Left of 983040 |
 | --- | --- | ---: | ---: |
-| none | — | 433180 | 549860 |
-| 1 | `kws_ref_model`, `pretrainedResnet_quant`, `ad01_int8` | 862724 | 120316 |
-| 2 | `vww_96_int8`, `str_ww_ref_model` | 841100 | 141940 |
+| none | — | 433604 | 549436 |
+| 1 | `kws_ref_model`, `pretrainedResnet_quant`, `ad01_int8` | 863132 | 119908 |
+| 2 | `vww_96_int8`, `str_ww_ref_model` | 841524 | 141516 |
 
 With the model in flash, a case needs RAM for its inputs and for the
 arena (the graph and context blocks) only. Of the 262144 bytes of RAM,
-the firmware keeps 24576 for the stack and 336 for its static data;
-the rest, 237232 bytes, receives the inputs and holds the arena. What
-each model takes of it, measured on the same code under emulation
-(`hardware/emulated`: the same memory layout, 176 bytes of static data):
+the firmware keeps the last 256 for the message of a crash, 24576
+below them for the stack, and 160 for its static data; the rest, 237152
+bytes, receives the inputs and holds the arena. What each model takes
+of it, measured on the same code under emulation (`hardware/emulated`:
+the same memory layout, without static data):
 
-| Model | Inputs | Graph | Context | Arena used | Peak stack | Inputs + arena, of 237232 |
+| Model | Inputs | Graph | Context | Arena used | Peak stack | Inputs + arena, of 237152 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `kws_ref_model` | 490 | 7616 | 16256 | 23872 | 8224 | 24362 |
-| `pretrainedResnet_quant` | 3072 | 6064 | 51456 | 57520 | 8224 | 60592 |
-| `str_ww_ref_model` | 1200 | 9248 | 10496 | 19744 | 7952 | 20944 |
-| `ad01_int8` | 640 | 16208 | 768 | 16976 | 7952 | 17616 |
-| `vww_96_int8` | 27648 | 29280 | 65536 | 94816 | 8224 | 122464 |
+| `kws_ref_model` | 490 | 7616 | 16256 | 23872 | 8208 | 24362 |
+| `pretrainedResnet_quant` | 3072 | 6064 | 51456 | 57520 | 8208 | 60592 |
+| `str_ww_ref_model` | 1200 | 9248 | 10496 | 19744 | 7936 | 20944 |
+| `ad01_int8` | 640 | 16208 | 768 | 16976 | 7936 | 17616 |
+| `vww_96_int8` | 27648 | 29280 | 65536 | 94816 | 8208 | 122464 |
 
 All five run: the largest, visual wake words, takes about half of what
 is free. The contexts differ from the 32-bit column of the
@@ -336,7 +337,7 @@ for other scratch sizes than its portable C code (keyword spotting,
 visual wake words). The single-operator cases of `testdata/ops/` are
 received into the same RAM with their model: the largest model is 7648
 bytes, the largest arena 4352 bytes, and the deepest stack over every
-golden case is 8468 bytes of the 24576.
+golden case is 8444 bytes of the 24576.
 
 Measured on 2026-11-10, with the change that added `hardware/`, on top
 of commit `d98b750`, on a Linux aarch64 host with rustc 1.99.1,
