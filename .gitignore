@@ -14,3 +14,6 @@ __pycache__/
 /benchmarks/compare/tools/.venv
 /emulation/target
 /emulation/tools/.venv
+/hardware/target
+/hardware/tools/.venv
+/hardware/tools/.pytest_cache

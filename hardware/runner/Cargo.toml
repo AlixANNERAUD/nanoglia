@@ -1,0 +1,18 @@
+[package]
+name = "nanoglia-hardware-runner"
+description = "Runs golden cases of nanoglia received over a byte stream: the protocol and the runner shared by the board firmwares and the emulated one."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Every kernel family, so that every case runs: CMSIS-NN (DSP or portable code paths, as the
+# target selects), the Rust kernels, float32 and int16.
+nanoglia = { path = "../../crates/nanoglia", default-features = false, features = ["cmsis-nn", "kernels", "float", "int16", "all-ops"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,24 @@
+# cargo-deny for the firmwares of hardware/, which are a test bench and are not published:
+# `mise run deny` checks their licenses, bans and sources. The allow-list is the one of the
+# libraries (../deny.toml), plus one exception.
+[graph]
+all-features = true
+targets = ["thumbv7em-none-eabihf"]
+
+[licenses]
+version = 2
+allow = ["Apache-2.0", "MIT", "Unicode-3.0"]
+confidence-threshold = 0.9
+# The register definitions of the nRF52840, generated from Nordic's description of the chip, under
+# Nordic's BSD-3-Clause license: every peripheral access crate of the chip carries it. Only the
+# firmware of the board links it, never a library of nanoglia.
+exceptions = [{ name = "nrf-pac", allow = ["BSD-3-Clause"] }]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
