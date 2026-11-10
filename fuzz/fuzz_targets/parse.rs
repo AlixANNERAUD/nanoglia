@@ -51,6 +51,8 @@ fuzz_target!(|bytes: &[u8]| {
             }
         }
         for i in 0..graph.operator_count() {
+            // The header never fails on a parsed model, whatever the options hold.
+            let header = graph.operator_header(i).expect("header of a parsed model");
             match graph.operator(i) {
                 Ok(op) => {
                     for t in op.inputs.iter() {
@@ -59,6 +61,10 @@ fuzz_target!(|bytes: &[u8]| {
                     for t in op.outputs.iter() {
                         assert!(t >= 0 && (t as usize) < graph.tensor_count());
                     }
+                    assert_eq!(op.code, header.code);
+                    assert_eq!(op.version, header.version);
+                    assert!(op.inputs.iter().eq(header.inputs.iter()));
+                    assert!(op.outputs.iter().eq(header.outputs.iter()));
                     let _ = format!("{op:?}");
                 }
                 Err(err) => not_malformed(err),
