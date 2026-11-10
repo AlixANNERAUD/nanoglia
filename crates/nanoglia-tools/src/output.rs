@@ -158,6 +158,13 @@ fn esp_nn_note(out: &mut String, firmware: &Firmware) {
     }
 }
 
+/// The sum of `arena_bytes(1)` of the models, `None` if one of them does not run.
+fn total_arena_bytes(outcomes: &[Outcome<'_>]) -> Option<usize> {
+    outcomes.iter().try_fold(0usize, |total, outcome| {
+        total.checked_add(outcome.arena_bytes()?)
+    })
+}
+
 /// The report of each model, then, with several models, the features of a firmware that runs
 /// them all.
 pub fn text(outcomes: &[Outcome<'_>]) -> String {
@@ -165,6 +172,15 @@ pub fn text(outcomes: &[Outcome<'_>]) -> String {
     let mut out = reports.join("\n");
     if let [_, _, ..] = outcomes {
         let _ = writeln!(out);
+        if let Some(total) = total_arena_bytes(outcomes) {
+            let _ = writeln!(
+                out,
+                "Memory to keep these {} models loaded at once, each graph with one execution \
+                 context: {total} bytes\n(the sum of their arena_bytes(1); --ram checks each model \
+                 alone).",
+                outcomes.len()
+            );
+        }
         match firmware(outcomes) {
             Some(firmware) => {
                 let _ = writeln!(
@@ -462,9 +478,11 @@ pub fn json(outcomes: &[Outcome<'_>]) -> String {
             .map(|outcome| model_json(outcome).trim_end().replace('\n', "\n    "))
             .collect();
         return format!(
-            "{{\n  \"models\": [\n    {}\n  ],\n  \"passes\": {},\n  \"firmware\": {}\n}}\n",
+            "{{\n  \"models\": [\n    {}\n  ],\n  \"passes\": {},\n  \"arena_bytes\": {},\n  \
+             \"firmware\": {}\n}}\n",
             models.join(",\n    "),
             outcomes.iter().all(Outcome::passes),
+            option(total_arena_bytes(outcomes).map(|total| total.to_string())),
             firmware_json(firmware(outcomes))
         );
     };

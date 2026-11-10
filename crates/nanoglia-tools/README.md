@@ -38,12 +38,12 @@ Run it from a clone of the repository (`mise run submodules` first) with `cargo 
 nanoglia check [OPTIONS] <MODEL.tflite>...
 ```
 
-With several models, the models of one firmware, each gets its report, then the output ends with the Cargo features of a firmware that runs them all.
+With several models, the models of one firmware, each gets its report, then the output ends with the memory to keep them all loaded at once (the sum of their `arena_bytes(1)`, when every model runs) and the Cargo features of a firmware that runs them all.
 
 | Option | Meaning |
 | --- | --- |
 | `--backends <LIST>` | The backends of your firmware: a comma-separated list of `cmsis-nn`, `esp-nn` and `kernels`, the Cargo features of `nanoglia` with the same names. Default: `cmsis-nn,kernels`, the default features. They are tried in the order of `Registry::default()` (ESP-NN, CMSIS-NN, the Rust kernels), whatever the order of the list. |
-| `--ram <SIZE>` | RAM budget for the graph and one execution context of each model, in bytes or with a binary suffix (`256k`, `1M`). The check fails when `MemoryRequirements::arena_bytes(1)` is larger. The model bytes are not counted: nanoglia borrows them where they are. |
+| `--ram <SIZE>` | RAM budget for the graph and one execution context of each model, in bytes or with a binary suffix (`256k`, `1M`). The check fails when `MemoryRequirements::arena_bytes(1)` of a model is larger. Each model is checked alone: the sum, for a firmware that keeps every graph loaded, is printed but not compared. The model bytes are not counted: nanoglia borrows them where they are. |
 | `--json` | One JSON document instead of the table. |
 | `-h`, `--help`; `-V`, `--version` | Help; version. |
 
@@ -68,7 +68,7 @@ The check runs on your computer, not on the microcontroller:
 
 ## Cargo features of the firmware
 
-When the model runs, the output ends with the dependency of a firmware that selects the same kernels, `nanoglia = { version = "...", default-features = false, features = [...] }`, version that of the `nanoglia` the tool was built on. It names:
+When the model runs, the output ends with the dependency of a firmware that selects the same kernels, `nanoglia = { version = "...", default-features = false, features = [...] }`. The version is the requirement Cargo reads as compatible with the `nanoglia` release the tool was built on: `major.minor` before 1.0 (`"0.3"` for 0.3.x), the major from 1.0 (`"1"`). The line is printed whenever the model runs, also when it does not fit `--ram`. It names:
 
 - the backends of the selected kernels: `cmsis-nn`, `esp-nn`, and `kernels` for the `rust/...` ones;
 - `float` when a selected kernel is one of the float32 kernels that only this feature adds (the convolutions, pooling, fully-connected, softmax, activations, `PRELU`, `RESIZE_BILINEAR` and the unary operators on f32), `int16` when it is one of the 16x8 kernels it adds (CMSIS-NN's `_s16` kernels, and the Rust 16x8 fully-connected, softmax, `LOGISTIC` and `TANH`). Other kernels run f32 or int16 tensors without them, the Rust `ADD` or `RESHAPE` for instance: the type of the tensors alone does not tell;
@@ -91,10 +91,16 @@ Without one of these features, the firmware would select other kernels or none. 
 | `error` | Why the model does not load when no operator is to blame, else `null`: `code` (the wasi-nn name of the `ErrorCode`) and a `message`. |
 | `memory` | When the model runs: `graph_bytes`, `context_bytes`, `persistent_bytes` (part of the graph block), `activation_bytes` and `scratch_bytes` (the two parts of a context), `arena_bytes` (`arena_bytes(1)`). Else `null`. |
 | `ram_budget_bytes`, `fits` | The budget and whether `arena_bytes` fits it; `null` without `--ram` (and `fits` when the model does not run). |
-| `firmware` | When the model runs: `nanoglia_version`, `features` (the list of [Cargo features of the firmware](#cargo-features-of-the-firmware)) and `dependency` (the line for `Cargo.toml`). Else `null`. |
+| `firmware` | When the model runs (also beyond `--ram`): `nanoglia_version` (the release the tool was built on, `0.3.0`, of which `dependency` names the requirement, `0.3`), `features` (the list of [Cargo features of the firmware](#cargo-features-of-the-firmware)) and `dependency` (the line for `Cargo.toml`). Else `null`. |
 | `operators` | One object per operator: `index`, `opcode` (TFLite builtin code, 32 for a custom operator), `name`, `custom`, `version`, `inputs` and `outputs` (`tensor` index, `type`, `shape`, `constant`; `null` for an omitted optional input), then `kernel`, `backend`, `persistent_bytes` and `scratch_bytes`, or `null` for these four and an `error` as above. |
 
-With several models, the document is `{"models": [...], "passes": ..., "firmware": ...}`: the document of each model as above, whether every model passes, and the `firmware` of them all (`null` unless every model runs).
+**The shape depends on the number of paths.** With one model, the document is the object above. With several, it is `{"models": [...], "passes": ..., "arena_bytes": ..., "firmware": ...}`: the document of each model as above, in the order given, whether every model passes, the sum of their `arena_bytes` and the `firmware` of them all (both `null` unless every model runs). A consumer that passes a variable number of paths must branch on it, for example:
+
+```sh
+nanoglia check model.tflite --json | jq -c .firmware.features           # one path
+nanoglia check a.tflite b.tflite --json | jq -c .firmware.features      # several: the union
+nanoglia check a.tflite b.tflite --json | jq -c '.models[].firmware.features'
+```
 
 The guide [Check whether a model runs](https://github.com/AlixANNERAUD/nanoglia/blob/main/documentation/how-to-guides/check-whether-a-model-runs.md) shows the outputs and how to act on them.
 

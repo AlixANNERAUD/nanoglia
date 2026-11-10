@@ -48,25 +48,51 @@ for set in "$kws"; do
   # Bare metal (Cortex-M4F), without any global allocator.
   cargo build --quiet -p nanoglia --lib --target thumbv7em-none-eabihf --no-default-features --features "cmsis-nn,kernels,$set"
 done
-# `nanoglia check` prints the features of a firmware that runs a model. With exactly those, the
-# tool (the same registry as such a firmware) must run the model, and the features printed for
-# the keyword-spotting model must be the set above, with which nanoglia loads it and gives
-# LiteRT's bytes. The tool built for keyword spotting must also say which feature the ResNet
-# model lacks.
-features_of() {
-  cargo run --quiet -p nanoglia-tools -- check "$1" \
-    | sed -n 's/^nanoglia = .*, features = \[\(.*\)\] }$/\1/p' | tr -d '" '
+# The tests of `nanoglia check` adapt to the features of the tool: run them int8 only (the f32
+# and 16x8 models then do not run), as the default build runs them in the test job.
+echo "op-features: nanoglia-tools int8 only"
+cargo test --quiet -p nanoglia-tools --no-default-features --features all-ops --test check
+
+# `nanoglia check` prints the features of a firmware that runs a model. The tool built with
+# exactly those (the same registry as such a firmware) must select the same kernels as the full
+# build, operator by operator; the features printed for the keyword-spotting model must be the
+# set above, with which nanoglia loads it and gives LiteRT's bytes; and the tool built with that
+# set must say which feature the ResNet model lacks. The outputs go to target/op-features.
+work=target/op-features
+mkdir -p "$work"
+models="testdata/mlperf-tiny/kws_ref_model.tflite testdata/ops/conv2d_3x3_same_f32/model.tflite
+  testdata/ops/conv2d_3x3_same_int16/model.tflite"
+# The kernel of each operator, one per line, from the JSON document on the standard input (a kernel
+# name has no comma; `null` without a kernel).
+kernels_of() {
+  grep -o '"kernel": [^,]*'
 }
-for model in testdata/mlperf-tiny/kws_ref_model.tflite \
-    testdata/ops/conv2d_3x3_same_f32/model.tflite testdata/ops/conv2d_3x3_same_int16/model.tflite; do
-  printed=$(features_of "$model")
+# The default build first, then one build per model: Cargo relinks the tool when the features
+# change, so they are not interleaved.
+i=0
+for model in $models; do
+  i=$((i + 1))
+  cargo run --quiet -p nanoglia-tools -- check "$model" \
+    | sed -n 's/^nanoglia = .*, features = \[\(.*\)\] }$/\1/p' | tr -d '" ' > "$work/$i.features"
+  cargo run --quiet -p nanoglia-tools -- check "$model" --json | kernels_of > "$work/$i.kernels"
+done
+i=0
+for model in $models; do
+  i=$((i + 1))
+  printed=$(cat "$work/$i.features")
   echo "op-features: $model needs $printed"
+  [ -n "$printed" ] || { echo "op-features: no features printed for $model" >&2; exit 1; }
   backends=$(echo "$printed" | tr , '\n' | grep -E '^(esp-nn|cmsis-nn|kernels)$' | paste -sd , -)
   features=$(echo "$printed" | tr , '\n' | grep -vE '^(esp-nn|cmsis-nn|kernels)$' | paste -sd , -)
   cargo run --quiet -p nanoglia-tools --no-default-features --features "$features" -- \
-    check "$model" --backends "$backends" > /dev/null
+    check "$model" --backends "$backends" --json | kernels_of > "$work/$i.minimal-kernels"
+  if ! cmp -s "$work/$i.kernels" "$work/$i.minimal-kernels"; then
+    echo "op-features: with $printed, $model gets other kernels:" >&2
+    diff "$work/$i.kernels" "$work/$i.minimal-kernels" >&2
+    exit 1
+  fi
 done
-printed=$(features_of testdata/mlperf-tiny/kws_ref_model.tflite)
+printed=$(cat "$work/1.features")
 if [ "$printed" != "cmsis-nn,kernels,$kws" ]; then
   echo "op-features: nanoglia check printed $printed for keyword spotting, not cmsis-nn,kernels,$kws" >&2
   exit 1

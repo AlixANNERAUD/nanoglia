@@ -97,8 +97,15 @@ nanoglia = { version = "0.2.0", default-features = false, features = ["cmsis-nn"
 ```
 
 The exit status is the worst of the models: 1 as soon as one does not
-run, and then no dependency is given for them all. `--ram` applies to
-each model alone.
+run, and then no dependency is given for them all.
+
+`--ram` checks each model alone, against the graph and one execution
+context of that model. A firmware that keeps all its graphs loaded at
+once needs the sum, which the summary gives before the last lines when
+every model runs (`Memory to keep these 2 models loaded at once`):
+compare that one with your RAM yourself. A model that runs but does not
+fit the budget still gets its dependency line: the budget is a property
+of the device, the features of the firmware.
 
 ## 3. Check with the backends and features of your firmware
 
@@ -243,9 +250,22 @@ cargo run -q -p nanoglia-tools -- check testdata/mlperf-tiny/kws_ref_model.tflit
 ["cmsis-nn","kernels","op-average-pool-2d","op-conv-2d","op-depthwise-conv-2d","op-fully-connected","op-reshape","op-softmax"]
 ```
 
-With several models, the document holds the document of each in
-`models`, then `passes` and the `firmware` of them all. The fields are
-listed in the
+The shape of the document depends on the number of paths: with one
+model, it is the document above; with several, it is
+`{"models": [...], "passes": ..., "arena_bytes": ..., "firmware": ...}`,
+the document of each model in `models`, then whether every model
+passes, the sum of their `arena_bytes` and the `firmware` of them all
+(both `null` unless every model runs). A script that takes any number
+of paths branches on it; the features with one model, then with
+several:
+
+```sh
+nanoglia check model.tflite --json | jq -c .firmware.features
+nanoglia check a.tflite b.tflite --json | jq -c .firmware.features
+nanoglia check a.tflite b.tflite --json | jq -c '.models[] | [.model.path, .runs]'
+```
+
+The fields are listed in the
 [README of the tool](../../crates/nanoglia-tools/README.md#json-output).
 The exit status alone is enough to fail a build when a new export of
 the model stops running or outgrows its budget.

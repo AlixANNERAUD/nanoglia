@@ -116,9 +116,22 @@ impl Firmware {
             .collect();
         format!(
             "nanoglia = {{ version = \"{}\", default-features = false, features = [{}] }}",
-            nanoglia::VERSION,
+            requirement(nanoglia::VERSION),
             features.join(", ")
         )
+    }
+}
+
+/// The version requirement of a dependency on the release `version`: the releases Cargo takes as
+/// compatible with it, `major.minor` before 1.0 (`0.3.1` gives `"0.3"`), `major` from 1.0 (`1.2.0`
+/// gives `"1"`). A patch release of the same line has the same features, so the requirement does
+/// not pin it.
+pub fn requirement(version: &str) -> String {
+    let mut parts = version.split(['.', '-', '+']);
+    let major = parts.next().unwrap_or(version);
+    match (major, parts.next()) {
+        ("0", Some(minor)) => format!("0.{minor}"),
+        _ => major.to_owned(),
     }
 }
 
@@ -126,6 +139,23 @@ impl Firmware {
 mod tests {
     use super::*;
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn requirements_name_the_compatible_releases() {
+        for (version, expected) in [
+            ("0.2.0", "0.2"),
+            ("0.3.0", "0.3"),
+            ("0.3.7", "0.3"),
+            ("0.10.2", "0.10"),
+            ("0.4.0-rc.1", "0.4"),
+            ("1.0.0", "1"),
+            ("1.4.2", "1"),
+            ("2.0.0-beta.3", "2"),
+            ("12.1.0+build.5", "12"),
+        ] {
+            assert_eq!(requirement(version), expected, "{version}");
+        }
+    }
 
     fn source(path: &str) -> String {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join(path);
@@ -169,12 +199,30 @@ mod tests {
         let attribute = format!("#[cfg(feature = \"{feature}\")]");
         let mut lines = table.lines().map(str::trim);
         let mut kernels = BTreeSet::new();
+        let mut attributes = 0;
         while let Some(line) = lines.next() {
             if line == attribute {
+                attributes += 1;
                 let path = lines.next().unwrap().trim_end_matches(',');
                 kernels.insert(rust_kernel_name(path));
             }
         }
+        // Every mention of the feature is one of these attributes, but for the crate-level
+        // `#![cfg_attr(not(all(feature = "float", feature = "int16", feature = "all-ops")), ...)]`:
+        // an entry gated otherwise (`cfg(all(feature = "op-x", feature = "float"))`) fails here
+        // rather than being missed.
+        let crate_level = table
+            .lines()
+            .filter(|line| line.trim_start().starts_with("not(all("))
+            .map(|line| line.matches(&format!("feature = \"{feature}\"")).count())
+            .sum::<usize>();
+        assert_eq!(crate_level, 1, "{feature}");
+        assert_eq!(
+            table.matches(&format!("feature = \"{feature}\"")).count(),
+            attributes + crate_level,
+            "nanoglia-kernels/src/lib.rs gates a kernel on `{feature}` in a way this test does \
+             not read"
+        );
         kernels
     }
 
@@ -185,11 +233,17 @@ mod tests {
 
         // CMSIS-NN's int16 kernels are its `_s16` ones, which it selects only with `INT16`.
         let mut int16 = gated_rust_kernels("int16");
-        for (_, text) in sources("nanoglia-cmsis-nn/src") {
+        for (path, text) in sources("nanoglia-cmsis-nn/src") {
+            let mut has_int16_kernel = false;
             for literal in text.split('"').filter(|s| s.starts_with("cmsis-nn/")) {
                 if literal.ends_with("_s16") {
                     int16.insert(literal.to_owned());
+                    has_int16_kernel = true;
                 }
+            }
+            // The file that names an int16 kernel is the one that selects it, behind `INT16`.
+            if has_int16_kernel {
+                assert!(text.contains("crate::INT16"), "{}", path.display());
             }
         }
         let listed: BTreeSet<String> = INT16_KERNELS.iter().map(|name| name.to_string()).collect();

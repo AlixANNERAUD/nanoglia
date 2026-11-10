@@ -9,9 +9,9 @@ features. The sizes this saves on a Cortex-M4F firmware are in
 You need the `.tflite` files of every model the firmware will load. A
 model that uses an operator you left out fails to load.
 
-## 1. List the operators of your models
+## 1. Get the features from `nanoglia check`
 
-Run `nanoglia check` on every model of the firmware at once
+Run `nanoglia check` on every model the firmware loads, in one command
 ([Check whether a model runs](check-whether-a-model-runs.md)); from a
 clone of the repository, for the keyword spotting model alone:
 
@@ -19,8 +19,8 @@ clone of the repository, for the keyword spotting model alone:
 cargo run -p nanoglia-tools -- check testdata/mlperf-tiny/kws_ref_model.tflite
 ```
 
-The `operator` column names the operator of each line, and the `kernel`
-column the kernel that runs it, which starts with its backend:
+Each line of the table is an operator of the model, with the kernel
+that runs it:
 
 ```text
  #  operator              inputs                    outputs          kernel
@@ -33,34 +33,25 @@ column the kernel that runs it, which starts with its backend:
 12  SOFTMAX v2            int8[1,12]                int8[1,12]       cmsis-nn/softmax_s8
 ```
 
-This model uses six operators: `CONV_2D`, `DEPTHWISE_CONV_2D`,
-`AVERAGE_POOL_2D`, `RESHAPE`, `FULLY_CONNECTED` and `SOFTMAX`. The
-output ends with the features that follow from them (steps 2 and 3), as
-a dependency to paste:
+The output ends with the dependency of a firmware that runs the model
+with these kernels, and links nothing else:
 
 ```text
 Cargo features of a firmware that runs this model with these kernels, for its Cargo.toml:
 nanoglia = { version = "0.2.0", default-features = false, features = ["cmsis-nn", "kernels", "op-average-pool-2d", "op-conv-2d", "op-depthwise-conv-2d", "op-fully-connected", "op-reshape", "op-softmax"] }
 ```
 
-With several models (`check a.tflite b.tflite`), the last line takes
-the union of them all. (Tool output from a Linux aarch64 computer on
-2026-11-10, on top of commit `d98b750`.) The next two steps say where
-each feature comes from.
+Paste it into the `[dependencies]` of your firmware, in place of your
+`nanoglia` line. With several models (`check a.tflite b.tflite`), the
+last line of the output is the one of a firmware that runs them all.
+(Tool output from a Linux aarch64 computer on 2026-11-10, on top of
+commit `d98b750`.)
 
-## 2. Name their features
+## 2. Understand the features, or write them by hand
 
-The feature of an operator is its name in lower case, with dashes in
-place of underscores, after `op-`: `CONV_2D` gives `op-conv-2d`,
-`RELU_N1_TO_1` gives `op-relu-n1-to-1`. In a program,
-`BuiltinOp::feature()` returns it. The table of
-[Cargo features](../reference/features.md#operator-features) lists them
-all.
-
-## 3. Turn the default features off and list yours
-
-The default features include `all-ops`, every operator. Turn them off
-and name the backends, the types and the operators:
+The line of step 1 turns the default features off, since they include
+`all-ops`, every operator, and names the backends, the types and the
+operators. The same dependency, one feature per line:
 
 ```toml
 [dependencies]
@@ -76,18 +67,23 @@ nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features 
 ] }
 ```
 
-- **Backends.** Keep the backends of the `kernel` column: `cmsis-nn`
-  for `cmsis-nn/...`, `kernels` for `rust/...`, and `esp-nn` if you use
-  it. An operator feature reaches every backend you enable.
+- **Backends.** The backends of the `kernel` column: `cmsis-nn` for
+  `cmsis-nn/...`, `kernels` for `rust/...`, and `esp-nn` for
+  `esp-nn/...`. An operator feature reaches every backend you enable.
 - **Types.** The model above is int8, so `float` and `int16` are left
-  out. Add `float` if a model computes in float32 and `int16` if it is
-  a 16x8 model: an operator feature covers every type, but its float32
-  and int16 kernels are only built with these features
+  out. A float32 model needs `float` and a 16x8 model `int16`: an
+  operator feature covers every type, but its float32 and int16 kernels
+  are only built with these features
   ([Cargo features](../reference/features.md)). Some operators run these
-  types without them (the Rust `ADD` on f32, `RESHAPE` on any type):
+  types without them (the Rust `ADD` on f32, `RESHAPE` on any type), so
   `nanoglia check` names `float` or `int16` only when a kernel it
   selected needs it.
-- **Operators.** One `op-*` feature per operator of step 1.
+- **Operators.** One `op-*` feature per operator of the table: its name
+  in lower case, with dashes in place of underscores, after `op-`.
+  `CONV_2D` gives `op-conv-2d`, `RELU_N1_TO_1` gives `op-relu-n1-to-1`;
+  in a program, `BuiltinOp::feature()` returns it. The table of
+  [Cargo features](../reference/features.md#operator-features) lists
+  them all.
 
 `examples/nano33ble/Cargo.toml` is this configuration, and
 `examples/train-to-device/Cargo.toml` the one of the gesture classifier
@@ -102,7 +98,7 @@ cmake -S crates/nanoglia-c -B build-firmware -DNANOGLIA_CARGO_TARGET=thumbv7em-n
       "-DNANOGLIA_OPERATORS=CONV_2D;DEPTHWISE_CONV_2D;AVERAGE_POOL_2D;RESHAPE;FULLY_CONNECTED;SOFTMAX"
 ```
 
-## 4. Check that your models still load
+## 3. Check that your models still load
 
 Load every model with the new features before flashing: in a host test
 of your crate, or with the tool built with the same features, which
@@ -130,7 +126,7 @@ which names the operator ([Errors](../reference/errors.md)); it never
 panics. `BuiltinOp(opcode).name()` and `.feature()` give its name and
 the feature to add.
 
-## 5. Measure
+## 4. Measure
 
 Compare the sizes before and after:
 

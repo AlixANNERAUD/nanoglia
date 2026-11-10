@@ -347,12 +347,22 @@ fn expected(backends_and_types: &[&str], operators: &[&str]) -> Vec<String> {
     features
 }
 
+/// The requirement of a dependency on `version`: `major.minor` before 1.0, `major` from 1.0 (the
+/// tool's own function has a unit test of its own).
+fn requirement(version: &str) -> String {
+    let mut parts = version.split('.');
+    match (parts.next().unwrap(), parts.next()) {
+        ("0", Some(minor)) => format!("0.{minor}"),
+        (major, _) => major.to_owned(),
+    }
+}
+
 /// The dependency line of a firmware with `features`.
 fn dependency(features: &[String]) -> String {
     let quoted: Vec<String> = features.iter().map(|f| format!("\"{f}\"")).collect();
     format!(
         "nanoglia = {{ version = \"{}\", default-features = false, features = [{}] }}",
-        nanoglia::VERSION,
+        requirement(nanoglia::VERSION),
         quoted.join(", ")
     )
 }
@@ -491,11 +501,12 @@ fn several_models_and_the_firmware_that_runs_them_all() {
         stdout.starts_with(&format!("{alone}\nmodel: {conv} (")),
         "{stdout}"
     );
+    // The f32 convolution runs, and gets its line, only with `float`.
     assert_eq!(
         stdout
             .matches("\nCargo features of a firmware that runs this model")
             .count(),
-        2
+        1 + usize::from(cfg!(feature = "float"))
     );
     if !cfg!(feature = "float") {
         assert_eq!(status, 1);
@@ -509,9 +520,18 @@ fn several_models_and_the_firmware_that_runs_them_all() {
     let mut operators = KWS_OPERATORS.to_vec();
     operators.sort();
     let features = expected(&["cmsis-nn", "kernels", "float"], &operators);
+    // Keeping both loaded takes the arenas of both: `--ram` does not check that sum.
+    let arena = |model: &str| {
+        check_json(model, &[]).1["memory"]["arena_bytes"]
+            .as_u64()
+            .unwrap()
+    };
+    let total = arena(KWS) + arena(CONV_F32);
     assert!(
         stdout.ends_with(&format!(
-            "\n\nCargo features of a firmware that runs these 2 models, for its Cargo.toml:\n{}\n",
+            "\n\nMemory to keep these 2 models loaded at once, each graph with one execution \
+             context: {total} bytes\n(the sum of their arena_bytes(1); --ram checks each model \
+             alone).\nCargo features of a firmware that runs these 2 models, for its Cargo.toml:\n{}\n",
             dependency(&features)
         )),
         "{stdout}"
@@ -525,6 +545,7 @@ fn several_models_and_the_firmware_that_runs_them_all() {
     assert_eq!(models[0], check_json(KWS, &[]).1);
     assert_eq!(models[1], check_json(CONV_F32, &[]).1);
     assert_eq!(json["passes"], true);
+    assert_eq!(json["arena_bytes"], total);
     assert_eq!(json["firmware"]["features"], serde_json::json!(features));
     assert_eq!(json["firmware"]["dependency"], dependency(&features));
 
@@ -543,6 +564,14 @@ fn several_models_and_the_firmware_that_runs_them_all() {
     assert_eq!(status, 1);
     let json: Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["passes"], false);
+    assert_eq!(json["arena_bytes"], Value::Null);
     assert_eq!(json["firmware"], Value::Null);
     assert_eq!(json["models"][1]["runs"], false);
+
+    // A model that runs but exceeds the budget still gets its features: the budget is a
+    // property of the device, not of the firmware.
+    let (status, stdout, _) = nanoglia(&["check", kws, "--ram", "16k"]);
+    assert_eq!(status, 1);
+    assert!(stdout.contains("\nDOES NOT FIT: "));
+    assert!(stdout.contains("\nCargo features of a firmware that runs this model"));
 }
