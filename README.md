@@ -66,11 +66,11 @@ the table. `nanoglia` keeps the model a file and the firmware a plain Rust binar
 
 ## Quick start
 
-Until the first crates.io release, depend on the repository:
+Add [`nanoglia`](https://crates.io/crates/nanoglia) from crates.io:
 
 ```toml
 [dependencies]
-nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", features = ["alloc"] }
+nanoglia = { version = "0.3", features = ["alloc"] }
 ```
 
 Run the MLPerf Tiny keyword-spotting model on your computer:

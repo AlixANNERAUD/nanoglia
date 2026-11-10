@@ -27,7 +27,7 @@ memory (bytes):
 
 (MLPerf Tiny keyword spotting, on a Linux aarch64 computer, 2026-11-10; the lines cut here and the closing notes are in the guide.)
 
-Run it from a clone of the repository (`mise run submodules` first) with `cargo run -p nanoglia-tools -- check <MODEL.tflite>`, or, from the tool's first release on crates.io, install the `nanoglia` command with `cargo install nanoglia-tools` (a C compiler is needed: the tool builds CMSIS-NN and ESP-NN).
+Install the `nanoglia` command from crates.io with `cargo install nanoglia-tools` (a C compiler is needed: the tool builds CMSIS-NN and ESP-NN), then run `nanoglia check <MODEL.tflite>`. From a clone of the repository (`mise run submodules` first), `cargo run -p nanoglia-tools -- check <MODEL.tflite>` runs it without installing it.
 
 ## Usage
 
@@ -85,4 +85,4 @@ Only the nanoglia crates: the arguments (one command, a few options) and the JSO
 
 ## Versions
 
-The tool is released with the libraries, under its own version number, and checks with the kernels of the `nanoglia` release it was built on (its `nanoglia` dependency on crates.io). Use a release of the tool built on the `nanoglia` version of your firmware.
+The tool is released with the libraries, under its own version number, and checks with the kernels of the `nanoglia` release it was built on (its `nanoglia` dependency on crates.io). Use a release of the tool built on the `nanoglia` version of your firmware: `nanoglia-tools` 0.2 is built on `nanoglia` 0.3, and 0.1 on `nanoglia` 0.2 (before the `op-*` features). Install a given release with `cargo install nanoglia-tools --version <VERSION>`.

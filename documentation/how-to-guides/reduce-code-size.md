@@ -54,7 +54,7 @@ and name the backends, the types and the operators:
 
 ```toml
 [dependencies]
-nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features = false, features = [
+nanoglia = { version = "0.3", default-features = false, features = [
   "cmsis-nn",
   "kernels",
   "op-average-pool-2d",

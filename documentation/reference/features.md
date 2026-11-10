@@ -47,7 +47,7 @@ The full matrix is in [Supported operators](supported-operators.md).
 For int8-only models, such as the MLPerf Tiny models, use:
 
 ```toml
-nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features = false, features = ["cmsis-nn", "kernels", "all-ops"] }
+nanoglia = { version = "0.3", default-features = false, features = ["cmsis-nn", "kernels", "all-ops"] }
 ```
 
 CI runs the library tests and the memory tests in this configuration
@@ -83,7 +83,7 @@ backends, the types and the operators
 measured sizes in [Memory](memory.md#code-size)):
 
 ```toml
-nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features = false, features = [
+nanoglia = { version = "0.3", default-features = false, features = [
   "cmsis-nn", "kernels",
   "op-conv-2d", "op-depthwise-conv-2d", "op-average-pool-2d", "op-reshape", "op-fully-connected", "op-softmax",
 ] }
