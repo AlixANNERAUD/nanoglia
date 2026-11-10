@@ -94,6 +94,9 @@ jobs:
       # Checks the header against cbindgen, builds the library with CMake, runs the C tests and
       # the example with CTest, then builds the example against the installed package.
       - run: mise run test-c
+      # The Rust and C programs of the train-and-deploy tutorial, on the committed reference model:
+      # every test vector must give the bytes LiteRT computed.
+      - run: mise run example-train-to-device
 
   cross:
     name: Cross (${{ matrix.name }})
@@ -242,9 +245,37 @@ jobs:
           path: target/pytorch-export
           if-no-files-found: ignore
 
+  train-to-device:
+    name: Train to device (PyTorch and Keras, int8)
+    # litert-torch's converter ships x86_64 Linux wheels, not aarch64 ones.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: train-to-device
+      # The train-and-deploy tutorial from start to finish: trains the gesture classifier of
+      # examples/train-to-device with PyTorch and with Keras (CPU), exports each to an int8 LiteRT
+      # model with test vectors computed by LiteRT's reference kernels, then runs the Rust and C
+      # programs on both. Fails below 90 % accuracy, on a float operator, or on an output that
+      # differs from LiteRT's. The models are not committed: they change with the frameworks.
+      - run: mise run train-to-device
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: train-to-device
+          path: |
+            target/train-to-device/pytorch
+            target/train-to-device/keras
+          if-no-files-found: ignore
+
   # The one check branch protection requires (with `pr-title`, from its own workflow): add a
-  # job to `needs` to make it required. `fuzz` and `pytorch-export` are left out on purpose:
-  # the first is random, the second depends on upstream converters (#32).
+  # job to `needs` to make it required. `fuzz`, `pytorch-export` and `train-to-device` are left
+  # out on purpose: the first is random, the others depend on upstream frameworks and
+  # converters (#32).
   required:
     name: Required checks
     if: always()
