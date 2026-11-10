@@ -1,0 +1,22 @@
+[project]
+name = "nanoglia-hardware"
+version = "0.0.0"
+description = "Runs the golden cases of testdata/ on a board over its USB serial port (or on its emulated runner), compares the outputs as crates/nanoglia/tests/golden.rs does and records the time of each operator."
+requires-python = ">=3.12"
+dependencies = [
+    "pyserial>=3.5",
+    "numpy>=2",
+    # The emulated runner, and the reading of the firmware images.
+    "unicorn>=2.1,<2.2",
+    "pyelftools>=0.32",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

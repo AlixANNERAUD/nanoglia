@@ -1,0 +1,17 @@
+[package]
+name = "nanoglia-hardware-emulated"
+description = "The runner of the golden cases behind memory-mapped registers, for the Unicorn engine: what tools/ drives in place of a board."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nanoglia-hardware-runner.workspace = true
+cortex-m-rt.workspace = true
+
+[lints]
+workspace = true

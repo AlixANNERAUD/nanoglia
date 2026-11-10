@@ -1,0 +1,52 @@
+# Runs the golden cases of testdata/ on a real board, over its USB serial port, and times each
+# operator there (`mise run test-hardware-nano33ble`, documentation/how-to-guides/
+# run-the-golden-cases-on-a-board.md). A workspace of its own, outside the library workspace: the
+# firmwares only build for bare-metal targets and depend on a HAL.
+#
+# - `runner`: the protocol and the code that runs a case, shared by every front end; tested on the
+#   host with an in-memory link.
+# - `nano33ble`: the firmware of the Arduino Nano 33 BLE: USB serial port, clock, cycle counter,
+#   watchdog, flash, reset into the bootloader.
+# - `emulated`: the same runner behind memory-mapped registers, for the Unicorn engine: what CI
+#   runs in place of the board.
+# - `tools/`: the host tool (a uv project), which talks to the three of them.
+
+[workspace]
+resolver = "3"
+members = ["runner", "nano33ble", "emulated"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.89"
+publish = false
+license = "Apache-2.0"
+authors = ["Alix ANNERAUD <alix@anneraud.fr>"]
+repository = "https://github.com/AlixANNERAUD/nanoglia"
+
+[workspace.dependencies]
+nanoglia-hardware-runner = { path = "runner" }
+cortex-m = "0.7.7"
+cortex-m-rt = "0.7.5"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"
+
+[profile.release]
+# Speed, as an application that cares about inference time would build: the times measured on the
+# board are those of this profile, which the firmware reports with its version.
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = false
+# usize is 32 bits on the targets: catch an overflow the 64-bit host would not see. The panic
+# handler reports it as a failure of the case.
+overflow-checks = true
+
+[profile.dev]
+# The kernels are far too slow unoptimized (host tests of the runner).
+opt-level = 1

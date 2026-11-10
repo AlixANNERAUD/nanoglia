@@ -26,13 +26,17 @@ Other directories: `fuzz/` (cargo-fuzz target `parse`, own workspace), `examples
 (firmware for the Arduino Nano 33 BLE, own workspace), `examples/train-to-device/` (the code of the
 train-and-deploy tutorial: training scripts as a uv project, a Rust program with its own workspace,
 a C program, one committed reference model; `mise run example-train-to-device`, `train-to-device`), `emulation/` (test-runner firmware and its
-Unicorn host for `mise run test-emulated`, own workspace and uv project), `tools/oracle/` (uv project generating
+Unicorn host for `mise run test-emulated`, own workspace and uv project), `hardware/` (what runs the golden cases on a real
+board over its USB serial port, own workspace and uv project: `runner`, the protocol and the code that runs a case, shared
+by `nano33ble`, the firmware of the Arduino Nano 33 BLE, and `emulated`, the same runner under Unicorn; `tools/`, the host
+tool that flashes, runs, compares and writes the results), `tools/oracle/` (uv project generating
 `testdata/` with LiteRT's reference kernels), `tools/check-no-malloc.sh`, `testdata/` (golden
 cases, see `testdata/README.md`).
 
 ## Invariants
 
-- `#![no_std]` everywhere except the host tool `nanoglia-tools`; no HAL, RTOS or SDK dependency.
+- `#![no_std]` everywhere except the host tool `nanoglia-tools`; no HAL, RTOS or SDK dependency
+  (in the libraries: the board firmware of `hardware/nano33ble`, a test bench, uses embassy-nrf).
   The only C code is CMSIS-NN and ESP-NN (built without `ESP_PLATFORM`), pure C/assembly compiled
   with `cc`.
 - **Every byte of dynamic memory comes from the allocator the caller passes**
@@ -79,8 +83,9 @@ do not run several builds in the same target directory at once.
 
 - `crates/nanoglia/tests/golden.rs` runs every case of `testdata/` end to end.
   `testdata/pending.json` lists the cases expected to fail, with the reason; a listed case that
-  passes fails the test. `emulation/tools/run.py` reads the same list and repeats golden.rs's
-  comparison and kernel checks: change both together.
+  passes fails the test. `emulation/tools/golden.py` reads the same list and repeats golden.rs's
+  comparison and kernel checks, for `emulation/tools/run.py` and `hardware/tools`: change both
+  together.
 - `mise run oracle` regenerates `testdata/` (deterministic; LiteRT `BUILTIN_REF`). LiteRT's
   int8 and 16x8 FULLY_CONNECTED requantize in floating point, unlike TFLite Micro (issue #1).
 - `mise run test-wasip1` runs the whole suite compiled to wasm32-wasip1 under wasmtime;
@@ -96,11 +101,30 @@ do not run several builds in the same target directory at once.
   (an unaligned `ldm` on a Cortex-M4 or M33 runs unnoticed), nothing has run on hardware yet (issue #2), and
   CMSIS-NN's Helium paths and ESP-NN's ESP32-S3 kernels have run nowhere. `mise run cross-esp32s3` builds the latter (toolchain:
   `mise run install-esp`). Say what you actually checked.
+- `mise run test-hardware` tests `hardware/` without a board: the runner on the host behind a
+  link in memory, then built for Cortex-M4F and driven by the host tool under Unicorn through
+  every golden case, a panic, a fault, a hang and a firmware that crashes while starting; the
+  host tool against a simulated device (`--dry-run`). `mise run build-hardware-nano33ble` builds
+  the two images of the Nano 33 BLE (the MLPerf Tiny models are linked in and run from flash:
+  only their cases are timed; the single-operator cases are received into RAM and check results
+  only). `mise run test-hardware-nano33ble` flashes them with Arduino's `bossac` and runs the
+  cases on a board plugged in over USB: **it has never run**, and neither has anything in
+  `hardware/nano33ble/src/main.rs` (USB, clock, cycle counter, watchdog, resets); the how-to
+  "run the golden cases on a board" lists it. Keep the hardware-only code there, thin, and
+  everything else in `runner` or the host tool, where it is tested. The firmware has no code
+  that erases or writes a page of flash; `embassy_nrf::init` holds a UICR routine that the
+  configuration of the firmware keeps from writing (`reset-pin-as-gpio`, debug port and regulator
+  left alone): keep it so. Every crash handler counts the crash itself (`boot::crash`) and resets
+  into the bootloader at the third in a row; the waits of the host tool are derived from the
+  constants of the firmware (`WATCHDOG_S`, `MAX_FAILED_BOOTS`, `NO_CONTACT_S` in
+  `protocol.py`): change them together. The protocol is described in `hardware/runner/src/lib.rs` and `frame.rs`, and
+  mirrored in `hardware/tools/nanoglia_hardware/protocol.py` and `simulated.py`: change them
+  together. Do not write a time or a result as measured on a board unless it was.
 
 ## CI and releases
 
 `.github/workflows/ci.yml` mirrors the mise tasks (fmt, clippy, tests, C API, cross builds, wasm,
-no-malloc, firmware, cargo-deny, MSRV, docs, fuzz). `coverage.yml` uploads `mise run coverage`
+no-malloc, firmware, the board runner without its board, cargo-deny, MSRV, docs, fuzz). `coverage.yml` uploads `mise run coverage`
 to Codecov. `release.yml` runs release-plz (`release-plz.toml`): a release PR with versions and
 changelogs from the commit messages, then publication. `pr-title.yml` checks PR titles.
 

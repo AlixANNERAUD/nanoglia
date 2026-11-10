@@ -170,9 +170,10 @@ quantization, which the reference kernel rejects (as TensorFlow Lite Micro does)
 ## Pending cases
 
 `pending.json` lists the cases expected to fail for now, each with the
-reason (`{"case": "<path under testdata/>", "reason": "..."}`). Both
-runners read it: `crates/nanoglia/tests/golden.rs` on the host and
-`emulation/tools/run.py` under the emulator. A listed case that passes
+reason (`{"case": "<path under testdata/>", "reason": "..."}`). Every
+runner reads it: `crates/nanoglia/tests/golden.rs` on the host, and
+`emulation/tools/golden.py` for `emulation/tools/run.py` under the
+emulator and `hardware/tools` on a board. A listed case that passes
 fails the run, so the list never goes stale.
 
 ## MLPerf Tiny golden outputs
