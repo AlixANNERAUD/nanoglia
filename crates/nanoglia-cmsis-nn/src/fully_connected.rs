@@ -15,7 +15,12 @@
 //! `arm_fully_connected_s16`, like in TensorFlow Lite Micro: per-tensor weights only (TFLite
 //! Micro refuses per-channel int16 layers), requantization shifts below 8. int32 biases are
 //! refused: LiteRT picks the bias type from the `quantized_bias_type` option, which nanoglia does
-//! not decode, and reads the bias as int64 by default.
+//! not decode, and reads the bias as int64 by default. CMSIS-NN's `arm_nn_requantize_s64`
+//! truncates `acc * multiplier >> (14 - shift)` to 32 bits before its last rounding shift, where
+//! TFLite keeps 64 bits (issue #38): the layer is claimed only when the largest possible
+//! accumulator of each output (`2^15 × Σ|weight| + |bias|`, see
+//! `common::s16_accumulators_exact`) keeps that value in an `int32_t`, and a bias computed at run
+//! time is refused. The Rust backend runs the refused layers.
 
 use nanoglia_cmsis_nn_sys as sys;
 use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
@@ -35,6 +40,10 @@ pub static KERNEL: FnKernel = FnKernel {
 };
 
 /// The 16x8 `FULLY_CONNECTED` kernel.
+/// Products of a 16x8 row that CMSIS-NN's DSP and Helium paths sum in an `int32_t`
+/// (`MAX_COL_COUNT`).
+const S16_INT32_COLUMNS: usize = 512;
+
 pub(crate) static KERNEL_S16: FnKernel = FnKernel {
     name: "cmsis-nn/fully_connected_s16",
     plan,
@@ -132,13 +141,41 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
         return None;
     }
     if int16 {
+        if per_channel {
+            return None;
+        }
         let real = quant::fully_connected_effective_scale(
             input_scale,
             common::weight_scale(filter, 0),
             output_scale,
         );
-        if per_channel || quant::quantize_multiplier(real).shift >= 8 {
-            return None;
+        // Shifts below 8, and the workaround for CMSIS-NN v8.0.0's 32-bit requantization
+        // intermediate (issue #38, see `common::s16_accumulators_exact`): remove the accumulator
+        // bound once a fixed CMSIS-NN release is vendored.
+        let m = quant::quantize_multiplier(real);
+        let (channels, taps) = (output_depth as usize, accum_depth as usize);
+        // Without constant weights or bias, every row has the same bound: check it once (the row
+        // count is not bounded by the size of the model).
+        let rows = if filter.data.is_none() && bias.is_none() {
+            1
+        } else {
+            channels
+        };
+        common::s16_accumulators_exact(filter, bias, rows, taps, |c, t| c * taps + t, |_| m)?;
+        // CMSIS-NN's DSP and Helium paths (`arm_nn_vec_mat_mult_t_s16`) sum the first
+        // `MAX_COL_COUNT` (512) products of a row in an `int32_t`. The sum overflows only when the
+        // 512 weights are all -128 (inputs at -32768: 512 × 2^22 = 2^31); refuse such rows, and
+        // weights computed at run time. Remove with the bound above if a fixed CMSIS-NN
+        // release accumulates in 64 bits.
+        if taps >= S16_INT32_COLUMNS {
+            let weights = filter.data?;
+            for c in 0..channels {
+                let start = c.checked_mul(taps)?;
+                let first = weights.get(start..start.checked_add(S16_INT32_COLUMNS)?)?;
+                if first.iter().all(|&w| w as i8 == i8::MIN) {
+                    return None;
+                }
+            }
         }
     }
     let (act_min, act_max) =

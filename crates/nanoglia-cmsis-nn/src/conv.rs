@@ -13,7 +13,13 @@
 //!   which nanoglia does not decode, and reads the bias as int64 by default;
 //! - CMSIS-NN accumulates some outputs in 32 bits before adding the bias, so the filter may have
 //!   at most 511 values per output channel (`|int8 * int16| <= 2^22`);
-//! - requantization shifts must stay below 8 (TFLite's 64-bit `MultiplyByQuantizedMultiplier`).
+//! - requantization shifts must stay below 8 (TFLite's 64-bit `MultiplyByQuantizedMultiplier`);
+//! - CMSIS-NN's `arm_nn_requantize_s64` truncates `acc * multiplier >> (14 - shift)` to 32 bits
+//!   before its last rounding shift, where TFLite keeps 64 bits (issue #38): the kernel is claimed
+//!   only when the largest possible accumulator of each output channel
+//!   (`2^15 × Σ|weight| + |bias|`, see `common::s16_accumulators_exact`) keeps that value in an
+//!   `int32_t`. A bias computed at run time cannot be bounded and is refused; there is no Rust
+//!   16x8 convolution to fall back to, so such a model does not load.
 //!
 //! CMSIS-NN v8.0.0 advances the bias pointer of grouped convolutions even when it is null (and then
 //! reads through it), so a grouped convolution without bias gets an all-zero bias in its
@@ -128,18 +134,24 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
         if filter_h * filter_w * filter_c > S16_MAX_FILTER_VALUES {
             return None;
         }
-        let shifts_ok = (0..out_c as usize).all(|c| {
-            let filter_scale = common::weight_scale(filter, c);
-            let m = quant::quantize_multiplier(quant::conv_effective_scale(
-                input_scale,
-                filter_scale,
-                output_scale,
-            ));
-            m.shift < 8
-        });
-        if !shifts_ok {
-            return None;
-        }
+        // Shifts below 8, and the workaround for CMSIS-NN v8.0.0's 32-bit requantization
+        // intermediate (issue #38, see `common::s16_requantize_exact`): remove the accumulator
+        // bound once a fixed CMSIS-NN release is vendored.
+        let (channels, taps) = (out_c as usize, (filter_h * filter_w * filter_c) as usize);
+        common::s16_accumulators_exact(
+            filter,
+            bias,
+            channels,
+            taps,
+            |c, t| c * taps + t,
+            |c| {
+                quant::quantize_multiplier(quant::conv_effective_scale(
+                    input_scale,
+                    common::weight_scale(filter, c),
+                    output_scale,
+                ))
+            },
+        )?;
     }
 
     let in_range = |v: i32| (1..=i16::MAX as i32).contains(&v);

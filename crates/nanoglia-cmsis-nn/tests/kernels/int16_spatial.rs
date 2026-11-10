@@ -376,6 +376,35 @@ fn depthwise_16x8_accumulator_limit() {
         .output(&output);
     assert_eq!(at_limit.kernel_name(), "cmsis-nn/depthwise_conv2d_s16");
     assert_eq!(at_limit.run_i16(), [32767]);
+    // The bound comes from the constant weights: with a weight of 1, the largest accumulator is
+    // `2^15 + |bias|`.
+    let small = Tensor::weights(&[1, 1, 1, 1], &[1], &[0.5], 3);
+    let with_bias = |bias: &Tensor| {
+        Op::new(BuiltinOp::DEPTHWISE_CONV_2D, options)
+            .input(&input)
+            .input(&small)
+            .input(bias)
+            .output(&output)
+            .selected()
+    };
+    assert!(!with_bias(&Tensor::bias_i64(&[(1 << 31) - 1 - (1 << 15)])));
+    let limit = Tensor::bias_i64(&[(1 << 31) - 2 - (1 << 15)]);
+    assert!(with_bias(&limit));
+    let op = Op::new(BuiltinOp::DEPTHWISE_CONV_2D, options)
+        .input(&input)
+        .input(&small)
+        .input(&limit)
+        .output(&output);
+    assert_eq!(op.run_i16(), [32767]);
+    // Weights computed at run time count as -128.
+    let mut runtime = Tensor::weights(&[1, 1, 1, 1], &[1], &[0.5], 3);
+    runtime.constant = false;
+    let op = Op::new(BuiltinOp::DEPTHWISE_CONV_2D, options)
+        .input(&input)
+        .input(&runtime)
+        .input(&limit)
+        .output(&output);
+    assert!(!op.selected());
 }
 
 /// An int16 pooling test case.

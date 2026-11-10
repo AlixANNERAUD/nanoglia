@@ -59,7 +59,7 @@ int64 bias.
 | Operator | Types | Backend: kernel | Feature |
 | --- | --- | --- | --- |
 | `CONV_2D` | int8 | `cmsis-nn/conv2d_s8` | — |
-| | 16x8 | `cmsis-nn/conv2d_s16` | int16 |
+| | 16x8, constant bias, bounded accumulators | `cmsis-nn/conv2d_s16` | int16 |
 | | f32 | `rust/conv_2d_f32` | float |
 | `TRANSPOSE_CONV` | int8, configurations CMSIS-NN computes exactly | `cmsis-nn/transpose_conv_s8` | — |
 | | int8, otherwise | `rust/transpose_conv_s8` | — |
@@ -68,7 +68,7 @@ int64 bias.
 | | 16x8, constant bias, bounded accumulators | `cmsis-nn/depthwise_conv2d_s16` | int16 |
 | | f32 | `rust/depthwise_conv_2d_f32` | float |
 | `FULLY_CONNECTED` | int8 | `cmsis-nn/fully_connected_s8` | — |
-| | 16x8, per-tensor weights, small shift | `cmsis-nn/fully_connected_s16` | int16 |
+| | 16x8, per-tensor weights, small shift, constant bias, bounded accumulators | `cmsis-nn/fully_connected_s16` | int16 |
 | | 16x8, otherwise | `rust/fully_connected_16x8` | int16 |
 | | f32 | `rust/fully_connected_f32` | float |
 | `AVERAGE_POOL_2D` | int8 | `cmsis-nn/average_pool2d_s8` | — |
@@ -190,9 +190,13 @@ them.
   bias as int64 by default and nanoglia does not decode the
   `quantized_bias_type` option), at most 511 filter values per output
   channel (`height × width × input channels`; CMSIS-NN accumulates some
-  outputs in 32 bits before adding the bias), and a requantization shift
-  below 8 for every channel.
+  outputs in 32 bits before adding the bias), a requantization shift
+  below 8 for every channel, and a constant bias (or none) with bounded
+  accumulators, as for [`depthwise_conv2d_s16`](#depthwise_conv_2d).
 - `rust/conv_2d_f32`: grouped convolutions included.
+
+int16 convolutions outside these conditions are unsupported: there is no
+Rust kernel for them, so the model does not load.
 
 ### TRANSPOSE_CONV
 
@@ -241,15 +245,19 @@ input, int8 weights) are refused.
   LiteRT's reference result exactly:
   - a requantization shift below 8 for every channel;
   - a constant bias (or none), small enough that the largest possible
-    accumulator of each channel (`height × width × 2^22`, plus the
-    magnitude of its bias), multiplied by the 16-bit multiplier CMSIS-NN
-    derives from the channel's multiplier, stays below
-    `2^min(45 - shift, 62) - 2^(14 - shift)`. CMSIS-NN keeps
-    `product >> (14 - shift)` in an `int32_t` and adds 1 to it, where
-    TFLite keeps 64 bits; beyond this bound, saturated
-    outputs can take the wrong sign. For example, a channel whose shift is
-    -9 (effective scale between 2^-10 and 2^-9) accepts accumulators up to
-    about 2^39.
+    accumulator of each channel, `2^15 × Σ|weight| + |bias|` over the
+    channel's constant weights (each weight computed at run time counts
+    as 128), multiplied by the 16-bit multiplier CMSIS-NN derives from the
+    channel's multiplier, stays below
+    `2^min(45 - shift, 62) - 2^(14 - shift)`, with the accumulator
+    itself below `2^62`.
+    CMSIS-NN v8.0.0 keeps `product >> (14 - shift)` in an `int32_t` and
+    adds 1 to it, where TFLite keeps 64 bits
+    ([#38](https://github.com/AlixANNERAUD/nanoglia/issues/38)); beyond
+    this bound, saturated outputs can take the wrong sign. For example, a
+    channel whose shift is -9 (effective scale between 2^-10 and 2^-9)
+    accepts accumulators up to about 2^39. The same bound applies to
+    `conv2d_s16` and `fully_connected_s16`.
 
   Depth multiplier 1, no dilation and fewer than 512 filter values per
   channel run `arm_depthwise_conv_fast_s16` (its DSP or Helium code on
@@ -274,7 +282,12 @@ contract (`FullyConnectedOptions.quant_spec`) is refused by the reader.
   fully-connected kernel.
 - `cmsis-nn/fully_connected_s16`: per-tensor weights only (as TensorFlow
   Lite Micro), int64 bias, input and output zero points 0, requantization
-  shift below 8.
+  shift below 8, and a constant bias (or none) with bounded accumulators
+  (`2^15 × Σ|weight| + |bias|` for each output), as for
+  [`depthwise_conv2d_s16`](#depthwise_conv_2d). With a depth of 512 or
+  more, the weights must be constant and no row may start with 512
+  weights of -128: CMSIS-NN's DSP and Helium code sums the first 512
+  products of a row in an `int32_t`, which those rows overflow.
 - `rust/fully_connected_16x8`: what `fully_connected_s16` refuses: weights
   per tensor or per channel (axis 0), int64 bias, zero points 0, shift up
   to 14.

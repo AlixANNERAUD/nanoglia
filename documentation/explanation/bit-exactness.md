@@ -151,9 +151,10 @@ TFLite. For example, CMSIS-NN's int16 softmax is not used (it does not
 clamp its result), int16 `ADD` and `SUB` with power-of-two scales are
 refused (TFLite runs another kernel, chosen by an option nanoglia does
 not decode), 16x8 layers with an int32 bias are refused (LiteRT would
-read the bias as int64), and the 16x8 `DEPTHWISE_CONV_2D` of CMSIS-NN is
-claimed only when its accumulators cannot overflow the 32-bit intermediate
-value of CMSIS-NN's requantization (TFLite keeps 64 bits). See [Supported operators](../reference/supported-operators.md).
+read the bias as int64), and the 16x8 `CONV_2D`, `DEPTHWISE_CONV_2D` and
+`FULLY_CONNECTED` of CMSIS-NN are claimed only when their accumulators
+cannot overflow the 32-bit intermediate value of CMSIS-NN's requantization
+(TFLite keeps 64 bits). See [Supported operators](../reference/supported-operators.md).
 
 ## Why TFLite and not ONNX
 

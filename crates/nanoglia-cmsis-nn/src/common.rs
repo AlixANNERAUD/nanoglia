@@ -4,7 +4,8 @@
 use core::ffi::c_void;
 
 use nanoglia_cmsis_nn_sys as sys;
-use nanoglia_core::quant;
+use nanoglia_core::le::LeSlice;
+use nanoglia_core::quant::{self, Multiplier};
 use nanoglia_core::{
     Activation, DataType, Detail, Dims, Error, OpDesc, Padding, Result, TensorDesc,
 };
@@ -239,4 +240,96 @@ pub(crate) fn dims_len(d: &sys::cmsis_nn_dims) -> i32 {
     d.n.saturating_mul(d.h)
         .saturating_mul(d.w)
         .saturating_mul(d.c)
+}
+
+/// The largest magnitude of an int16 activation with zero point 0 (`-32768`).
+const S16_MAX_INPUT: u128 = 1 << 15;
+
+/// The largest magnitude of an int8 weight (`-128`), assumed for weights computed at run time.
+const S8_MAX_WEIGHT: u128 = 1 << 7;
+
+/// Whether CMSIS-NN's `arm_nn_requantize_s64` computes TFLite's 64-bit
+/// `MultiplyByQuantizedMultiplier` for every accumulator of magnitude at most `max_acc`.
+///
+/// Workaround for CMSIS-NN v8.0.0, whose `arm_nn_requantize_s64` keeps
+/// `(acc * reduced_multiplier) >> (14 - shift)` in an `int32_t` before its last rounding shift,
+/// where TFLite keeps 64 bits: that intermediate value is twice the result, so it wraps once the
+/// result reaches `2^30` in magnitude and the output saturates to the wrong side
+/// (<https://github.com/AlixANNERAUD/nanoglia/issues/38>, fixed upstream by
+/// <https://github.com/ARM-software/CMSIS-NN/pull/267>). Remove this bound, and the 16x8 kernels'
+/// calls to [`s16_accumulators_exact`], once a CMSIS-NN release with the fix is vendored.
+///
+/// The product with the 16-bit multiplier must fit 62 bits (and the accumulator an `int64_t`), and
+/// its shift by `14 - shift` an `int32_t` to which CMSIS-NN can add 1. Shifts of 8 or more are
+/// refused (TFLite's 64-bit `MultiplyByQuantizedMultiplier` expects less).
+pub(crate) fn s16_requantize_exact(max_acc: u128, m: Multiplier) -> bool {
+    if m.shift >= 8 || max_acc >= 1 << 62 {
+        return false;
+    }
+    // `REDUCE_MULTIPLIER`: the Q31 multiplier rounded to Q15.
+    let reduced = if m.multiplier < 0x7fff_0000 {
+        (i64::from(m.multiplier) + (1 << 15)) >> 16
+    } else {
+        0x7fff
+    };
+    let Ok(reduced) = u128::try_from(reduced) else {
+        return false;
+    };
+    // CMSIS-NN computes `result = (int32_t)(product >> (14 - shift))`, then `(result + 1) >> 1`
+    // in `int32_t`: both stay in range when `|product| < 2^(45 - shift) - 2^(14 - shift)`, so
+    // that `product >> (14 - shift)` is at most `2^31 - 2`. `45 - shift` is at least 38 and
+    // `14 - shift` at least 7 (shift < 8); the product must also fit 62 bits.
+    let bits = (45 - i64::from(m.shift)).min(62) as u32;
+    let low = (14 - i64::from(m.shift)).min(63) as u32;
+    let limit = (1u128 << bits).saturating_sub(1u128 << low);
+    max_acc
+        .checked_mul(reduced)
+        .is_some_and(|product| product < limit)
+}
+
+/// Whether CMSIS-NN requantizes every accumulator of a 16x8 layer like TFLite (see
+/// [`s16_requantize_exact`]), from a bound on the accumulator of each output channel:
+/// `2^15 × Σ|weight| + |bias|`, the input values being in `-32768..=32767` (zero point 0;
+/// padding contributes 0).
+///
+/// Output channel `c` (of `channels`) has `taps` weights, at byte `weight_index(c, t)` of the
+/// filter for `t` in `0..taps`, the bias (if any) `c` and the multiplier `multiplier(c)`. Weights
+/// computed at run time count as `-128` each; a bias computed at run time cannot be bounded and
+/// is refused.
+pub(crate) fn s16_accumulators_exact(
+    filter: &TensorDesc<'_>,
+    bias: Option<&TensorDesc<'_>>,
+    channels: usize,
+    taps: usize,
+    weight_index: impl Fn(usize, usize) -> usize,
+    multiplier: impl Fn(usize) -> Multiplier,
+) -> Option<()> {
+    let bias = match bias {
+        Some(b) => Some(LeSlice::<i64>::new(b.data?)),
+        None => None,
+    };
+    let weights = filter.data;
+    if let Some(weights) = weights
+        && weights.len() != channels.checked_mul(taps)?
+    {
+        return None;
+    }
+    for c in 0..channels {
+        let weight_sum = match weights {
+            Some(weights) => (0..taps).try_fold(0u128, |sum, t| {
+                let w = *weights.get(weight_index(c, t))? as i8;
+                Some(sum + u128::from(w.unsigned_abs()))
+            })?,
+            None => u128::try_from(taps).ok()? * S8_MAX_WEIGHT,
+        };
+        let bias = match bias {
+            Some(values) => values.get(c)?.unsigned_abs(),
+            None => 0,
+        };
+        let max_acc = weight_sum * S16_MAX_INPUT + u128::from(bias);
+        if !s16_requantize_exact(max_acc, multiplier(c)) {
+            return None;
+        }
+    }
+    Some(())
 }
