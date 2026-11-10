@@ -1,0 +1,147 @@
+{
+ "format": 1,
+ "date": "2026-11-10T23:32:17+00:00",
+ "host_tool_revision": "2fd26df6bccf",
+ "device": "serial",
+ "what_is_measured": {
+  "correctness": "every case: the outputs against those LiteRT's reference kernels computed (testdata/), bit for bit unless the case has a tolerance",
+  "timing": "only the cases with \"timing\": true: the model is linked into the firmware and runs in place from flash, and the counter of the device is a clock. The cycles of the other cases are no performance figures."
+ },
+ "summary": {
+  "cases": 1,
+  "ok": 1,
+  "pending": 0,
+  "skipped": 0,
+  "failed": 0,
+  "timed": 1,
+  "exit_code": 0,
+  "problems": []
+ },
+ "firmware_images": [
+  {
+   "image": "as found on the board",
+   "firmware": "nanoglia-hardware-nano33ble 0.0.0",
+   "revision": "2fd26df6bccf",
+   "nanoglia": "0.2.0",
+   "build": "cmsis-nn kernels float int16 all-ops, thumbv7em-none-eabihf",
+   "opt_level": "3",
+   "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+   "board": "Arduino Nano 33 BLE (nRF52840, Cortex-M4F)",
+   "clock": "DWT cycle counter, core clock of 64 MHz from the 32 MHz crystal (HFXO)",
+   "settings": "instruction cache of the flash on (NVMC ICACHECNF)",
+   "counter_hz": 64000000,
+   "ram_store_bytes": 237152,
+   "models_in_flash": [
+    "kws_ref_model.tflite",
+    "pretrainedResnet_quant.tflite",
+    "ad01_int8.tflite"
+   ]
+  }
+ ],
+ "cases": [
+  {
+   "name": "mlperf-tiny/golden/kws_ref_model/sample_0",
+   "status": "ok",
+   "message": "",
+   "model": "testdata/mlperf-tiny/kws_ref_model.tflite",
+   "model_bytes": 53936,
+   "model_location": "flash",
+   "image": "as found on the board",
+   "timing": true,
+   "timing_note": "",
+   "operators": [
+    {
+     "index": 0,
+     "kernel": "cmsis-nn/conv2d_s8",
+     "cycles": 1676475,
+     "ms": 26.1949
+    },
+    {
+     "index": 1,
+     "kernel": "cmsis-nn/depthwise_conv2d_s8",
+     "cycles": 733297,
+     "ms": 11.4578
+    },
+    {
+     "index": 2,
+     "kernel": "cmsis-nn/conv2d_s8",
+     "cycles": 1501550,
+     "ms": 23.4617
+    },
+    {
+     "index": 3,
+     "kernel": "cmsis-nn/depthwise_conv2d_s8",
+     "cycles": 733293,
+     "ms": 11.4577
+    },
+    {
+     "index": 4,
+     "kernel": "cmsis-nn/conv2d_s8",
+     "cycles": 1501550,
+     "ms": 23.4617
+    },
+    {
+     "index": 5,
+     "kernel": "cmsis-nn/depthwise_conv2d_s8",
+     "cycles": 733293,
+     "ms": 11.4577
+    },
+    {
+     "index": 6,
+     "kernel": "cmsis-nn/conv2d_s8",
+     "cycles": 1501550,
+     "ms": 23.4617
+    },
+    {
+     "index": 7,
+     "kernel": "cmsis-nn/depthwise_conv2d_s8",
+     "cycles": 733293,
+     "ms": 11.4577
+    },
+    {
+     "index": 8,
+     "kernel": "cmsis-nn/conv2d_s8",
+     "cycles": 1501550,
+     "ms": 23.4617
+    },
+    {
+     "index": 9,
+     "kernel": "cmsis-nn/average_pool2d_s8",
+     "cycles": 75985,
+     "ms": 1.1873
+    },
+    {
+     "index": 10,
+     "kernel": "rust/reshape",
+     "cycles": 588,
+     "ms": 0.0092
+    },
+    {
+     "index": 11,
+     "kernel": "cmsis-nn/fully_connected_s8",
+     "cycles": 4633,
+     "ms": 0.0724
+    },
+    {
+     "index": 12,
+     "kernel": "cmsis-nn/softmax_s8",
+     "cycles": 3458,
+     "ms": 0.054
+    }
+   ],
+   "load_cycles": 2348894,
+   "context_cycles": 14419,
+   "compute_cycles": 10700515,
+   "compute_cycles_runs": [
+    10700515
+   ],
+   "compute_ms": 167.1955,
+   "graph_bytes": 7616,
+   "context_bytes": 16256,
+   "arena_used": 23872,
+   "arena_available": 236656,
+   "inputs_bytes": 490,
+   "stack_peak": 10272
+  }
+ ]
+}

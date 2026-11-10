@@ -1,0 +1,7 @@
+Linux 6.12.115+deb13.1-amd64 x86_64
+Bus 003 Device 036: ID 1209:0001 Generic pid.codes Test PID
+Usage: bossac [OPTION...] [FILE]
+Basic Open Source SAM-BA Application (BOSSA) Version 1.9.1-17-g89f3556
+Flash programmer for Atmel SAM devices.
+d6b49d78827003c769b70c6f53e736a63238106d9e74b71277ff2c074d9104fd  hardware/target/images/nano33ble-image-1.elf
+420fbc51659be020438620a986fb4d7f4d52ce0c0db3fcd4f2e0fa1eab4ffec2  hardware/target/images/nano33ble-image-2.elf
