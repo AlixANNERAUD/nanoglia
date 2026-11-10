@@ -8,6 +8,10 @@ and `crates/nanoglia-kernels/src/*.rs`): an operator that does not meet them
 is not claimed, and loading fails with `Detail::UnsupportedOp`
 ([Errors](errors.md)).
 
+To know what a given model gets, operator by operator, run `nanoglia
+check` on it
+([Check whether a model runs](../how-to-guides/check-whether-a-model-runs.md)).
+
 ## How a kernel is chosen
 
 `Graph::load_in` asks the backends of the registry in order, operator by

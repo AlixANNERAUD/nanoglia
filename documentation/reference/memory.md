@@ -17,11 +17,14 @@ allocations is fixed:
 | `ExecutionContext::compute` (and `compute_with`) | none (an `Observer` may allocate on its own) | — |
 | `ExecutionContext::set_input`, `input_mut`, `output`, `output_by_name` | none | — |
 | `MemoryRequirements::compute_in` (and `compute`, `compute_with`) | 1, freed before returning | the planner's working memory: 20 bytes per tensor of the model |
+| `ModelReport::check_in` (and `check`, `check_with`) | 1, freed before returning (the closure it calls may allocate on its own) | the planner's working memory, rounded up to 16 bytes, plus the largest prepared parameters of an operator: each kernel is prepared there in turn |
 
 The CMSIS-NN C code calls no `malloc`: `mise run no-malloc` checks that
 the C libraries built for the Arm and RISC-V targets reference no C heap
 function. `crates/nanoglia/tests/memory.rs` counts the allocations of a
-graph, a context and two `compute` calls.
+graph, a context and two `compute` calls; `crates/nanoglia/tests/check.rs`
+those of a check, and that the sizes it reports are those a graph and a
+context then allocate.
 
 The C API (`nanoglia-c`) keeps the same contract with one buffer from
 the caller: `nanoglia_load()` places its handle (the graph and one
@@ -162,6 +165,26 @@ planner (largest tensors first, each at the lowest offset that does not
 overlap a tensor alive at the same time, the strategy of TensorFlow Lite
 Micro's `GreedyMemoryPlanner`), then the scratch area shared by all
 operators: the largest scratch any kernel asks for.
+
+`ModelReport` reports these sizes for a model without loading it, as a
+`MemoryBreakdown`
+([Check whether a model runs](../how-to-guides/check-whether-a-model-runs.md)):
+
+| Field | Contents |
+| --- | --- |
+| `graph_bytes` | The graph block, as `Graph::graph_bytes()`. |
+| `persistent_bytes` | Item 5 of the graph block: the prepared parameters. For keyword spotting, 5984 of the 7712 bytes on a 64-bit host. |
+| `context_bytes` | The context block, as `Graph::context_bytes()`: `activation_bytes + scratch_bytes`. |
+| `activation_bytes` | The activation tensors as the planner packs them, rounded up to 16 bytes (16000 for keyword spotting). |
+| `scratch_bytes` | The scratch area, rounded up to 16 bytes (160 for keyword spotting, with CMSIS-NN's portable C code). |
+
+`requirements()` gives the `MemoryRequirements` (`graph_bytes` and
+`context_bytes`). Each operator's `SelectedKernel::plan` holds what its
+kernel asks for: `persistent` (rounded up to 16 bytes in the graph
+block) and `scratch`. (Numbers: `cargo run -p nanoglia-cli -- check
+testdata/mlperf-tiny/kws_ref_model.tflite` on a Linux aarch64 host,
+2026-11-10, with the change that added `ModelReport`, on top of commit
+`136ee56`.)
 
 ## MLPerf Tiny footprints
 

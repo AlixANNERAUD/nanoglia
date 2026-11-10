@@ -209,7 +209,7 @@ The [documentation](documentation/README.md) follows the [Diátaxis](https://dia
 | | |
 | --- | --- |
 | **Tutorial** | [Run your first inference](documentation/tutorials/first-inference.md) |
-| **How-to guides** | [Size the memory](documentation/how-to-guides/size-memory.md), [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [run in the browser](documentation/how-to-guides/run-in-the-browser.md), [run long inferences without blocking](documentation/how-to-guides/run-long-inferences.md), [write a backend](documentation/how-to-guides/write-a-backend.md), [use nanoglia from C](documentation/how-to-guides/use-from-c.md) |
+| **How-to guides** | [Check whether a model runs](documentation/how-to-guides/check-whether-a-model-runs.md), [size the memory](documentation/how-to-guides/size-memory.md), [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [run in the browser](documentation/how-to-guides/run-in-the-browser.md), [run long inferences without blocking](documentation/how-to-guides/run-long-inferences.md), [write a backend](documentation/how-to-guides/write-a-backend.md), [use nanoglia from C](documentation/how-to-guides/use-from-c.md) |
 | **Explanation** | [Architecture](documentation/explanation/architecture.md), [bit-exactness with TensorFlow Lite](documentation/explanation/bit-exactness.md) |
 | **Reference** | [Supported operators](documentation/reference/supported-operators.md), [Cargo features](documentation/reference/features.md), [errors](documentation/reference/errors.md), [memory](documentation/reference/memory.md), [performance](documentation/reference/performance.md), [development tasks](documentation/reference/development-tasks.md) |
 
@@ -226,6 +226,7 @@ The API documentation is on [docs.rs](https://docs.rs/nanoglia).
 | [`nanoglia-esp-nn`](crates/nanoglia-esp-nn) / [`-sys`](crates/nanoglia-esp-nn-sys) | ESP-NN backend for the ESP32-S3 (feature `esp-nn`) |
 | [`nanoglia-kernels`](crates/nanoglia-kernels) | Pure Rust kernels: the operators the C libraries lack, and float32 |
 | [`nanoglia-c`](crates/nanoglia-c) | C API: a static library, its header and a CMake project |
+| [`nanoglia-cli`](crates/nanoglia-cli) | The `nanoglia check` command: whether a model runs, with which kernels and how much memory (not published) |
 
 ## Frequently asked questions
 

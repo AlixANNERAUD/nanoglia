@@ -88,6 +88,27 @@ plans differently the second time (a kernel asking for more scratch
 memory or more parameter bytes than in the first pass) makes `load*`
 fail with `Unknown` / `None`; `select` and `plan` must be deterministic.
 
+### Checking: `ModelReport::check`, `check_in`, `check_with`
+
+A check returns an error only when it cannot list the operators; the
+closure is not called then. A model that parses but does not run is not
+an error of the check: the reasons are in the report.
+
+| Where | Error | When |
+| --- | --- | --- |
+| returned by `check*` | `InvalidArgument` / `None`; `InvalidEncoding` / `UnknownEncoding`, `MalformedModel`; `UnsupportedOperation` / `UnsupportedSchema` | As for loading: the bytes are not one verified TFLite model. |
+| returned by `check*` | `UnsupportedOperation` / `UnsupportedStructure` | The model has several subgraphs (or none). |
+| returned by `check*` | `TooLarge` / `OutOfMemory { requested }` | The allocator refused the working memory, `requested` bytes ([Memory](memory.md#the-contract)). |
+| `OperatorReport::kernel` | `UnsupportedOperation` / `UnsupportedOp`, `UnsupportedType`, `UnsupportedStructure` (a variable tensor, more than 16 inputs or 8 outputs) | The error loading returns for this operator, as in the table above. An operator whose options cannot be decoded is still described (code, version, tensors). |
+| `OperatorReport::kernel` | any | The kernel selected for the operator refused it in `plan` or `prepare`. |
+| `OperatorReport::input`, `output` | `InvalidArgument` / `IndexOutOfRange` | `i` is not below `input_count()` / `output_count()`. An omitted optional input is `Ok(None)`. |
+| `OperatorReport::input`, `output` | `UnsupportedOperation` / `UnsupportedType` | The tensor cannot be represented (see loading). |
+| `ModelReport::memory` | as loading | The error `Graph::load_with` returns for the model with the same registry and target, given enough memory: the error of the first operator without a kernel, or one that belongs to the whole model (`Misaligned`, `MalformedModel` for a graph that consumes a tensor before producing it, `ShapeMismatch` for a dynamic dimension, `None` for `Target::Npu` without an NPU operator), or else the error of the first kernel that failed in `prepare`. |
+
+`crates/nanoglia/tests/check.rs` damages every byte of a small model in
+turn and checks that `ModelReport::memory` and `Graph::load_in` agree on
+each.
+
 ### Creating a context: `Graph::init_execution_context`, `init_execution_context_in`
 
 | Error | When |

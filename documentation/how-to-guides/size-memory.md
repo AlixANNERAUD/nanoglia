@@ -119,10 +119,14 @@ still suffice. After loading,
 ([Errors](../reference/errors.md)). `MemoryRequirements` checks the model
 like `Graph::load_in` does (verification, kernel selection, alignment of the
 constant buffers) but does not run the kernels' `prepare`, so a kernel that
-rejects its parameters is only reported by `Graph::load_in`.
+rejects its parameters is only reported by `Graph::load_in`, and by
+`ModelReport`, which prepares each kernel
+([Check whether a model runs](check-whether-a-model-runs.md)).
 
 ## See also
 
+- [Check whether a model runs](check-whether-a-model-runs.md): the same
+  sizes with their breakdown, and a RAM budget, from the command line.
 - [Memory](../reference/memory.md): what the blocks hold, and the
   footprints of the MLPerf Tiny models.
 - [Run on a microcontroller](run-on-a-microcontroller.md).
