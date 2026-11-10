@@ -36,12 +36,14 @@ description = "Check out the CMSIS-NN and ESP-NN submodules (run it after clonin
 run = "git submodule update --init --recursive"
 
 [tasks.fmt]
-description = "Check formatting, of the library workspace and of the emulation firmware"
+description = "Check formatting, of the library workspace, of the emulation firmware and of the train-to-device example"
 run = [
   "cargo fmt --all --check",
   # Its own workspace (emulation/Cargo.toml); its clippy runs in test-emulated, which has its
   # bare-metal C toolchains.
   "cargo fmt --check --manifest-path emulation/Cargo.toml",
+  # The program of the train-and-deploy tutorial, its own workspace too.
+  "cargo fmt --check --manifest-path examples/train-to-device/Cargo.toml",
 ]
 
 [tasks.clippy]
@@ -300,6 +302,36 @@ run = [
   "cargo build --release",
   "arm-none-eabi-size target/thumbv7em-none-eabihf/release/nanoglia-example-nano33ble",
 ]
+
+[tasks.example-train-to-device]
+description = "Run the Rust and C programs of the train-and-deploy tutorial (examples/train-to-device) on the committed reference model: every test vector must give LiteRT's bytes"
+# The Rust program has its own workspace; CMake runs Cargo in target/c/cargo, as `test-c` does.
+env.RUSTFLAGS = "-D warnings"
+run = [
+  "cargo clippy --release --manifest-path examples/train-to-device/Cargo.toml",
+  "cargo run --release --manifest-path examples/train-to-device/Cargo.toml -- examples/train-to-device/reference",
+  "cmake -S examples/train-to-device/c -B target/train-to-device/c-reference -DCMAKE_BUILD_TYPE=Release -DNANOGLIA_CARGO_TARGET_DIR={{config_root}}/target/c/cargo",
+  "cmake --build target/train-to-device/c-reference",
+  "target/train-to-device/c-reference/gesture examples/train-to-device/reference",
+]
+
+[tasks.train-to-device]
+description = "The train-and-deploy tutorial from start to finish: train the gesture classifier with PyTorch and with Keras, export each to an int8 LiteRT model with test vectors, and run the Rust and C programs on both (x86_64 Linux or macOS arm64 only: litert-torch has no other wheels)"
+# The models and their vectors land in target/train-to-device/<track>, which is not committed. Each
+# training script fails below 90 % accuracy or if a float operator remains; each program fails
+# unless every test vector gives the bytes LiteRT computed.
+env.RUSTFLAGS = "-D warnings"
+run = """
+set -e
+for track in pytorch keras; do
+  out="{{config_root}}/target/train-to-device/$track"
+  uv run --locked --project examples/train-to-device/training --group "$track" python "examples/train-to-device/training/train_$track.py" "$out"
+  GESTURE_MODEL="$out/model.tflite" cargo run --release --manifest-path examples/train-to-device/Cargo.toml -- "$out"
+  cmake -S examples/train-to-device/c -B "target/train-to-device/c-$track" -DCMAKE_BUILD_TYPE=Release -DGESTURE_DIRECTORY="$out" -DNANOGLIA_CARGO_TARGET_DIR="{{config_root}}/target/c/cargo"
+  cmake --build "target/train-to-device/c-$track"
+  "target/train-to-device/c-$track/gesture" "$out"
+done
+"""
 
 [tasks.bench]
 description = "Time one inference of each MLPerf Tiny model on the host"

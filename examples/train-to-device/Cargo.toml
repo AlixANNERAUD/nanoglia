@@ -1,0 +1,17 @@
+[package]
+name = "nanoglia-example-train-to-device"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Runs the gesture classifier of the train-and-deploy tutorial with nanoglia on the test vectors its training scripts export, and checks the outputs against LiteRT's."
+
+[[bin]]
+name = "gesture"
+path = "src/main.rs"
+
+[dependencies]
+# int8-only model: the float32 and int16 kernels are left out, as a firmware would.
+nanoglia = { path = "../../crates/nanoglia", default-features = false, features = ["cmsis-nn", "kernels"] }
+
+# Standalone example, not part of the library workspace.
+[workspace]

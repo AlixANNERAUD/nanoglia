@@ -191,6 +191,71 @@ As in Rust, compute them for your target and features, or print them on
 the device: CMSIS-NN may ask for other scratch sizes with the DSP
 extension ([Size the memory](size-memory.md)).
 
+### Put the model in the program
+
+A firmware keeps the model in flash, as a `const` array on a 16-byte
+boundary. Three ways to fill that array from a `.tflite` file:
+
+- **An initializer list, with any C compiler.** Turn the file into a
+  list of bytes and include it in a declaration of your own, which
+  carries the alignment:
+
+  ```sh
+  xxd -i < model.tflite > model.inc
+  ```
+
+  ```c
+  static _Alignas(NANOGLIA_MODEL_ALIGNMENT) const uint8_t model[] = {
+  #include "model.inc"
+  };
+  /* its length is sizeof model */
+  ```
+
+  `xxd` writes the bare list when it reads its standard input; with the
+  file as an argument (`xxd -i model.tflite`) it writes a whole
+  declaration, `unsigned char model_tflite[]`, which has neither `const`
+  nor the alignment. Without `xxd`,
+  [`examples/train-to-device/c/embed.cmake`](../../examples/train-to-device/c/embed.cmake)
+  writes the same list from CMake, and its `CMakeLists.txt` shows the
+  custom command that keeps `model.inc` up to date.
+- **The assembler's `.incbin`, with GCC or Clang on ELF targets.** The assembler copies
+  the file into the object, so the compiler never parses a long list:
+
+  ```c
+  __asm__(".section .rodata\n"
+          ".balign 16\n"
+          ".global model\n"
+          "model:\n"
+          ".incbin \"model.tflite\"\n"
+          ".global model_end\n"
+          "model_end:\n"
+          ".previous\n");
+  extern const uint8_t model[], model_end[];
+  /* its length is (size_t)(model_end - model) */
+  ```
+
+  The path is relative to the directory the compiler runs in, or to an
+  include directory given to the assembler (`-Wa,-I<dir>`). The build
+  system does not know that the object depends on the model: add the
+  dependency yourself.
+- **C23's `#embed`**, where the compiler has it (GCC 15 and Clang 21
+  do, GCC 14 does not):
+
+  ```c
+  static _Alignas(NANOGLIA_MODEL_ALIGNMENT) const uint8_t model[] = {
+  #embed "model.tflite"
+  };
+  ```
+
+The three give the same bytes, on a 16-byte boundary: checked for the
+5048-byte reference model of `examples/train-to-device` with GCC 15.2.0
+and Clang 21.1.8 on x86_64 Ubuntu 26.04 (`xxd` 2025-11-26, `-std=c11
+-Wall -Wextra -Wpedantic -Werror`, `-std=c23` for `#embed`) on
+2026-11-10; `arm-none-eabi-gcc` 14.2.1 assembles the `.incbin` form for a
+Cortex-M4. The tutorial
+[From training to the device](../tutorials/train-and-deploy.md#7-run-it-in-c)
+builds a program with the first.
+
 ### Lifetimes
 
 - The model bytes and the memory buffer must stay valid and unchanged,
@@ -309,6 +374,9 @@ that runs, never a crash.
   and [`crates/nanoglia-c/tests/test.c`](../../crates/nanoglia-c/tests/test.c):
   the example and the tests, compiled with `-Wall -Wextra -Wpedantic
   -Werror`.
+- [From training to the device](../tutorials/train-and-deploy.md): a
+  model trained, exported and run from C, with
+  [`examples/train-to-device/c/gesture.c`](../../examples/train-to-device/c/gesture.c).
 - [Development tasks](../reference/development-tasks.md): `test-c`,
-  `cross-c`, `header`, `check-header`.
+  `cross-c`, `header`, `check-header`, `example-train-to-device`.
 - [Cargo features](../reference/features.md#nanoglia-c).

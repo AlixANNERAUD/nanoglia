@@ -23,7 +23,9 @@ workspace:
 | `crates/nanoglia-tools` | Host tool, the only crate with `std`: the binary `nanoglia`, whose `check <model.tflite>` prints what `ModelReport` finds (kernel or blocking reason of every operator, memory, `--json`, `--ram`, `--backends`). Bin-only, no dependency outside the workspace, its own registry of the three backends; published with the libraries (its own changelog and tag in `release-plz.toml`). |
 
 Other directories: `fuzz/` (cargo-fuzz target `parse`, own workspace), `examples/nano33ble/`
-(firmware for the Arduino Nano 33 BLE, own workspace), `emulation/` (test-runner firmware and its
+(firmware for the Arduino Nano 33 BLE, own workspace), `examples/train-to-device/` (the code of the
+train-and-deploy tutorial: training scripts as a uv project, a Rust program with its own workspace,
+a C program, one committed reference model; `mise run example-train-to-device`, `train-to-device`), `emulation/` (test-runner firmware and its
 Unicorn host for `mise run test-emulated`, own workspace and uv project), `tools/oracle/` (uv project generating
 `testdata/` with LiteRT's reference kernels), `tools/check-no-malloc.sh`, `testdata/` (golden
 cases, see `testdata/README.md`).
@@ -116,7 +118,9 @@ number.
   `mise run bench` / `bench-wasm` on a performance change), `reference/development-tasks.md`
   (`mise.toml` or `.github/workflows/`), and the tutorial or guides whose code or output changes
   (run their code again; the output of `nanoglia check` is quoted in
-  `how-to-guides/check-whether-a-model-runs.md` and `crates/nanoglia-tools/README.md`).
+  `how-to-guides/check-whether-a-model-runs.md` and `crates/nanoglia-tools/README.md`). `tutorials/train-and-deploy.md` quotes `examples/train-to-device`: keep
+  its code blocks and outputs equal to the example's sources and to a run of `mise run
+  train-to-device`.
 
 ## Conventions
 

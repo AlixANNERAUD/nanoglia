@@ -272,6 +272,8 @@ values and int8, and ran it from a fixed buffer with no heap.
 
 ## Next steps
 
+- [From training to the device](train-and-deploy.md): train your own
+  small model, export it, and run it from Rust and from C.
 - [Size the memory](../how-to-guides/size-memory.md) of a static buffer
   exactly, for your own model.
 - [Run on a microcontroller](../how-to-guides/run-on-a-microcontroller.md):

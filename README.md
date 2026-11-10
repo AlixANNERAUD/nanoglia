@@ -208,7 +208,7 @@ The [documentation](documentation/README.md) follows the [Diátaxis](https://dia
 
 | | |
 | --- | --- |
-| **Tutorial** | [Run your first inference](documentation/tutorials/first-inference.md) |
+| **Tutorials** | [Run your first inference](documentation/tutorials/first-inference.md), [from training to the device](documentation/tutorials/train-and-deploy.md) |
 | **How-to guides** | [Check whether a model runs](documentation/how-to-guides/check-whether-a-model-runs.md), [size the memory](documentation/how-to-guides/size-memory.md), [convert a PyTorch model](documentation/how-to-guides/convert-a-pytorch-model.md), [run on a microcontroller](documentation/how-to-guides/run-on-a-microcontroller.md), [run in the browser](documentation/how-to-guides/run-in-the-browser.md), [run long inferences without blocking](documentation/how-to-guides/run-long-inferences.md), [write a backend](documentation/how-to-guides/write-a-backend.md), [use nanoglia from C](documentation/how-to-guides/use-from-c.md) |
 | **Explanation** | [Architecture](documentation/explanation/architecture.md), [bit-exactness with TensorFlow Lite](documentation/explanation/bit-exactness.md) |
 | **Reference** | [Supported operators](documentation/reference/supported-operators.md), [Cargo features](documentation/reference/features.md), [errors](documentation/reference/errors.md), [memory](documentation/reference/memory.md), [performance](documentation/reference/performance.md), [development tasks](documentation/reference/development-tasks.md) |

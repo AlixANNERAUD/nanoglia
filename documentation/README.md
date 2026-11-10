@@ -21,6 +21,7 @@ are in [`AGENTS.md`](../AGENTS.md).
 | Page | What you build |
 | --- | --- |
 | [Your first inference](tutorials/first-inference.md) | A host program that runs the MLPerf Tiny keyword spotting model, reads its scores, then runs it again from a static buffer without a heap |
+| [From training to the device](tutorials/train-and-deploy.md) | A gesture classifier trained with Keras or PyTorch, exported to an int8 `.tflite` model with test vectors, checked, then run from Rust and from C with the same outputs as LiteRT |
 
 ## How-to guides
 
@@ -28,12 +29,12 @@ are in [`AGENTS.md`](../AGENTS.md).
 | --- | --- |
 | [Check whether a model runs](how-to-guides/check-whether-a-model-runs.md) | List, on your computer, the kernel of every operator of a `.tflite` file, every operator that blocks and why, and the memory needed, with the `nanoglia check` command or `ModelReport` |
 | [Size the memory](how-to-guides/size-memory.md) | Compute the exact size of a static `Arena` with `MemoryRequirements`, guard it with a test, confirm it on the device |
-| [Convert a PyTorch model](how-to-guides/convert-a-pytorch-model.md) | Produce a full-integer `.tflite` file with litert-torch (or onnx2tf from ONNX) and check it against LiteRT |
+| [Convert a PyTorch model](how-to-guides/convert-a-pytorch-model.md) | Produce a full-integer `.tflite` file with litert-torch (or onnx2tf from ONNX, or TensorFlow's converter from Keras) and check it against LiteRT |
 | [Run on a microcontroller](how-to-guides/run-on-a-microcontroller.md) | Run the Nano 33 BLE example, then use nanoglia without a heap in your own Cortex-M or ESP32-S3 firmware |
 | [Run in the browser](how-to-guides/run-in-the-browser.md) | Build for `wasm32-unknown-unknown` with CMSIS-NN, enable SIMD128, run under wasmtime |
 | [Run long inferences](how-to-guides/run-long-inferences.md) | Run an inference one operator at a time with `step`, as a future with `compute_async`, or stop it at a deadline from an observer |
 | [Write a backend](how-to-guides/write-a-backend.md) | Add a backend whose kernels use a driver it borrows, register it with `Graph::load_with`, time each operator with `compute_with` |
-| [Use nanoglia from C](how-to-guides/use-from-c.md) | Build the C library with CMake, link it on your computer or into a firmware, size its one buffer, run inferences in one call or step by step, handle the errors |
+| [Use nanoglia from C](how-to-guides/use-from-c.md) | Build the C library with CMake, link it on your computer or into a firmware, size its one buffer, put the model in the program, run inferences in one call or step by step, handle the errors |
 
 ## Explanation
 

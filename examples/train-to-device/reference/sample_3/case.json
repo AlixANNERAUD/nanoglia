@@ -1,0 +1,30 @@
+{
+  "model": "examples/train-to-device/reference/model.tflite",
+  "inputs": [
+    {
+      "name": "serving_default_keras_tensor:0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        50,
+        3,
+        1
+      ],
+      "scale": 0.013695926405489445,
+      "zero_point": -30
+    }
+  ],
+  "outputs": [
+    {
+      "name": "StatefulPartitionedCall_1:0",
+      "dtype": "int8",
+      "shape": [
+        1,
+        3
+      ],
+      "scale": 0.00390625,
+      "zero_point": -128
+    }
+  ],
+  "tolerance": 0
+}
