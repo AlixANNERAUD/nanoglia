@@ -318,7 +318,7 @@ run = [
 [tasks.train-to-device]
 description = "The train-and-deploy tutorial from start to finish: train the gesture classifier with PyTorch and with Keras, export each to an int8 LiteRT model with test vectors, and run the Rust and C programs on both (x86_64 Linux or macOS arm64 only: litert-torch has no other wheels)"
 # The models and their vectors land in target/train-to-device/<track>, which is not committed. Each
-# training script fails below 95 % accuracy or if a float operator remains; each program fails
+# training script fails below 90 % accuracy or if a float operator remains; each program fails
 # unless every test vector gives the bytes LiteRT computed.
 env.RUSTFLAGS = "-D warnings"
 run = """

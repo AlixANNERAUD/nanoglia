@@ -249,6 +249,7 @@ jobs:
     name: Train to device (PyTorch and Keras, int8)
     # litert-torch's converter ships x86_64 Linux wheels, not aarch64 ones.
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:

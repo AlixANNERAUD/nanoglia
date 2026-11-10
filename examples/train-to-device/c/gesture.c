@@ -9,7 +9,7 @@
  * and output_0.bin the int8 output of LiteRT.
  *
  * The model is compiled into the program, as in a firmware: model.inc holds its bytes as a C
- * initializer list (`xxd -i < model.tflite > model.inc`, or cmake/embed.cmake). Every byte
+ * initializer list (`xxd -i < model.tflite > model.inc`, or c/embed.cmake). Every byte
  * nanoglia uses is in the two static arrays below.
  */
 
@@ -73,8 +73,12 @@ int main(int argc, char **argv) {
     }
     nanoglia_tensor input;
     nanoglia_tensor output;
-    nanoglia_input(nn, 0, &input);
-    nanoglia_output(nn, 0, &output);
+    if (nanoglia_input(nn, 0, &input) != NANOGLIA_STATUS_OK ||
+        nanoglia_output(nn, 0, &output) != NANOGLIA_STATUS_OK) {
+        fprintf(stderr, "the model has no input or no output\n");
+        nanoglia_release(nn);
+        return 1;
+    }
     if (input.element_type != NANOGLIA_TYPE_INT8 || input.size != WINDOW ||
         output.element_type != NANOGLIA_TYPE_INT8 || output.size != CLASSES) {
         fprintf(stderr, "not the gesture model\n");

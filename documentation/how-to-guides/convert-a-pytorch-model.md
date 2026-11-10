@@ -3,8 +3,12 @@
 nanoglia runs `.tflite` (LiteRT) models. This guide turns a PyTorch
 model into a fully quantized int8 `.tflite` file with Google's
 converter, checks that nanoglia can run it, and checks that nanoglia's
-output matches LiteRT's. It ends with the route from an existing ONNX
-model.
+output matches LiteRT's. It ends with the routes from an existing ONNX
+model and from Keras.
+
+The tutorial [From training to the device](../tutorials/train-and-deploy.md)
+follows these steps from start to finish on a small model, with a
+PyTorch script and a Keras script you can run.
 
 The converter is a fast-moving project: this guide shows the calls of
 its documentation at the time of writing and links to it. If a name has
@@ -99,10 +103,34 @@ weights symmetric (`-127..127`), per channel along axis 0 with
 Calibrate with real data: the observed ranges set the scales of every
 activation, and random inputs give ranges that real inputs do not have.
 
+Two limits of litert-torch 0.10.0 show in the converted model:
+
+- **The input and output stay float32.** The model starts with a
+  `QUANTIZE` operator and ends with a `DEQUANTIZE`; `litert_torch.convert` has no
+  documented option for an int8 interface. nanoglia runs both. To feed
+  int8 values instead, as a model from TensorFlow's converter takes
+  them, remove the two operators from the file: `strip_float_interface` in
+  [`examples/train-to-device/training/train_pytorch.py`](../../examples/train-to-device/training/train_pytorch.py)
+  does it in about thirty lines with the flatbuffer classes of `ai-edge-litert`.
+- **`torch.softmax` stays float32**, behind a `DEQUANTIZE`: the
+  quantizer annotates `aten._softmax`, not the `aten.softmax.int` that
+  `torch.softmax` exports as. Call
+  `torch.ops.aten._softmax(x, 1, False)` in the model (dimension 1, not
+  half precision) to get an int8 `SOFTMAX`, or leave the softmax out and
+  take the largest logit. Decomposing the whole program first
+  (`run_decompositions()`) also reaches `aten._softmax`, but turns
+  `nn.Linear` into an `addmm` whose weights the quantizer makes
+  asymmetric: nanoglia then refuses the `FULLY_CONNECTED` operator,
+  whose weights must have zero point 0.
+
+Both were observed on 2026-11-10 with litert-torch 0.10.0 and torch
+2.14.1 on x86_64 Linux, on the model of that example.
+
 `tools/oracle/pytorch_export.py` in the repository is a complete,
 runnable version of this step for a small image classifier, an LSTM and
 a GRU, which nanoglia's CI converts on x86_64 Linux and runs against
-LiteRT (`mise run pytorch-export`).
+LiteRT (`mise run pytorch-export`); `examples/train-to-device` trains a
+model first (`mise run train-to-device`).
 
 Besides the layers, a PyTorch export contains data-movement operators:
 `TRANSPOSE` (`permute`, and where the converter moves between PyTorch's
@@ -252,3 +280,29 @@ int16-activation variants; for 16x8 quantization with TensorFlow's own
 converter, see LiteRT's
 [16x8 quantization guide](https://developers.google.com/edge/litert/conversion/tensorflow/quantization/post_training_integer_quant_16x8)
 (`tf.lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8`).
+
+## From a Keras model
+
+TensorFlow's converter writes full-integer models directly, with an int8
+input and output:
+
+```python
+converter = tf.lite.TFLiteConverter.from_keras_model(model)
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+converter.representative_dataset = representative_dataset  # yields [input] lists of real samples
+converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+converter.inference_input_type = tf.int8
+converter.inference_output_type = tf.int8
+model_bytes = converter.convert()
+```
+
+As LiteRT's
+[post-training integer quantization guide](https://developers.google.com/edge/litert/conversion/tensorflow/quantization/post_training_integer_quant)
+explains, `TFLITE_BUILTINS_INT8` makes the conversion fail rather than
+keep a float operator, and the two `inference_*_type` lines give the
+int8 interface. Check the result with steps 3 and 4.
+[`examples/train-to-device/training/train_keras.py`](../../examples/train-to-device/training/train_keras.py)
+is a complete script (TensorFlow 2.21.0, Keras 3.15.1), which
+[From training to the device](../tutorials/train-and-deploy.md) walks
+through. Keras recurrent layers are not supported yet (see
+[Recurrent layers](#recurrent-layers)).

@@ -83,6 +83,11 @@ def strip_float_interface(model: bytes) -> bytes:
     converted model starts with a QUANTIZE operator and ends with a DEQUANTIZE.
     This removes both and makes their int8 tensors the model's input and
     output, as `inference_input_type = tf.int8` does in TensorFlow's converter.
+
+    A workaround for litert-torch 0.10.0, which has no such option: remove it
+    when `litert_torch.convert` can write an int8 interface. It expects the
+    float input to feed the QUANTIZE operator only, and leaves the float
+    tensors behind, unused.
     """
     tree = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(model, 0))
     subgraph = tree.subgraphs[0]
