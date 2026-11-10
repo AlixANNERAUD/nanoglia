@@ -310,9 +310,9 @@ bytes of flash after the bootloader: two images are built. `text` of
 
 | Image | Models in flash | `text` | Left of 983040 |
 | --- | --- | ---: | ---: |
-| none | — | 433604 | 549436 |
-| 1 | `kws_ref_model`, `pretrainedResnet_quant`, `ad01_int8` | 863132 | 119908 |
-| 2 | `vww_96_int8`, `str_ww_ref_model` | 841524 | 141516 |
+| none | — | 433756 | 549284 |
+| 1 | `kws_ref_model`, `pretrainedResnet_quant`, `ad01_int8` | 863276 | 119764 |
+| 2 | `vww_96_int8`, `str_ww_ref_model` | 841668 | 141372 |
 
 With the model in flash, a case needs RAM for its inputs and for the
 arena (the graph and context blocks) only. Of the 262144 bytes of RAM,

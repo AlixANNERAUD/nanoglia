@@ -7,9 +7,10 @@
 //! case the message is lost and only the kind of the crash, in the retained byte, remains.
 //!
 //! The linker script of a firmware places the section `.nanoglia_crash` where its bootloader does
-//! not write: the Arduino bootloader of the Nano 33 BLE clears and uses the RAM from `0x20000000`
-//! to `0x20009e14` on every reset (the `bss`, `noinit` and data sections of its published ELF),
-//! so the record lives in the last 256 bytes of the RAM, above the stack.
+//! not write. The Arduino bootloader of the Nano 33 BLE keeps everything in the RAM from
+//! `0x20000000` to `0x20009e14`, its stacks included (they are in the `noinit` section of its
+//! published ELF, and the initial stack pointer of its vector table is `0x20008d48`), so the
+//! record lives in the last 256 bytes of the RAM, above the stack of the firmware.
 
 use crate::frame::crc32;
 use core::fmt::{self, Write};

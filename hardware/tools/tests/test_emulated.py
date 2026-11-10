@@ -28,7 +28,8 @@ def board():
 
 def test_the_crash_message_is_kept_above_what_the_bootloader_uses(board):
     # The record of a crash lives in the last 256 bytes of the RAM: the bootloader of the board
-    # clears and uses the RAM up to 0x20009e14 at every reset.
+    # keeps everything, its stacks included, below 0x20009e14 (its initial stack pointer is
+    # 0x20008d48).
     record = next(address for name, address in board.emulator.fw.symbols.items() if "crash" in name and "RECORD" in name)
     assert record == 0x2004_0000 - 256
     assert board.emulator.fw.symbols["_stack_start"] == record

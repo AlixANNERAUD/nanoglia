@@ -2,9 +2,13 @@
    starts the application at 0x10000. The linker refuses an image that does not fit in the 960 KiB
    that follow.
 
-   The last 256 bytes of the RAM hold the message of a crash across the reset (runner/src/crash.rs):
-   the bootloader, which runs at every reset, clears and uses the RAM from 0x20000000 to 0x20009e14
-   (its bss, noinit and data sections), far below. */
+   The last 256 bytes of the RAM hold the message of a crash across the reset (runner/src/crash.rs).
+   The bootloader runs at every reset; its published ELF (bootloaders/nano33ble/bootloader.elf in
+   ArduinoCore-mbed) places everything it uses in RAM between 0x20000000 and 0x20009e14: its bss
+   (cleared, to 0x20006d48), then its noinit section, which holds all its stacks (the main stack
+   0x20006d48-0x20008d48, whose top is the initial stack pointer of its vector table, the idle,
+   interrupt and work-queue stacks up to 0x20009a88), then its data. A Zephyr program has no
+   stack at the top of the RAM: nothing of it reaches 0x2003ff00. */
 MEMORY
 {
   FLASH : ORIGIN = 0x00010000, LENGTH = 1024K - 64K

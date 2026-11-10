@@ -443,8 +443,11 @@ in ArduinoCore-mbed, a Zephyr program. Disassembled
   [`boards/nano33ble/README.md`](https://github.com/tock/tock/blob/master/boards/nano33ble/README.md)).
 - **It uses the RAM from `0x20000000` to `0x20009e14`** (its `bss`,
   `noinit` and data sections) at every reset, the first 27976 bytes of
-  it cleared: the firmware keeps the message of a crash in the last 256
-  bytes of the RAM, far above.
+  it cleared. Its stacks are in there too: the initial stack pointer of
+  its vector table is `0x20008d48`, the top of an 8 KiB main stack in
+  `noinit`, followed by the idle, interrupt and work-queue stacks up to
+  `0x20009a88`. Nothing of it is at the top of the RAM, where the
+  firmware keeps the message of a crash in the last 256 bytes.
 
 `GPREGRET` survives a system reset, and that is how software asks for
 the bootloader:
@@ -518,6 +521,10 @@ reset the board in the middle of a flash.
   fire;
 - a firmware that hangs before `main` starts the timer: the start-up
   code of the runtime, a few instructions that copy and clear memory;
+- a fault inside the crash handler itself: the core locks up and the
+  chip resets without the crash being counted, so a loop of those never
+  reaches the bootloader (unlikely: the handler writes one static and
+  two registers);
 - a firmware whose crash handler itself does not work on the chip (it
   resets without counting, forever) and which crashes before its USB
   loop: every recovery rests on the handler writing `GPREGRET2` and on
@@ -566,7 +573,8 @@ checks the tool, never nanoglia.
 Only the board can execute `hardware/nano33ble/src/main.rs`, and it has
 not:
 
-- the clean-up of what the bootloader leaves on, the start of the clocks
+- the clean-up of what the bootloader leaves on (PPI, USB device, RTC1,
+  UARTE0, the two clocks stopped and waited for), the start of the clocks
   and of the USB device (`embassy_nrf::init` with the crystal, the
   embassy USB driver, its VBUS detection), and the loop that polls the
   USB futures by hand;
