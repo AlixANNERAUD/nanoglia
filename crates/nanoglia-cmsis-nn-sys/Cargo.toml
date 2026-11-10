@@ -13,11 +13,14 @@ keywords = ["cmsis-nn", "neural-network", "no-std", "embedded", "ffi"]
 categories = ["external-ffi-bindings", "embedded", "no-std", "no-std::no-alloc"]
 links = "cmsis_nn"
 # Only what the build script reads: the headers and the integer C sources of the `cmsis-nn`
-# submodule (not its float sources, Python bindings, tests or documentation) and its license.
+# submodule (not its float sources, Python bindings, tests or documentation) and its license;
+# plus `/tests`, the unit tests of the build script's flag parsing (`build/target.rs`).
 # The float exclusions match `is_integer_source` in build.rs.
 include = [
   "/build.rs",
+  "/build",
   "/src",
+  "/tests",
   "/README.md",
   "/cmsis-nn/LICENSE",
   "/cmsis-nn/Include/**/*.h",
