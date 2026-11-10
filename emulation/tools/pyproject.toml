@@ -1,0 +1,13 @@
+[project]
+name = "nanoglia-emulation"
+version = "0.0.0"
+description = "Runs the golden cases of testdata/ on the test-runner firmware of emulation/ under an instruction-set emulator, and compares the outputs as crates/nanoglia/tests/golden.rs does."
+requires-python = ">=3.12"
+dependencies = [
+    "unicorn>=2.1,<2.2",
+    "pyelftools>=0.32",
+    "numpy>=2",
+]
+
+[tool.uv]
+package = false

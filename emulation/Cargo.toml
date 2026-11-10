@@ -1,0 +1,36 @@
+# Test-runner firmware for the golden cases under an instruction-set emulator: one ELF per
+# architecture, driven by tools/run.py (`mise run test-emulated`). A workspace of its own, outside
+# the library workspace: it only builds for bare-metal targets.
+
+[package]
+name = "nanoglia-emulation"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+description = "Firmware that runs one golden case of testdata/ written into emulated memory, for tools/run.py."
+
+[dependencies]
+# Every kernel family, so that every case runs: CMSIS-NN (DSP or portable code paths, as the
+# target selects), the Rust kernels, float32 and int16.
+nanoglia = { path = "../crates/nanoglia", default-features = false, features = ["cmsis-nn", "kernels", "float", "int16"] }
+
+[target.'cfg(target_arch = "arm")'.dependencies]
+cortex-m-rt = "0.7"
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+riscv = "0.16"
+riscv-rt = { version = "0.18", features = ["memory", "single-hart"] }
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = false
+# usize is 32 bits on the targets: catch an overflow the 64-bit host would not see. The panic
+# handler reports it as a failure of the case.
+overflow-checks = true
+
+# Standalone firmware, not part of the library workspace.
+[workspace]

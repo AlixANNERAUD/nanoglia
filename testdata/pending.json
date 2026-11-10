@@ -1,0 +1,14 @@
+[
+  {
+    "case": "mlperf-tiny/golden/ad01_int8/sample_0",
+    "reason": "LiteRT float requantization in FULLY_CONNECTED"
+  },
+  {
+    "case": "mlperf-tiny/golden/ad01_int8/sample_1",
+    "reason": "LiteRT float requantization in FULLY_CONNECTED"
+  },
+  {
+    "case": "mlperf-tiny/golden/ad01_int8/sample_2",
+    "reason": "LiteRT float requantization in FULLY_CONNECTED"
+  }
+]

@@ -11,3 +11,5 @@ __pycache__/
 /coverage.lcov
 /benchmarks/compare/target
 /benchmarks/compare/tools/.venv
+/emulation/target
+/emulation/tools/.venv

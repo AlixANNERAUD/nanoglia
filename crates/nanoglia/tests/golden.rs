@@ -184,27 +184,34 @@ fn run(name: &str, case: &Case) -> Result<(), String> {
     Ok(())
 }
 
-/// Cases that are expected to fail for now, with the reason. A listed case that passes fails the
-/// test too, so the list never goes stale.
-const PENDING: &[(&str, &str)] = &[
-    // LiteRT's reference FULLY_CONNECTED requantizes in floating point (`round(acc * scale)`),
-    // while TFLite Micro and CMSIS-NN use fixed point: deep FC stacks drift by one unit or two.
-    // 16x8 layers follow TFLite Micro too (fixed point with a 16-bit multiplier):
-    // `ops/fully_connected_per_channel_int16` happens to match LiteRT on its 16 outputs, other
-    // data may differ by one.
-    (
-        "mlperf-tiny/golden/ad01_int8/sample_0",
-        "LiteRT float requantization in FULLY_CONNECTED",
-    ),
-    (
-        "mlperf-tiny/golden/ad01_int8/sample_1",
-        "LiteRT float requantization in FULLY_CONNECTED",
-    ),
-    (
-        "mlperf-tiny/golden/ad01_int8/sample_2",
-        "LiteRT float requantization in FULLY_CONNECTED",
-    ),
-];
+/// Cases that are expected to fail for now, with the reason, from `testdata/pending.json`: the
+/// emulated run of `emulation/tools/run.py` reads the same list. A listed case that passes fails
+/// the test too, so the list never goes stale.
+///
+/// LiteRT's reference FULLY_CONNECTED requantizes in floating point (`round(acc * scale)`), while
+/// TFLite Micro and CMSIS-NN use fixed point: deep FC stacks (`ad01_int8`) drift by one unit or
+/// two. 16x8 layers follow TFLite Micro too (fixed point with a 16-bit multiplier):
+/// `ops/fully_connected_per_channel_int16` happens to match LiteRT on its 16 outputs, other data
+/// may differ by one.
+fn pending_cases() -> Vec<(String, String)> {
+    let path = repo_root().join("testdata/pending.json");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let json: serde_json::Value =
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    json.as_array()
+        .expect("pending.json: an array")
+        .iter()
+        .map(|entry| {
+            let field = |key: &str| {
+                entry[key]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("pending.json: no `{key}` in {entry}"))
+                    .to_string()
+            };
+            (field("case"), field("reason"))
+        })
+        .collect()
+}
 
 #[test]
 fn golden_cases() {
@@ -212,6 +219,7 @@ fn golden_cases() {
     let (root, testdata) = root();
     let mut failures = Vec::new();
     let mut pending = 0;
+    let expected_failures = pending_cases();
     for case in &cases {
         let name = case
             .dir
@@ -219,7 +227,10 @@ fn golden_cases() {
             .unwrap_or(&case.dir)
             .display()
             .to_string();
-        let reason = PENDING.iter().find(|(n, _)| *n == name).map(|(_, r)| *r);
+        let reason = expected_failures
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, r)| r.as_str());
         match (run(&name, case), reason) {
             (Ok(()), None) => println!("ok       {name}"),
             (Err(e), Some(reason)) => {
@@ -227,7 +238,7 @@ fn golden_cases() {
                 println!("pending  {name}: {e} ({reason})");
             }
             (Ok(()), Some(_)) => {
-                println!("FIXED    {name}: remove it from PENDING");
+                println!("FIXED    {name}: remove it from testdata/pending.json");
                 failures.push(name);
             }
             (Err(e), None) => {
