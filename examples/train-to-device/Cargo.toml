@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 # As a firmware would: the two backends, and only the kernels of the operators of the model (those
-# of the PyTorch model, plus DEPTHWISE_CONV_2D and RESHAPE for the Keras one). An int8 model: the
+# of the Keras model, plus DEPTHWISE_CONV_2D and RESHAPE for the PyTorch one). An int8 model: the
 # float32 and int16 kernels (`float`, `int16`) are left out too.
 nanoglia = { path = "../../crates/nanoglia", default-features = false, features = [
   "cmsis-nn",

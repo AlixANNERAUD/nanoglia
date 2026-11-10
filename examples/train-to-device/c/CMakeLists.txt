@@ -7,8 +7,8 @@ project(nanoglia_gesture LANGUAGES C)
 set(GESTURE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../reference" CACHE PATH
     "Directory written by a training script: model.tflite and its test vectors (default: the reference model)")
 
-# Only the kernels of the operators of the model are built into the library: those of the PyTorch
-# model, plus DEPTHWISE_CONV_2D and RESHAPE for the Keras one. `nanoglia check model.tflite` lists
+# Only the kernels of the operators of the model are built into the library: those of the Keras
+# model, plus DEPTHWISE_CONV_2D and RESHAPE for the PyTorch one. `nanoglia check model.tflite` lists
 # the operators of a model.
 set(NANOGLIA_OPERATORS
     "CONV_2D;DEPTHWISE_CONV_2D;FULLY_CONNECTED;MAX_POOL_2D;MEAN;RESHAPE;SOFTMAX" CACHE STRING
