@@ -226,7 +226,7 @@ The API documentation is on [docs.rs](https://docs.rs/nanoglia).
 | [`nanoglia-esp-nn`](crates/nanoglia-esp-nn) / [`-sys`](crates/nanoglia-esp-nn-sys) | ESP-NN backend for the ESP32-S3 (feature `esp-nn`) |
 | [`nanoglia-kernels`](crates/nanoglia-kernels) | Pure Rust kernels: the operators the C libraries lack, and float32 |
 | [`nanoglia-c`](crates/nanoglia-c) | C API: a static library, its header and a CMake project |
-| [`nanoglia-cli`](crates/nanoglia-cli) | The `nanoglia check` command: whether a model runs, with which kernels and how much memory (not published) |
+| [`nanoglia-tools`](crates/nanoglia-tools) | The `nanoglia check` command: whether a model runs, with which kernels and how much memory (`cargo install nanoglia-tools`) |
 
 ## Frequently asked questions
 

@@ -1,4 +1,4 @@
-# nanoglia-cli
+# nanoglia-tools
 
 **Check on your computer whether [nanoglia](https://github.com/AlixANNERAUD/nanoglia) runs a TensorFlow Lite model, before flashing anything.** The `nanoglia` command lists every operator of a `.tflite` file with the kernel that runs it, or the reason no kernel does, and the memory the model needs. Loading a model stops at the first operator it cannot run; the check reports them all.
 
@@ -27,7 +27,7 @@ memory (bytes):
 
 (MLPerf Tiny keyword spotting, on a Linux aarch64 computer, 2026-11-10; the lines cut here and the closing notes are in the guide.)
 
-The tool is not on crates.io: run it from a clone of the repository (`mise run submodules` first), with `cargo run -p nanoglia-cli -- check <MODEL.tflite>`.
+Install the `nanoglia` command with `cargo install nanoglia-tools` (a C compiler is needed: the tool builds CMSIS-NN and ESP-NN), or run it from a clone of the repository (`mise run submodules` first) with `cargo run -p nanoglia-tools -- check <MODEL.tflite>`.
 
 ## Usage
 
@@ -53,7 +53,7 @@ nanoglia check [OPTIONS] <MODEL.tflite>
 The tool calls `nanoglia::ModelReport::check_with`, which selects, plans and prepares the kernel of every operator as `Graph::load_with` does: a model that passes loads, given the memory. The verdict depends on what the firmware is built with, and the first lines of the output say what the tool used:
 
 - **backends**: chosen at run time with `--backends`;
-- **features**: `float`, `int16` and `single-rounding` are Cargo features of the tool, as they are features of `nanoglia`. Both are on by default, like in `nanoglia`; for an int8-only firmware, run `cargo run -p nanoglia-cli --no-default-features -- check <MODEL.tflite>`.
+- **features**: `float`, `int16` and `single-rounding` are Cargo features of the tool, as they are features of `nanoglia`. Both are on by default, like in `nanoglia`; for an int8-only firmware, run `cargo run -p nanoglia-tools --no-default-features -- check <MODEL.tflite>`.
 
 The check runs on your computer, not on the microcontroller:
 
@@ -83,6 +83,6 @@ The guide [Check whether a model runs](https://github.com/AlixANNERAUD/nanoglia/
 
 Only the nanoglia crates: the arguments (one command, three options) and the JSON document are handled by hand. The three backends are always built, into a registry of the tool's own, so building the workspace with the tool does not change the features of the library the other crates are tested with.
 
-## Publication
+## Versions
 
-The crate is not published (`publish = false`), and release-plz skips it (`release = false` in `release-plz.toml`). To publish it: remove both, and set `version` in `Cargo.toml` to the version of `nanoglia`.
+The tool is released with the libraries and checks with the kernels of its own version: install the version of `nanoglia-tools` that matches the `nanoglia` your firmware uses.

@@ -100,9 +100,11 @@ git_tag_enable = true
 git_tag_name = "{{ package }}-v{{ version }}"
 git_release_enable = false
 
-# The command-line tool: not released for now (`publish = false` in its Cargo.toml, so nothing
-# is published to crates.io either). To release it: remove this entry (or give it a changelog
-# and a tag like the crates above) and the `publish = false` line.
+# The host tools (the `nanoglia` command): published to crates.io for `cargo install`; their own
+# changelog and tag.
 [[package]]
-name = "nanoglia-cli"
-release = false
+name = "nanoglia-tools"
+changelog_path = "./crates/nanoglia-tools/CHANGELOG.md"
+git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_enable = false

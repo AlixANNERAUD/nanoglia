@@ -99,17 +99,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nanoglia-cli"
-version = "0.0.0"
-dependencies = [
- "nanoglia",
- "nanoglia-cmsis-nn",
- "nanoglia-esp-nn",
- "nanoglia-kernels",
- "serde_json",
-]
-
-[[package]]
 name = "nanoglia-cmsis-nn"
 version = "0.1.1"
 dependencies = [
@@ -161,6 +150,17 @@ name = "nanoglia-tflite"
 version = "0.1.1"
 dependencies = [
  "nanoglia-core",
+]
+
+[[package]]
+name = "nanoglia-tools"
+version = "0.1.1"
+dependencies = [
+ "nanoglia",
+ "nanoglia-cmsis-nn",
+ "nanoglia-esp-nn",
+ "nanoglia-kernels",
+ "serde_json",
 ]
 
 [[package]]

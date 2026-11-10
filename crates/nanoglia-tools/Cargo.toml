@@ -1,7 +1,6 @@
 [package]
-name = "nanoglia-cli"
-# Not released yet: see `publish` below.
-version = "0.0.0"
+name = "nanoglia-tools"
+version = "0.1.1"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -11,9 +10,6 @@ description = "Check on a computer whether nanoglia runs a TensorFlow Lite model
 readme = "README.md"
 keywords = ["neural-network", "embedded", "tinyml", "tflite", "cli"]
 categories = ["command-line-utilities", "science", "embedded"]
-# Whether to publish the tool on crates.io is not decided. To publish it: remove this line and
-# the `nanoglia-cli` entry of `release-plz.toml`, and set `version` to the version of `nanoglia`.
-publish = false
 
 [[bin]]
 name = "nanoglia"

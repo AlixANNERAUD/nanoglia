@@ -12,12 +12,13 @@ MLPerf Tiny keyword spotting model of `testdata/mlperf-tiny/`.
 
 ## 1. Run the check
 
-The tool is the crate `crates/nanoglia-cli` of the repository; it is not
-published on crates.io. From a clone (with the submodules: `mise run
-submodules`):
+The tool is the crate `nanoglia-tools`: `cargo install nanoglia-tools`
+installs its `nanoglia` command (a C compiler is needed), and
+`nanoglia check model.tflite` then does what the commands below do. From
+a clone of the repository (with the submodules: `mise run submodules`):
 
 ```sh
-cargo run -p nanoglia-cli -- check testdata/mlperf-tiny/kws_ref_model.tflite
+cargo run -p nanoglia-tools -- check testdata/mlperf-tiny/kws_ref_model.tflite
 ```
 
 ```text
@@ -75,7 +76,7 @@ the output says what the check used; make it match:
   firmware with feature `esp-nn`:
 
   ```sh
-  cargo run -p nanoglia-cli -- check model.tflite --backends esp-nn,cmsis-nn,kernels
+  cargo run -p nanoglia-tools -- check model.tflite --backends esp-nn,cmsis-nn,kernels
   ```
 
   The int8 convolutions, pooling, fully-connected, softmax, `ADD` and
@@ -90,7 +91,7 @@ the output says what the check used; make it match:
   features = ["cmsis-nn", "kernels"]`):
 
   ```sh
-  cargo run -p nanoglia-cli --no-default-features -- check model.tflite
+  cargo run -p nanoglia-tools --no-default-features -- check model.tflite
   ```
 
 ## 3. Read a model that does not run
@@ -144,7 +145,7 @@ more than the RAM you can give them (bytes, or `k` and `M` for multiples
 of 1024):
 
 ```sh
-cargo run -p nanoglia-cli -- check testdata/mlperf-tiny/kws_ref_model.tflite --ram 16k
+cargo run -p nanoglia-tools -- check testdata/mlperf-tiny/kws_ref_model.tflite --ram 16k
 ```
 
 ```text
@@ -174,7 +175,7 @@ object per operator with its tensors and its `kernel` or its `error`.
 For example, the operators that block, with [jq](https://jqlang.org):
 
 ```sh
-cargo run -q -p nanoglia-cli -- check model.tflite --json --backends kernels \
+cargo run -q -p nanoglia-tools -- check model.tflite --json --backends kernels \
   | jq -r '.operators[] | select(.error) | "\(.index) \(.name): \(.error.message)"'
 ```
 
@@ -185,7 +186,7 @@ cargo run -q -p nanoglia-cli -- check model.tflite --json --backends kernels \
 ```
 
 The fields are listed in the
-[README of the tool](../../crates/nanoglia-cli/README.md#json-output).
+[README of the tool](../../crates/nanoglia-tools/README.md#json-output).
 The exit status alone is enough to fail a build when a new export of
 the model stops running or outgrows its budget.
 

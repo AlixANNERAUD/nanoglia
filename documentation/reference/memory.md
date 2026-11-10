@@ -181,7 +181,7 @@ operators: the largest scratch any kernel asks for.
 `requirements()` gives the `MemoryRequirements` (`graph_bytes` and
 `context_bytes`). Each operator's `SelectedKernel::plan` holds what its
 kernel asks for: `persistent` (rounded up to 16 bytes in the graph
-block) and `scratch`. (Numbers: `cargo run -p nanoglia-cli -- check
+block) and `scratch`. (Numbers: `cargo run -p nanoglia-tools -- check
 testdata/mlperf-tiny/kws_ref_model.tflite` on a Linux aarch64 host,
 2026-11-10, with the change that added `ModelReport`, on top of commit
 `136ee56`.)
