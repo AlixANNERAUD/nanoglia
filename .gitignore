@@ -8,6 +8,7 @@ __pycache__/
 /fuzz/artifacts
 /.claude/worktrees
 /examples/*/target
+/examples/train-to-device/training/.venv
 /coverage.lcov
 /benchmarks/compare/target
 /benchmarks/compare/tools/.venv

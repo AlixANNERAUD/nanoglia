@@ -1,0 +1,34 @@
+[project]
+name = "nanoglia-train-to-device"
+version = "0.0.0"
+description = "Trains the gesture classifier of the train-and-deploy tutorial with PyTorch or Keras and exports it to an int8 LiteRT model with test vectors."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "ai-edge-litert>=2.3,<2.4",
+    "flatbuffers>=24",
+    "numpy",
+]
+
+[dependency-groups]
+# One group per framework, each several hundred megabytes: install the one you train with.
+# litert-converter (PyTorch track) only ships x86_64 Linux and macOS arm64 wheels.
+pytorch = [
+    "torch>=2.4,<2.15",
+    "litert-torch>=0.10",
+]
+keras = [
+    "tensorflow>=2.19",
+]
+
+[tool.uv]
+package = false
+# The two frameworks pin different versions of shared packages: resolve them apart.
+conflicts = [[{ group = "pytorch" }, { group = "keras" }]]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
