@@ -3,12 +3,15 @@
 `Graph::load_in` stops at the first operator nanoglia cannot run. This
 guide answers the question before you flash anything, for the whole
 model at once: which kernel runs each operator, which operators block
-and why, and how much memory the model needs. It uses the `nanoglia`
-command-line tool on your computer, then the same check from Rust.
+and why, how much memory the model needs, and the Cargo features of a
+firmware that runs it. It uses the `nanoglia` command-line tool on your
+computer, then the same check from Rust.
 
-The outputs below come from a Linux aarch64 computer on 2026-11-10, with
-the change that added the tool (on top of commit `136ee56`), on the
-MLPerf Tiny keyword spotting model of `testdata/mlperf-tiny/`.
+The outputs below come from a Linux aarch64 computer on 2026-11-10, on
+the MLPerf Tiny models of `testdata/mlperf-tiny/`: with the change that
+added the tool (on top of commit `136ee56`), and for the Cargo features
+(the end of step 1, steps 2 and 6) with the change that added them (on
+top of commit `d98b750`).
 
 ## 1. Run the check
 
@@ -51,6 +54,9 @@ features selects these kernels.
 The sizes are those of this 64-bit build: on a 32-bit target the graph block is a little
 smaller, and CMSIS-NN with DSP or Helium, or ESP-NN on an ESP32-S3, may ask for another
 scratch size.
+
+Cargo features of a firmware that runs this model with these kernels, for its Cargo.toml:
+nanoglia = { version = "0.2.0", default-features = false, features = ["cmsis-nn", "kernels", "op-average-pool-2d", "op-conv-2d", "op-depthwise-conv-2d", "op-fully-connected", "op-reshape", "op-softmax"] }
 ```
 
 Each row is an operator, in execution order: its name and version in the
@@ -59,10 +65,42 @@ as weights and biases are only counted), and the kernel that runs it.
 The name of a kernel starts with its backend: `cmsis-nn`, `esp-nn`, or
 `rust` for the Rust kernels.
 
+The last line is the dependency of a firmware that runs the model with
+these kernels, ready for its `Cargo.toml`: the backends of the `kernel`
+column (`kernels` for `rust/...`), the `op-*` feature of each operator,
+and `float` or `int16` when a selected kernel exists only with them.
+Here the model is int8 and needs neither
+([Reduce the code size](reduce-code-size.md)).
+
 The exit status is 0 when the model runs, 1 when it does not, 2 when the
 arguments are wrong or the file cannot be read.
 
-## 2. Check with the backends and features of your firmware
+## 2. Check every model of the firmware
+
+A firmware that loads several models needs the features of them all.
+Give every model to one command: each gets its report, then the last
+lines give the dependency of a firmware that runs them all, here keyword
+spotting and image classification (ResNet):
+
+```sh
+cargo run -p nanoglia-tools -- check testdata/mlperf-tiny/kws_ref_model.tflite \
+    testdata/mlperf-tiny/pretrainedResnet_quant.tflite
+```
+
+```text
+[...]
+Cargo features of a firmware that runs this model with these kernels, for its Cargo.toml:
+nanoglia = { version = "0.2.0", default-features = false, features = ["cmsis-nn", "kernels", "op-add", "op-average-pool-2d", "op-conv-2d", "op-fully-connected", "op-reshape", "op-softmax"] }
+
+Cargo features of a firmware that runs these 2 models, for its Cargo.toml:
+nanoglia = { version = "0.2.0", default-features = false, features = ["cmsis-nn", "kernels", "op-add", "op-average-pool-2d", "op-conv-2d", "op-depthwise-conv-2d", "op-fully-connected", "op-reshape", "op-softmax"] }
+```
+
+The exit status is the worst of the models: 1 as soon as one does not
+run, and then no dependency is given for them all. `--ram` applies to
+each model alone.
+
+## 3. Check with the backends and features of your firmware
 
 Whether an operator has a kernel depends on what your firmware is built
 with ([Cargo features](../reference/features.md)). The second line of
@@ -95,10 +133,14 @@ the output says what the check used; make it match:
 - **`all-ops` and the `op-*` features**, at build time too: the tool
   checks with every operator by default. Built with the `op-*` features
   of a firmware in place of `all-ops`, it reports the operators that
-  firmware leaves out without a kernel
-  ([Reduce the code size](reduce-code-size.md)).
+  firmware leaves out without a kernel, with the reason `built without
+  op-...` ([Reduce the code size](reduce-code-size.md)).
 
-## 3. Read a model that does not run
+The features the last line gives depend on the kernels selected, so on
+these settings too: with `--backends esp-nn,cmsis-nn,kernels`, it names
+`esp-nn` in place of `cmsis-nn` for keyword spotting.
+
+## 4. Read a model that does not run
 
 Every operator without a kernel is listed, not only the first. Here the
 same model checked for a firmware without CMSIS-NN (`--backends
@@ -142,7 +184,7 @@ by the reason: not a TFLite model, a truncated file, or several
 subgraphs (control flow). [Errors](../reference/errors.md#checking-modelreportcheck-check_in-check_with)
 lists them.
 
-## 4. Give a RAM budget
+## 5. Give a RAM budget
 
 `--ram` fails the check when the graph and one execution context need
 more than the RAM you can give them (bytes, or `k` and `M` for multiples
@@ -171,10 +213,11 @@ RAM if it receives the model at run time), so count them yourself in
 the second case. The sizes are those of your computer's build, see
 [the last section](#what-the-check-cannot-tell).
 
-## 5. Use it in a script or in CI
+## 6. Use it in a script or in CI
 
 `--json` prints one JSON document with the same content: `runs`,
-`passes` (runs and fits the budget), `unsupported`, `memory`, and one
+`passes` (runs and fits the budget), `unsupported`, `memory`,
+`firmware` (the features of a firmware that runs the model), and one
 object per operator with its tensors and its `kernel` or its `error`.
 For example, the operators that block, with [jq](https://jqlang.org):
 
@@ -189,12 +232,25 @@ cargo run -q -p nanoglia-tools -- check model.tflite --json --backends kernels \
 [...]
 ```
 
-The fields are listed in the
+The dependency of the firmware, as a list or as a line:
+
+```sh
+cargo run -q -p nanoglia-tools -- check testdata/mlperf-tiny/kws_ref_model.tflite --json \
+  | jq -c .firmware.features
+```
+
+```text
+["cmsis-nn","kernels","op-average-pool-2d","op-conv-2d","op-depthwise-conv-2d","op-fully-connected","op-reshape","op-softmax"]
+```
+
+With several models, the document holds the document of each in
+`models`, then `passes` and the `firmware` of them all. The fields are
+listed in the
 [README of the tool](../../crates/nanoglia-tools/README.md#json-output).
 The exit status alone is enough to fail a build when a new export of
 the model stops running or outgrows its budget.
 
-## 6. Run the same check from Rust
+## 7. Run the same check from Rust
 
 The tool is a thin layer over `nanoglia::ModelReport`, which you can
 call from a test of your own crate. This is the most faithful check: it

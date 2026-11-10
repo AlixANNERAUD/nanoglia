@@ -11,16 +11,16 @@ model that uses an operator you left out fails to load.
 
 ## 1. List the operators of your models
 
-Run `nanoglia check` on each model
+Run `nanoglia check` on every model of the firmware at once
 ([Check whether a model runs](check-whether-a-model-runs.md)); from a
-clone of the repository:
+clone of the repository, for the keyword spotting model alone:
 
 ```sh
 cargo run -p nanoglia-tools -- check testdata/mlperf-tiny/kws_ref_model.tflite
 ```
 
 The `operator` column names the operator of each line, and the `kernel`
-column the backend that runs it:
+column the kernel that runs it, which starts with its backend:
 
 ```text
  #  operator              inputs                    outputs          kernel
@@ -34,9 +34,19 @@ column the backend that runs it:
 ```
 
 This model uses six operators: `CONV_2D`, `DEPTHWISE_CONV_2D`,
-`AVERAGE_POOL_2D`, `RESHAPE`, `FULLY_CONNECTED` and `SOFTMAX`. Take the
-union over all your models. A later version of the tool will print the
-list of features itself.
+`AVERAGE_POOL_2D`, `RESHAPE`, `FULLY_CONNECTED` and `SOFTMAX`. The
+output ends with the features that follow from them (steps 2 and 3), as
+a dependency to paste:
+
+```text
+Cargo features of a firmware that runs this model with these kernels, for its Cargo.toml:
+nanoglia = { version = "0.2.0", default-features = false, features = ["cmsis-nn", "kernels", "op-average-pool-2d", "op-conv-2d", "op-depthwise-conv-2d", "op-fully-connected", "op-reshape", "op-softmax"] }
+```
+
+With several models (`check a.tflite b.tflite`), the last line takes
+the union of them all. (Tool output from a Linux aarch64 computer on
+2026-11-10, on top of commit `d98b750`.) The next two steps say where
+each feature comes from.
 
 ## 2. Name their features
 
@@ -73,7 +83,10 @@ nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features 
   out. Add `float` if a model computes in float32 and `int16` if it is
   a 16x8 model: an operator feature covers every type, but its float32
   and int16 kernels are only built with these features
-  ([Cargo features](../reference/features.md)).
+  ([Cargo features](../reference/features.md)). Some operators run these
+  types without them (the Rust `ADD` on f32, `RESHAPE` on any type):
+  `nanoglia check` names `float` or `int16` only when a kernel it
+  selected needs it.
 - **Operators.** One `op-*` feature per operator of step 1.
 
 `examples/nano33ble/Cargo.toml` is this configuration, and
@@ -101,8 +114,17 @@ cargo run -p nanoglia-tools --no-default-features \
     -- check testdata/mlperf-tiny/kws_ref_model.tflite
 ```
 
-It must end with `RUNS: 13 of 13 operators have a kernel.` On the
-device, a model with an operator that was left out fails in
+It must say `RUNS: 13 of 13 operators have a kernel.` An operator you
+left out is reported with the feature to add; here the ResNet model of
+`testdata/mlperf-tiny/`, checked with the same build:
+
+```text
+ 3  ADD v2              int8[1,32,32,16] int8[1,32,32,16]  int8[1,32,32,16]  NONE: built without `op-add`
+[...]
+DOES NOT RUN: 3 of 16 operators have no kernel (ADD v2 x3).
+```
+
+On the device, a model with an operator that was left out fails in
 `Graph::load_in` with `Detail::UnsupportedOp { op_index, opcode }`,
 which names the operator ([Errors](../reference/errors.md)); it never
 panics. `BuiltinOp(opcode).name()` and `.feature()` give its name and

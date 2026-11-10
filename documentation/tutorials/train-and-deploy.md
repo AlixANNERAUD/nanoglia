@@ -308,6 +308,9 @@ features selects these kernels.
 The sizes are those of this 64-bit build: on a 32-bit target the graph block is a little
 smaller, and CMSIS-NN with DSP or Helium, or ESP-NN on an ESP32-S3, may ask for another
 scratch size.
+
+Cargo features of a firmware that runs this model with these kernels, for its Cargo.toml:
+nanoglia = { version = "0.2.0", default-features = false, features = ["cmsis-nn", "kernels", "op-conv-2d", "op-fully-connected", "op-max-pool-2d", "op-mean", "op-softmax"] }
 ```
 
 Every operator has a kernel, and the model needs about 2.2 KiB of RAM
@@ -315,6 +318,8 @@ on top of its 5 KiB of flash: it fits the 256 KiB given as budget, which
 is the RAM of an Arduino Nano 33 BLE. Had an operator been unsupported,
 the command would list each one and exit with status 1
 ([Check whether a model runs](../how-to-guides/check-whether-a-model-runs.md)).
+The last line is the dependency of a firmware that runs this model: the
+next step uses these features.
 
 The same check can be made from code, which is also the first half of
 the program a firmware runs. Loading the model is that check: `Graph::load_in` verifies the file,
@@ -334,8 +339,9 @@ cp ../nanoglia/target/train-to-device/keras/model.tflite .
 These features are all the model needs. `cmsis-nn` brings the C kernels
 and `kernels` the operators CMSIS-NN lacks. Each `op-` feature brings
 the kernels of one operator of the list the training script printed:
-`op-conv-2d` for `CONV_2D`, and so on (the PyTorch model needs neither
-`op-depthwise-conv-2d` nor `op-reshape`). nanoglia loads models at run
+`op-conv-2d` for `CONV_2D`, and so on. `op-depthwise-conv-2d` and
+`op-reshape` are there for the PyTorch model: the Keras model needs
+neither, as the last line of step 5 shows. nanoglia loads models at run
 time, so it cannot know which operators a firmware needs: by default it
 builds them all, with the float32 and int16 kernels. Naming the
 operators, and leaving out the default `float` and `int16` features,
@@ -733,4 +739,9 @@ the `nanoglia check` command of step 5), and that CI run printed the same lines
 from its own Rust and C programs on x86_64. CI builds and runs the
 programs of `examples/train-to-device`, which are the programs of steps
 6 and 7, on both models (`mise run train-to-device`) and on a committed
-reference model (`mise run example-train-to-device`).
+reference model (`mise run example-train-to-device`). The last two lines of the
+output of step 5 come from the same computer and day, with the change
+that added them on top of commit `d98b750`, on that committed reference
+model (`examples/train-to-device/reference/model.tflite`, the Keras
+track's export, copied to `target/train-to-device/keras/model.tflite`),
+for which the command prints the same table and sizes.

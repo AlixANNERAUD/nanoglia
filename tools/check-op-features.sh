@@ -38,7 +38,8 @@ echo "$output" | grep -q "all-ops" || { echo "$output" >&2; exit 1; }
 # The facade and the C API forward the features: with those of the keyword-spotting model, which
 # must then run and give LiteRT's bytes while another model is refused
 # (crates/nanoglia/tests/operator_subset.rs).
-kws=op-conv-2d,op-depthwise-conv-2d,op-average-pool-2d,op-reshape,op-fully-connected,op-softmax
+# In the order `nanoglia check` prints them.
+kws=op-average-pool-2d,op-conv-2d,op-depthwise-conv-2d,op-fully-connected,op-reshape,op-softmax
 for set in "$kws"; do
   echo "op-features: nanoglia with $set"
   cargo test --quiet -p nanoglia --no-default-features --features "cmsis-nn,kernels,$set" --lib --test operator_subset
@@ -47,4 +48,33 @@ for set in "$kws"; do
   # Bare metal (Cortex-M4F), without any global allocator.
   cargo build --quiet -p nanoglia --lib --target thumbv7em-none-eabihf --no-default-features --features "cmsis-nn,kernels,$set"
 done
+# `nanoglia check` prints the features of a firmware that runs a model. With exactly those, the
+# tool (the same registry as such a firmware) must run the model, and the features printed for
+# the keyword-spotting model must be the set above, with which nanoglia loads it and gives
+# LiteRT's bytes. The tool built for keyword spotting must also say which feature the ResNet
+# model lacks.
+features_of() {
+  cargo run --quiet -p nanoglia-tools -- check "$1" \
+    | sed -n 's/^nanoglia = .*, features = \[\(.*\)\] }$/\1/p' | tr -d '" '
+}
+for model in testdata/mlperf-tiny/kws_ref_model.tflite \
+    testdata/ops/conv2d_3x3_same_f32/model.tflite testdata/ops/conv2d_3x3_same_int16/model.tflite; do
+  printed=$(features_of "$model")
+  echo "op-features: $model needs $printed"
+  backends=$(echo "$printed" | tr , '\n' | grep -E '^(esp-nn|cmsis-nn|kernels)$' | paste -sd , -)
+  features=$(echo "$printed" | tr , '\n' | grep -vE '^(esp-nn|cmsis-nn|kernels)$' | paste -sd , -)
+  cargo run --quiet -p nanoglia-tools --no-default-features --features "$features" -- \
+    check "$model" --backends "$backends" > /dev/null
+done
+printed=$(features_of testdata/mlperf-tiny/kws_ref_model.tflite)
+if [ "$printed" != "cmsis-nn,kernels,$kws" ]; then
+  echo "op-features: nanoglia check printed $printed for keyword spotting, not cmsis-nn,kernels,$kws" >&2
+  exit 1
+fi
+if output=$(cargo run --quiet -p nanoglia-tools --no-default-features --features "$kws" -- \
+    check testdata/mlperf-tiny/pretrainedResnet_quant.tflite); then
+  echo "op-features: the ResNet model ran without op-add" >&2
+  exit 1
+fi
+echo "$output" | grep -q 'NONE: built without `op-add`' || { echo "$output" >&2; exit 1; }
 echo "op-features: ok"

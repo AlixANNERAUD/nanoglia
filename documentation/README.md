@@ -27,7 +27,7 @@ are in [`AGENTS.md`](../AGENTS.md).
 
 | Page | Goal |
 | --- | --- |
-| [Check whether a model runs](how-to-guides/check-whether-a-model-runs.md) | List, on your computer, the kernel of every operator of a `.tflite` file, every operator that blocks and why, and the memory needed, with the `nanoglia check` command or `ModelReport` |
+| [Check whether a model runs](how-to-guides/check-whether-a-model-runs.md) | List, on your computer, the kernel of every operator of a `.tflite` file, every operator that blocks and why, the memory needed and the Cargo features of the firmware, with the `nanoglia check` command or `ModelReport` |
 | [Size the memory](how-to-guides/size-memory.md) | Compute the exact size of a static `Arena` with `MemoryRequirements`, guard it with a test, confirm it on the device |
 | [Convert a PyTorch model](how-to-guides/convert-a-pytorch-model.md) | Produce a full-integer `.tflite` file with litert-torch (or onnx2tf from ONNX, or TensorFlow's converter from Keras) and check it against LiteRT |
 | [Run on a microcontroller](how-to-guides/run-on-a-microcontroller.md) | Run the Nano 33 BLE example, then use nanoglia without a heap in your own Cortex-M or ESP32-S3 firmware |

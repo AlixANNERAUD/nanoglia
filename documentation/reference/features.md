@@ -80,7 +80,9 @@ CMSIS-NN and ESP-NN functions they call, are not linked.
 kernels of your models, turn the default features off and list the
 backends, the types and the operators
 ([Reduce the code size](../how-to-guides/reduce-code-size.md), with
-measured sizes in [Memory](memory.md#code-size)):
+measured sizes in [Memory](memory.md#code-size)); `nanoglia check`
+prints this list for your models
+([Check whether a model runs](../how-to-guides/check-whether-a-model-runs.md)):
 
 ```toml
 nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features = false, features = [
@@ -278,10 +280,12 @@ and its output lists those that are on. Default features: `float`,
 | `int16` | yes | Checks with the 16x8 kernels, as feature `int16` of `nanoglia`. Forwards `nanoglia-cmsis-nn/int16` and `nanoglia-kernels/int16`. |
 | `single-rounding` | no | Checks with single-rounding requantization, as feature `single-rounding` of `nanoglia`: ESP-NN then claims no operator. |
 | `all-ops` | yes | Checks with every operator, as feature `all-ops` of `nanoglia`. |
-| `op-*` | yes, through `all-ops` | Checks with one operator, as the same feature of `nanoglia`: forwarded to the three backends. Without `all-ops`, an operator whose feature is off is reported without a kernel. |
+| `op-*` | yes, through `all-ops` | Checks with one operator, as the same feature of `nanoglia`: forwarded to the three backends. Without `all-ops`, an operator whose feature is off is reported without a kernel, with the reason `built without op-...`. |
 
 Build it for one configuration with `-p`, which keeps the features of
 the other crates of the workspace out: `cargo run -p nanoglia-tools
 --no-default-features --features all-ops -- check model.tflite` checks
 for an int8-only firmware; with `op-*` features in place of `all-ops`,
-it checks for a firmware built with those operators.
+it checks for a firmware built with those operators. Whatever its own
+features, the tool ends the report of a model that runs with the
+features of `nanoglia` a firmware needs for the kernels it selected.

@@ -1,20 +1,42 @@
 //! The two renderings of a check: a table for people, JSON for programs.
 
 use crate::args::Check;
-use crate::report::{Operator, Report, Slot, Tensor, code_name, explain};
+use crate::firmware::Firmware;
+use crate::report::{Operator, Report, Slot, Tensor, code_name, explain, kernel_error};
 use nanoglia::{Detail, Error, MemoryBreakdown};
 use std::fmt::Write as _;
+use std::path::Path;
 
-/// Everything a rendering shows.
+/// Everything a rendering shows of one model.
 pub struct Outcome<'a> {
     pub args: &'a Check,
+    /// Path of the model file, as given.
+    pub model: &'a Path,
     /// Size of the model file.
     pub model_bytes: usize,
     /// The report, or why the operators could not be walked.
     pub report: Result<Report, Error>,
+    /// The features of a firmware that runs the model, if it runs.
+    pub firmware: Option<Firmware>,
 }
 
-impl Outcome<'_> {
+impl<'a> Outcome<'a> {
+    pub fn new(
+        args: &'a Check,
+        model: &'a Path,
+        model_bytes: usize,
+        report: Result<Report, Error>,
+    ) -> Self {
+        let firmware = report.as_ref().ok().and_then(Firmware::of);
+        Self {
+            args,
+            model,
+            model_bytes,
+            report,
+            firmware,
+        }
+    }
+
     /// What loading allocates, if the model loads.
     pub fn memory(&self) -> Option<MemoryBreakdown> {
         self.report.as_ref().ok()?.memory.ok()
@@ -88,10 +110,13 @@ fn operator_text(op: &Operator) -> String {
 const SUPPORTED_OPERATORS: &str = "https://github.com/AlixANNERAUD/nanoglia/blob/main/documentation/reference/supported-operators.md";
 
 /// Why an operator has no kernel, short enough for a table cell.
-fn reason(error: Error) -> String {
-    match error.detail {
-        Detail::UnsupportedOp { .. } => "no kernel for these types, shapes and options".to_owned(),
-        _ => explain(error),
+fn reason(op: &Operator, error: Error) -> String {
+    match (op.missing_feature, error.detail) {
+        (Some(feature), _) => format!("built without `{feature}`"),
+        (None, Detail::UnsupportedOp { .. }) => {
+            "no kernel for these types, shapes and options".to_owned()
+        }
+        (None, _) => explain(error),
     }
 }
 
@@ -112,8 +137,65 @@ fn blocking(operators: &[Operator]) -> String {
     parts.join(", ")
 }
 
-/// The table and the summary.
-pub fn text(outcome: &Outcome<'_>) -> String {
+/// The features of a firmware that runs every model, `None` if one of them does not run.
+fn firmware(outcomes: &[Outcome<'_>]) -> Option<Firmware> {
+    let mut firmware = Firmware::default();
+    for outcome in outcomes {
+        firmware.add(outcome.firmware.as_ref()?);
+    }
+    Some(firmware)
+}
+
+/// ESP-NN claims no operator on a target without compare-and-swap, where the next backend of
+/// the registry runs its operators: a firmware for such a target needs that backend's features.
+fn esp_nn_note(out: &mut String, firmware: &Firmware) {
+    if firmware.features().contains(&"esp-nn") {
+        let _ = writeln!(
+            out,
+            "On a target without atomic compare-and-swap (Cortex-M0+, riscv32imc), ESP-NN claims \
+             no operator:\ncheck again without esp-nn for the features a firmware needs there."
+        );
+    }
+}
+
+/// The report of each model, then, with several models, the features of a firmware that runs
+/// them all.
+pub fn text(outcomes: &[Outcome<'_>]) -> String {
+    let reports: Vec<String> = outcomes.iter().map(model_text).collect();
+    let mut out = reports.join("\n");
+    if let [_, _, ..] = outcomes {
+        let _ = writeln!(out);
+        match firmware(outcomes) {
+            Some(firmware) => {
+                let _ = writeln!(
+                    out,
+                    "Cargo features of a firmware that runs these {} models, for its Cargo.toml:\n{}",
+                    outcomes.len(),
+                    firmware.dependency()
+                );
+                esp_nn_note(&mut out, &firmware);
+            }
+            None => {
+                let failing = outcomes.iter().filter(|outcome| !outcome.runs()).count();
+                let _ = writeln!(
+                    out,
+                    "No firmware runs these {} models with these backends and features: {failing} \
+                     of them {}.",
+                    outcomes.len(),
+                    if failing == 1 {
+                        "does not run"
+                    } else {
+                        "do not run"
+                    }
+                );
+            }
+        }
+    }
+    out
+}
+
+/// The table and the summary of one model.
+fn model_text(outcome: &Outcome<'_>) -> String {
     let mut out = String::new();
     let args = outcome.args;
     let enabled: Vec<&str> = features()
@@ -123,7 +205,7 @@ pub fn text(outcome: &Outcome<'_>) -> String {
     let _ = writeln!(
         out,
         "model: {} ({} bytes)",
-        args.model.display(),
+        outcome.model.display(),
         outcome.model_bytes
     );
     let _ = writeln!(
@@ -158,7 +240,7 @@ pub fn text(outcome: &Outcome<'_>) -> String {
                 slots_text(&op.outputs),
                 match &op.kernel {
                     Ok(kernel) => kernel.name.to_owned(),
-                    Err(error) => format!("NONE: {}", reason(*error)),
+                    Err(error) => format!("NONE: {}", reason(op, *error)),
                 },
             ]
         })
@@ -246,6 +328,16 @@ pub fn text(outcome: &Outcome<'_>) -> String {
                  may ask for another\nscratch size.",
                 usize::BITS
             );
+            if let Some(firmware) = &outcome.firmware {
+                let _ = writeln!(out);
+                let _ = writeln!(
+                    out,
+                    "Cargo features of a firmware that runs this model with these kernels, for its \
+                     Cargo.toml:\n{}",
+                    firmware.dependency()
+                );
+                esp_nn_note(&mut out, firmware);
+            }
         }
         Err(_) if report.unsupported > 0 => {
             let _ = writeln!(
@@ -340,12 +432,47 @@ fn operator_json(op: &Operator) -> String {
         option(kernel.map(|kernel| string(kernel.backend))),
         option(kernel.map(|kernel| kernel.plan.persistent.to_string())),
         option(kernel.map(|kernel| kernel.plan.scratch.to_string())),
-        option(op.kernel.err().map(error_json)),
+        option(op.kernel.err().map(|error| {
+            format!(
+                "{{\"code\": {}, \"message\": {}}}",
+                string(code_name(error.code)),
+                string(&kernel_error(op, error))
+            )
+        })),
     )
 }
 
-/// One JSON document, on several lines (one per operator).
-pub fn json(outcome: &Outcome<'_>) -> String {
+fn firmware_json(firmware: Option<Firmware>) -> String {
+    option(firmware.map(|firmware| {
+        format!(
+            "{{\"nanoglia_version\": {}, \"features\": {}, \"dependency\": {}}}",
+            string(nanoglia::VERSION),
+            array(firmware.features().into_iter().map(string)),
+            string(&firmware.dependency())
+        )
+    }))
+}
+
+/// One JSON document. With several models, a document that holds the document of each model
+/// (`models`), whether they all pass and the features of a firmware that runs them all.
+pub fn json(outcomes: &[Outcome<'_>]) -> String {
+    let [outcome] = outcomes else {
+        let models: Vec<String> = outcomes
+            .iter()
+            .map(|outcome| model_json(outcome).trim_end().replace('\n', "\n    "))
+            .collect();
+        return format!(
+            "{{\n  \"models\": [\n    {}\n  ],\n  \"passes\": {},\n  \"firmware\": {}\n}}\n",
+            models.join(",\n    "),
+            outcomes.iter().all(Outcome::passes),
+            firmware_json(firmware(outcomes))
+        );
+    };
+    model_json(outcome)
+}
+
+/// The document of one model, on several lines (one per operator).
+fn model_json(outcome: &Outcome<'_>) -> String {
     let args = outcome.args;
     let report = outcome.report.as_ref().ok();
     // The error that keeps the model from loading, when it is not the one of an operator.
@@ -377,7 +504,7 @@ pub fn json(outcome: &Outcome<'_>) -> String {
         "model",
         format!(
             "{{\"path\": {}, \"bytes\": {}}}",
-            string(&args.model.to_string_lossy()),
+            string(&outcome.model.to_string_lossy()),
             outcome.model_bytes
         ),
         false,
@@ -417,6 +544,7 @@ pub fn json(outcome: &Outcome<'_>) -> String {
         option(outcome.fits().map(|fits| fits.to_string())),
         false,
     );
+    field("firmware", firmware_json(outcome.firmware.clone()), false);
     field(
         "operators",
         if operators.is_empty() {

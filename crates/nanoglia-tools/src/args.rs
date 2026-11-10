@@ -7,24 +7,26 @@ use std::path::PathBuf;
 pub const HELP: &str = "\
 Check whether nanoglia runs a TensorFlow Lite model, before flashing anything.
 
-Usage: nanoglia check [OPTIONS] <MODEL.tflite>
+Usage: nanoglia check [OPTIONS] <MODEL.tflite>...
 
 Lists every operator of the model with the kernel that runs it, or the reason no
-kernel does, then the memory the model needs.
+kernel does, then the memory the model needs and the Cargo features of nanoglia
+a firmware needs to run it. With several models (a firmware that loads them
+all), each gets its report, then the features of a firmware that runs them all.
 
 Options:
       --backends <LIST>  Backends of the firmware, a comma-separated list of
                          cmsis-nn, esp-nn and kernels: the Cargo features of
                          nanoglia with the same names [default: cmsis-nn,kernels]
-      --ram <SIZE>       RAM budget for the graph and one execution context
-                         (bytes, or with a binary suffix: 256k, 1M): the check
-                         fails if they do not fit
+      --ram <SIZE>       RAM budget for the graph and one execution context of
+                         each model (bytes, or with a binary suffix: 256k, 1M):
+                         the check fails if they do not fit
       --json             Print one JSON document instead of the table
   -h, --help             Print this help
   -V, --version          Print the version
 
-Exit status: 0 if the model runs (and fits the budget), 1 if it does not,
-2 if the arguments are wrong or the file cannot be read.
+Exit status: 0 if every model runs (and fits the budget), 1 if one does not,
+2 if the arguments are wrong or a file cannot be read.
 
 The float32 and int16 kernels, the rounding mode and the operators are Cargo
 features of this tool (float, int16, single-rounding, all-ops or the op-* feature
@@ -89,7 +91,8 @@ impl Backends {
 /// The arguments of `nanoglia check`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Check {
-    pub model: PathBuf,
+    /// The models, at least one, in the order given.
+    pub models: Vec<PathBuf>,
     pub json: bool,
     pub backends: Backends,
     /// RAM budget in bytes.
@@ -124,14 +127,14 @@ pub fn parse_size(text: &str) -> Result<usize, String> {
 pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command, String> {
     let mut args = args.into_iter();
     let mut command = None;
-    let mut model = None;
+    let mut models = Vec::new();
     let mut json = false;
     let mut backends = Backends::default();
     let mut ram = None;
     while let Some(arg) = args.next() {
         let Some(text) = arg.to_str() else {
             // Only a path may hold bytes that are not UTF-8.
-            positional(&mut command, &mut model, arg)?;
+            positional(&mut command, &mut models, arg);
             continue;
         };
         let (name, inline) = match text.split_once('=') {
@@ -156,39 +159,29 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command, String
             option if option.starts_with('-') && option.len() > 1 => {
                 return Err(format!("unknown option `{option}`"));
             }
-            _ => positional(&mut command, &mut model, arg)?,
+            _ => positional(&mut command, &mut models, arg),
         }
     }
-    match (command.as_deref(), model) {
-        (Some("check"), Some(model)) => Ok(Command::Check(Check {
-            model,
+    match (command.as_deref(), models.is_empty()) {
+        (Some("check"), false) => Ok(Command::Check(Check {
+            models,
             json,
             backends,
             ram,
         })),
-        (Some("check"), None) => Err("`check` needs the path of a model".to_owned()),
+        (Some("check"), true) => Err("`check` needs the path of a model".to_owned()),
         (Some(other), _) => Err(format!("unknown command `{other}` (expected `check`)")),
         (None, _) => Err("no command (expected `check <MODEL.tflite>`)".to_owned()),
     }
 }
 
-/// Takes the command, then the model path.
-fn positional(
-    command: &mut Option<String>,
-    model: &mut Option<PathBuf>,
-    arg: OsString,
-) -> Result<(), String> {
+/// Takes the command, then the model paths.
+fn positional(command: &mut Option<String>, models: &mut Vec<PathBuf>, arg: OsString) {
     if command.is_none() {
         *command = Some(arg.to_string_lossy().into_owned());
-    } else if model.is_none() {
-        *model = Some(PathBuf::from(arg));
     } else {
-        return Err(format!(
-            "unexpected argument `{}`: one model at a time",
-            arg.to_string_lossy()
-        ));
+        models.push(PathBuf::from(arg));
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -216,7 +209,7 @@ mod tests {
         assert_eq!(
             parse_str(&["check", "model.tflite"]),
             Ok(Command::Check(Check {
-                model: PathBuf::from("model.tflite"),
+                models: vec![PathBuf::from("model.tflite")],
                 json: false,
                 backends: Backends::default(),
                 ram: None,
@@ -235,6 +228,15 @@ mod tests {
         assert_eq!(check.backends.names(), ["esp-nn", "kernels"]);
         assert_eq!(check.ram, Some(65536));
         assert!(check.json);
+
+        let Ok(Command::Check(check)) = parse_str(&["check", "a.tflite", "--json", "b.tflite"])
+        else {
+            panic!("not a check");
+        };
+        assert_eq!(
+            check.models,
+            [PathBuf::from("a.tflite"), PathBuf::from("b.tflite")]
+        );
     }
 
     #[test]
@@ -246,7 +248,6 @@ mod tests {
             &[][..],
             &["check"],
             &["run", "model.tflite"],
-            &["check", "a.tflite", "b.tflite"],
             &["check", "a.tflite", "--ram"],
             &["check", "a.tflite", "--backends", "tflm"],
             &["check", "a.tflite", "--backends", ""],

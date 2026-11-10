@@ -308,7 +308,7 @@ fn wrong_arguments_and_unreadable_files_exit_with_2() {
         &["check", model, "--ram", "lots"],
         &["check", model, "--backends", "tflm"],
         &["check", model, "--unknown"],
-        &["check", model, model],
+        &["check", model, "no-such-file.tflite"],
     ] {
         let (status, stdout, stderr) = nanoglia(args);
         assert_eq!(status, 2, "{args:?}");
@@ -318,8 +318,231 @@ fn wrong_arguments_and_unreadable_files_exit_with_2() {
 
     let (status, stdout, stderr) = nanoglia(&["--help"]);
     assert_eq!((status, stderr.as_str()), (0, ""));
-    assert!(stdout.contains("Usage: nanoglia check [OPTIONS] <MODEL.tflite>"));
+    assert!(stdout.contains("Usage: nanoglia check [OPTIONS] <MODEL.tflite>..."));
     let (status, stdout, _) = nanoglia(&["--version"]);
     assert_eq!(status, 0);
     assert_eq!(stdout, format!("nanoglia {}\n", env!("CARGO_PKG_VERSION")));
+}
+
+const CONV_F32: &str = "testdata/ops/conv2d_3x3_same_f32/model.tflite";
+const CONV_INT16: &str = "testdata/ops/conv2d_3x3_same_int16/model.tflite";
+
+/// The operators of keyword spotting, as `nanoglia check` prints their features.
+const KWS_OPERATORS: [&str; 6] = [
+    "op-average-pool-2d",
+    "op-conv-2d",
+    "op-depthwise-conv-2d",
+    "op-fully-connected",
+    "op-reshape",
+    "op-softmax",
+];
+
+/// `features`, with `single-rounding` after the types when the tool is built with it.
+fn expected(backends_and_types: &[&str], operators: &[&str]) -> Vec<String> {
+    let mut features: Vec<String> = backends_and_types.iter().map(|f| f.to_string()).collect();
+    if cfg!(feature = "single-rounding") {
+        features.push("single-rounding".to_owned());
+    }
+    features.extend(operators.iter().map(|f| f.to_string()));
+    features
+}
+
+/// The dependency line of a firmware with `features`.
+fn dependency(features: &[String]) -> String {
+    let quoted: Vec<String> = features.iter().map(|f| format!("\"{f}\"")).collect();
+    format!(
+        "nanoglia = {{ version = \"{}\", default-features = false, features = [{}] }}",
+        nanoglia::VERSION,
+        quoted.join(", ")
+    )
+}
+
+#[test]
+fn the_features_of_a_firmware_that_runs_the_model() {
+    // Keyword spotting is int8: CMSIS-NN, RESHAPE in Rust, neither `float` nor `int16`.
+    let features = expected(&["cmsis-nn", "kernels"], &KWS_OPERATORS);
+    let line = dependency(&features);
+    let model = repo(KWS);
+    let (status, stdout, _) = nanoglia(&["check", model.to_str().unwrap()]);
+    assert_eq!(status, 0);
+    assert!(
+        stdout.ends_with(&format!(
+            "\nCargo features of a firmware that runs this model with these kernels, for its \
+         Cargo.toml:\n{line}\n"
+        )),
+        "{stdout}"
+    );
+    let (_, json) = check_json(KWS, &[]);
+    assert_eq!(
+        json["firmware"],
+        serde_json::json!({
+            "nanoglia_version": nanoglia::VERSION,
+            "features": features,
+            "dependency": line,
+        })
+    );
+
+    // A float32 convolution needs the float32 kernel of `nanoglia-kernels`, a 16x8 one the
+    // int16 kernel of CMSIS-NN; a float32 ADD runs without `float`.
+    for (model, built, features) in [
+        (
+            CONV_F32,
+            cfg!(feature = "float"),
+            expected(&["kernels", "float"], &["op-conv-2d"]),
+        ),
+        (
+            CONV_INT16,
+            cfg!(feature = "int16"),
+            expected(&["cmsis-nn", "int16"], &["op-conv-2d"]),
+        ),
+        (
+            "testdata/ops/add_f32/model.tflite",
+            true,
+            expected(&["kernels"], &["op-add"]),
+        ),
+    ] {
+        let (_, json) = check_json(model, &[]);
+        if built {
+            assert_eq!(
+                json["firmware"]["features"],
+                serde_json::json!(features),
+                "{model}"
+            );
+            assert_eq!(
+                json["firmware"]["dependency"],
+                dependency(&features),
+                "{model}"
+            );
+        } else {
+            assert_eq!(json["firmware"], Value::Null, "{model}");
+        }
+    }
+
+    // ESP-NN, when it is checked and selected.
+    let (_, json) = check_json(KWS, &["--backends", "esp-nn,cmsis-nn,kernels"]);
+    let esp_nn = !cfg!(feature = "single-rounding");
+    let backends: &[&str] = if esp_nn {
+        &["esp-nn", "kernels"]
+    } else {
+        &["cmsis-nn", "kernels"]
+    };
+    assert_eq!(
+        json["firmware"]["features"],
+        serde_json::json!(expected(backends, &KWS_OPERATORS))
+    );
+    let (_, stdout, _) = nanoglia(&[
+        "check",
+        "--backends",
+        "esp-nn,cmsis-nn,kernels",
+        model.to_str().unwrap(),
+    ]);
+    assert_eq!(
+        stdout.ends_with(
+            "\nOn a target without atomic compare-and-swap (Cortex-M0+, riscv32imc), ESP-NN \
+             claims no operator:\ncheck again without esp-nn for the features a firmware needs \
+             there.\n"
+        ),
+        esp_nn,
+        "{stdout}"
+    );
+
+    // Nothing for a model that does not run.
+    let (status, stdout, _) =
+        nanoglia(&["check", "--backends", "kernels", model.to_str().unwrap()]);
+    assert_eq!(status, 1);
+    assert!(!stdout.contains("Cargo features"));
+    let (_, json) = check_json(KWS, &["--backends", "kernels"]);
+    assert_eq!(json["firmware"], Value::Null);
+}
+
+#[test]
+fn an_operator_left_out_of_the_build_is_named() {
+    // Adapts to the `op-*` features the tool is built with: RESHAPE has a kernel in the Rust
+    // backend whenever its feature is on.
+    let (_, json) = check_json(KWS, &[]);
+    let reshape = &json["operators"][10];
+    assert_eq!(reshape["name"], "RESHAPE");
+    if cfg!(feature = "op-reshape") {
+        assert_eq!(reshape["kernel"], "rust/reshape");
+    } else {
+        assert_eq!(reshape["error"]["code"], "unsupported-operation");
+        assert!(
+            reshape["error"]["message"]
+                .as_str()
+                .unwrap()
+                .ends_with("it was built without `op-reshape`")
+        );
+        let model = repo(KWS);
+        let (_, stdout, _) = nanoglia(&["check", model.to_str().unwrap()]);
+        assert!(stdout.contains("  NONE: built without `op-reshape`\n"));
+    }
+}
+
+#[test]
+fn several_models_and_the_firmware_that_runs_them_all() {
+    let kws = repo(KWS);
+    let conv = repo(CONV_F32);
+    let (kws, conv) = (kws.to_str().unwrap(), conv.to_str().unwrap());
+    let (status, stdout, stderr) = nanoglia(&["check", kws, conv]);
+    let (_, alone, _) = nanoglia(&["check", kws]);
+    assert_eq!(stderr, "");
+    // Each model gets the report it gets alone, in the order given.
+    assert!(
+        stdout.starts_with(&format!("{alone}\nmodel: {conv} (")),
+        "{stdout}"
+    );
+    assert_eq!(
+        stdout
+            .matches("\nCargo features of a firmware that runs this model")
+            .count(),
+        2
+    );
+    if !cfg!(feature = "float") {
+        assert_eq!(status, 1);
+        assert!(stdout.ends_with(
+            "\nNo firmware runs these 2 models with these backends and features: 1 of them does \
+             not run.\n"
+        ));
+        return;
+    }
+    assert_eq!(status, 0);
+    let mut operators = KWS_OPERATORS.to_vec();
+    operators.sort();
+    let features = expected(&["cmsis-nn", "kernels", "float"], &operators);
+    assert!(
+        stdout.ends_with(&format!(
+            "\n\nCargo features of a firmware that runs these 2 models, for its Cargo.toml:\n{}\n",
+            dependency(&features)
+        )),
+        "{stdout}"
+    );
+
+    let (status, stdout, _) = nanoglia(&["check", kws, conv, "--json"]);
+    assert_eq!(status, 0);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    let models = json["models"].as_array().unwrap();
+    assert_eq!(models.len(), 2);
+    assert_eq!(models[0], check_json(KWS, &[]).1);
+    assert_eq!(models[1], check_json(CONV_F32, &[]).1);
+    assert_eq!(json["passes"], true);
+    assert_eq!(json["firmware"]["features"], serde_json::json!(features));
+    assert_eq!(json["firmware"]["dependency"], dependency(&features));
+
+    // The exit status is the worst of the models'; a model that does not run leaves no firmware.
+    let not_a_model = Path::new(env!("CARGO_TARGET_TMPDIR")).join("several-not-a-model.tflite");
+    std::fs::write(&not_a_model, b"not a model").unwrap();
+    let not_a_model = not_a_model.to_str().unwrap();
+    let (status, stdout, _) = nanoglia(&["check", kws, not_a_model]);
+    assert_eq!(status, 1);
+    assert!(stdout.contains("\nRUNS: 13 of 13 operators have a kernel.\n"));
+    assert!(stdout.ends_with(
+        "\nNo firmware runs these 2 models with these backends and features: 1 of them does not \
+         run.\n"
+    ));
+    let (status, stdout, _) = nanoglia(&["check", kws, not_a_model, "--json"]);
+    assert_eq!(status, 1);
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json["passes"], false);
+    assert_eq!(json["firmware"], Value::Null);
+    assert_eq!(json["models"][1]["runs"], false);
 }

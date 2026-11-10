@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
-//! `nanoglia check <MODEL.tflite>`: whether nanoglia runs a model, with which kernels and how
-//! much memory. See the README of the crate.
+//! `nanoglia check <MODEL.tflite>...`: whether nanoglia runs a model, with which kernels, how
+//! much memory and which Cargo features. See the README of the crate.
 
 mod args;
+mod firmware;
 mod output;
 mod report;
 
@@ -11,9 +12,9 @@ use output::Outcome;
 use std::io::Write;
 use std::process::ExitCode;
 
-/// Exit status when the model does not run, or does not fit the RAM budget.
+/// Exit status when a model does not run, or does not fit the RAM budget.
 const DOES_NOT_RUN: u8 = 1;
-/// Exit status when the arguments are wrong or the file cannot be read.
+/// Exit status when the arguments are wrong or a file cannot be read.
 const USAGE: u8 = 2;
 
 /// Model bytes on a 16-byte boundary, where the constants of a model are aligned for their
@@ -46,22 +47,34 @@ impl AlignedModel {
 }
 
 fn check(args: &Check) -> ExitCode {
-    let model = match AlignedModel::read(&args.model) {
-        Ok(model) => model,
-        Err(error) => {
-            eprintln!("nanoglia: {}: {error}", args.model.display());
-            return ExitCode::from(USAGE);
+    // Every file is read before anything is printed: a path that cannot be read is a usage error.
+    let mut models = Vec::with_capacity(args.models.len());
+    for path in &args.models {
+        match AlignedModel::read(path) {
+            Ok(model) => models.push(model),
+            Err(error) => {
+                eprintln!("nanoglia: {}: {error}", path.display());
+                return ExitCode::from(USAGE);
+            }
         }
-    };
-    let outcome = Outcome {
-        args,
-        model_bytes: model.len,
-        report: report::check(model.bytes(), args.backends),
-    };
+    }
+    let outcomes: Vec<Outcome<'_>> = args
+        .models
+        .iter()
+        .zip(&models)
+        .map(|(path, model)| {
+            Outcome::new(
+                args,
+                path,
+                model.len,
+                report::check(model.bytes(), args.backends),
+            )
+        })
+        .collect();
     let text = if args.json {
-        output::json(&outcome)
+        output::json(&outcomes)
     } else {
-        output::text(&outcome)
+        output::text(&outcomes)
     };
     // A reader that closes the pipe early (`| head`) is not an error.
     if let Err(error) = std::io::stdout().write_all(text.as_bytes())
@@ -70,7 +83,7 @@ fn check(args: &Check) -> ExitCode {
         eprintln!("nanoglia: {error}");
         return ExitCode::from(USAGE);
     }
-    if outcome.passes() {
+    if outcomes.iter().all(Outcome::passes) {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(DOES_NOT_RUN)

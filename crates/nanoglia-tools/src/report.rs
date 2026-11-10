@@ -3,8 +3,8 @@
 use crate::args::Backends;
 use nanoglia::core::backend::Backend;
 use nanoglia::{
-    Arena, DataType, Detail, Encoding, Error, ErrorCode, MemoryBreakdown, ModelReport, OpCode,
-    OperatorReport, Registry, SelectedKernel, Target, TensorDesc,
+    Arena, BuiltinOp, DataType, Detail, Encoding, Error, ErrorCode, MemoryBreakdown, ModelReport,
+    OpCode, OperatorReport, Registry, SelectedKernel, Target, TensorDesc,
 };
 
 /// A tensor of an operator.
@@ -43,6 +43,9 @@ pub struct Operator {
     pub outputs: Vec<Slot>,
     /// The kernel that runs it, or why none does.
     pub kernel: Result<SelectedKernel, Error>,
+    /// The `op-*` feature this build of the tool lacks, when that is why no kernel runs the
+    /// operator.
+    pub missing_feature: Option<&'static str>,
 }
 
 /// What the library reports for a model.
@@ -94,7 +97,18 @@ fn operator(op: &OperatorReport<'_>) -> Operator {
                 .map_or_else(|| format!("BUILTIN_{}", builtin.0), str::to_owned),
             false,
         ),
-        OpCode::Custom(name) => (nanoglia::BuiltinOp::CUSTOM.0, name.to_owned(), true),
+        OpCode::Custom(name) => (BuiltinOp::CUSTOM.0, name.to_owned(), true),
+    };
+    let kernel = op.kernel();
+    let missing_feature = match (op.opcode(), kernel) {
+        (
+            OpCode::Builtin(builtin),
+            Err(Error {
+                detail: Detail::UnsupportedOp { .. },
+                ..
+            }),
+        ) => missing_feature(builtin),
+        _ => None,
     };
     Operator {
         index: op.index(),
@@ -115,7 +129,28 @@ fn operator(op: &OperatorReport<'_>) -> Operator {
                 Err(error) => Slot::Unknown(error),
             })
             .collect(),
-        kernel: op.kernel(),
+        kernel,
+        missing_feature,
+    }
+}
+
+/// The feature of `op`, if it is off in this build: the tool forwards each `op-*` feature to
+/// every backend that has kernels for the operator, so none of them has the operator then,
+/// whichever `--backends` are checked.
+fn missing_feature(op: BuiltinOp) -> Option<&'static str> {
+    let built = nanoglia_esp_nn::EspNn::has_operator(op)
+        || nanoglia_cmsis_nn::CmsisNn::has_operator(op)
+        || nanoglia_kernels::RustKernels::has_operator(op);
+    op.feature().filter(|_| !built)
+}
+
+/// Why `op` has no kernel, in words a model author can act on.
+pub fn kernel_error(op: &Operator, error: Error) -> String {
+    match op.missing_feature {
+        Some(feature) => format!(
+            "this build of the tool has no kernel for the operator: it was built without `{feature}`"
+        ),
+        None => explain(error),
     }
 }
 
