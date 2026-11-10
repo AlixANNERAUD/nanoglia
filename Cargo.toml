@@ -13,12 +13,12 @@ repository = "https://github.com/AlixANNERAUD/nanoglia"
 license = "Apache-2.0"
 
 [workspace.dependencies]
-nanoglia = { version = "0.1.1", path = "crates/nanoglia", default-features = false }
-nanoglia-core = { version = "0.1.1", path = "crates/nanoglia-core", default-features = false }
-nanoglia-tflite = { version = "0.1.1", path = "crates/nanoglia-tflite" }
-nanoglia-cmsis-nn = { version = "0.1.1", path = "crates/nanoglia-cmsis-nn", default-features = false }
-nanoglia-kernels = { version = "0.1.1", path = "crates/nanoglia-kernels", default-features = false }
-nanoglia-esp-nn = { version = "0.1.1", path = "crates/nanoglia-esp-nn" }
+nanoglia = { version = "0.2.0", path = "crates/nanoglia", default-features = false }
+nanoglia-core = { version = "0.1.2", path = "crates/nanoglia-core", default-features = false }
+nanoglia-tflite = { version = "0.1.2", path = "crates/nanoglia-tflite" }
+nanoglia-cmsis-nn = { version = "0.1.2", path = "crates/nanoglia-cmsis-nn", default-features = false }
+nanoglia-kernels = { version = "0.1.2", path = "crates/nanoglia-kernels", default-features = false }
+nanoglia-esp-nn = { version = "0.1.2", path = "crates/nanoglia-esp-nn" }
 nanoglia-esp-nn-sys = { version = "0.1.0", path = "crates/nanoglia-esp-nn-sys" }
 allocator-api2 = { version = "0.4", default-features = false }
 defmt = "1"
