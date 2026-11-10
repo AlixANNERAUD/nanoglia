@@ -264,14 +264,8 @@ impl<'m> SubGraph<'m> {
     ///   weights format) or a non-standard quantization contract (`FullyConnectedOptions.quant_spec`).
     pub fn operator(&self, index: usize) -> Result<Operator<'m>> {
         let op = get(&self.operators, index)?;
-        let opcode_index: u32 = op.scalar(operator::OPCODE_INDEX, 0)?;
-        let code_table = self
-            .model
-            .opcodes
-            .get(opcode_index as usize)
-            .map_err(|_| Error::malformed(op.pos()))?;
-        let code = op_code(&code_table)?;
-        let options = match code {
+        let header = self.header(&op)?;
+        let options = match header.code {
             OpCode::Builtin(builtin) => {
                 options::decode(builtin, &op, u32::try_from(index).unwrap_or(u32::MAX))?
             }
@@ -281,13 +275,54 @@ impl<'m> SubGraph<'m> {
             }),
         };
         Ok(Operator {
-            code,
-            version: code_table.scalar(operator_code::VERSION, 1)?,
+            code: header.code,
+            version: header.version,
             options,
+            inputs: header.inputs,
+            outputs: header.outputs,
+        })
+    }
+
+    /// The code, version and tensors of the operator at `index`, without decoding its options.
+    ///
+    /// Unlike [`Self::operator`], it does not fail on options nanoglia cannot decode: every
+    /// operator of a parsed model has a header, so it describes even an operator that cannot run.
+    ///
+    /// # Errors
+    ///
+    /// [`Detail::IndexOutOfRange`] if `index >= self.operator_count()`.
+    pub fn operator_header(&self, index: usize) -> Result<OperatorHeader<'m>> {
+        self.header(&get(&self.operators, index)?)
+    }
+
+    fn header(&self, op: &Table<'m>) -> Result<OperatorHeader<'m>> {
+        let opcode_index: u32 = op.scalar(operator::OPCODE_INDEX, 0)?;
+        let code_table = self
+            .model
+            .opcodes
+            .get(opcode_index as usize)
+            .map_err(|_| Error::malformed(op.pos()))?;
+        Ok(OperatorHeader {
+            code: op_code(&code_table)?,
+            version: code_table.scalar(operator_code::VERSION, 1)?,
             inputs: op.slice(operator::INPUTS)?,
             outputs: op.slice(operator::OUTPUTS)?,
         })
     }
+}
+
+/// The code, version and tensors of an operator of a [`SubGraph`], without its options
+/// ([`SubGraph::operator_header`]).
+#[derive(Clone, Copy, Debug)]
+pub struct OperatorHeader<'m> {
+    /// The operator code: `max(deprecated_builtin_code, builtin_code)`, or the custom code.
+    pub code: OpCode<'m>,
+    /// The operator version.
+    pub version: i32,
+    /// Input tensor indices; `-1` marks an omitted optional input.
+    pub inputs: LeSlice<'m, i32>,
+    /// Output tensor indices.
+    pub outputs: LeSlice<'m, i32>,
 }
 
 /// An operator of a [`SubGraph`].

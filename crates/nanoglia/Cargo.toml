@@ -43,6 +43,7 @@ nanoglia-kernels = { workspace = true, optional = true, default-features = false
 
 [dev-dependencies]
 nanoglia-core = { workspace = true, features = ["alloc"] }
+nanoglia-tflite = { workspace = true }
 serde_json = "1"
 
 [package.metadata.docs.rs]

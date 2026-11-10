@@ -700,6 +700,50 @@ fn unknown_enum_values() {
 }
 
 #[test]
+fn headers_do_not_decode_options() {
+    // A header gives the same code, version and tensors as the operator.
+    let bytes = Spec::default().bytes();
+    let graph = Model::parse(&bytes).unwrap().subgraph(0).unwrap();
+    let (op, header) = (
+        graph.operator(0).unwrap(),
+        graph.operator_header(0).unwrap(),
+    );
+    assert_eq!(header.code, op.code);
+    assert_eq!(header.version, 5);
+    assert!(header.inputs.iter().eq([0, 1, -1]));
+    assert!(header.outputs.iter().eq([2]));
+    let err = graph.operator_header(1).unwrap_err();
+    assert_eq!(err.detail, Detail::IndexOutOfRange { index: 1 });
+
+    // Options that cannot be decoded (an unknown padding) do not hide the operator.
+    let bytes = Spec::default()
+        .with_options(1, vec![(0, Field::I8(2))])
+        .bytes();
+    let graph = Model::parse(&bytes).unwrap().subgraph(0).unwrap();
+    assert!(graph.operator(0).is_err());
+    let header = graph.operator_header(0).unwrap();
+    assert_eq!(header.code, OpCode::Builtin(BuiltinOp::CONV_2D));
+    assert!(header.inputs.iter().eq([0, 1, -1]));
+
+    // Nor does an operator nanoglia does not know, or a custom one.
+    let bytes = Spec::default().with_opcode(119).bytes();
+    let graph = Model::parse(&bytes).unwrap().subgraph(0).unwrap();
+    let header = graph.operator_header(0).unwrap();
+    assert_eq!(header.code, OpCode::Builtin(BuiltinOp(119)));
+    assert_eq!(header.code, graph.operator(0).unwrap().code);
+    let mut spec = Spec::default();
+    spec.opcodes[0] = vec![
+        (id::opcode::CUSTOM_CODE, s("MyOp")),
+        (id::opcode::VERSION, Field::I32(2)),
+        (id::opcode::BUILTIN_CODE, Field::I32(32)),
+    ];
+    let bytes = spec.bytes();
+    let graph = Model::parse(&bytes).unwrap().subgraph(0).unwrap();
+    let header = graph.operator_header(0).unwrap();
+    assert_eq!((header.code, header.version), (OpCode::Custom("MyOp"), 2));
+}
+
+#[test]
 fn options_fields_must_fit_their_table() {
     // A 1-byte field where the schema has a 4-byte one, at the end of the table: reading it would
     // run past the table, so the verifier refuses the model.

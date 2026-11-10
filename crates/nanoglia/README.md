@@ -34,6 +34,10 @@ let scores = ctx.output(0)?.as_slice::<i8>()?;
   [`Arena`](https://docs.rs/nanoglia/latest/nanoglia/struct.Arena.html) over a static buffer,
   sized ahead of time with
   [`MemoryRequirements`](https://docs.rs/nanoglia/latest/nanoglia/struct.MemoryRequirements.html).
+- **Checked before flashing:**
+  [`ModelReport`](https://docs.rs/nanoglia/latest/nanoglia/struct.ModelReport.html) lists every
+  operator of a model with the kernel that runs it or the reason none does, and the memory the
+  model needs, where loading stops at the first operator it cannot run.
 - **Accelerated:** CMSIS-NN (Cortex-M DSP and Helium), ESP-NN (ESP32-S3 SIMD), portable code
   everywhere else, WebAssembly included.
 - **Bit-exact with TensorFlow Lite:** the outputs match the model run in Python, checked on every

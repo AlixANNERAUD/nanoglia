@@ -9,7 +9,7 @@ the pieces fit and why they are built this way.
 
 | Crate | Role | Depends on |
 | --- | --- | --- |
-| `nanoglia` | The API your application uses: `Graph`, `ExecutionContext`, `Registry`, `MemoryRequirements`, tensor views, `Observer`. Loads, plans, computes. | all the others |
+| `nanoglia` | The API your application uses: `Graph`, `ExecutionContext`, `Registry`, `MemoryRequirements`, `ModelReport`, tensor views, `Observer`. Loads, plans, computes. | all the others |
 | `nanoglia-core` | The shared vocabulary: tensors (`TensorDesc`, `DataType`, `Dims`, `Quantization`), operators (`OpDesc`, `BuiltinOp`, `OpOptions`), errors, the `Backend` / `Kernel` interface, TFLite-exact quantization math (`quant`), `Arena` and `Block`. | `allocator-api2` |
 | `nanoglia-tflite` | Verifies a `.tflite` flatbuffer once, then reads it in place: zero-copy, allocation-free, panic-free, `#![forbid(unsafe_code)]`, its own small flatbuffer reader. | `nanoglia-core` |
 | `nanoglia-cmsis-nn-sys` | CMSIS-NN v8.0.0 (integer kernels; a git submodule in the repository, its sources shipped in the package) compiled with `cc`, hand-written FFI bindings. | — (build: `cc`) |
@@ -17,8 +17,9 @@ the pieces fit and why they are built this way.
 | `nanoglia-esp-nn-sys` | ESP-NN v1.4.2 (a git submodule in the repository, its sources shipped in the package) compiled with `cc` (ANSI C kernels everywhere, ESP32-S3 optimized kernels on Xtensa), hand-written FFI bindings and the lock of its global scratch buffers. | — (build: `cc`) |
 | `nanoglia-esp-nn` | The `esp-nn` backend (feature `esp-nn`): the int8 operators ESP-NN computes exactly like TFLite, with CMSIS-NN as fallback. | `nanoglia-core`, `nanoglia-cmsis-nn`, `nanoglia-esp-nn-sys` |
 | `nanoglia-kernels` | The `rust` backend: what CMSIS-NN lacks (shape and quantization operators, broadcasting, activations, int16 softmax, fully-connected, logistic and tanh) and the f32 operators. | `nanoglia-core`, `libm` |
+| `nanoglia-tools` | The `nanoglia check` command for your computer ([Check whether a model runs](../how-to-guides/check-whether-a-model-runs.md)): prints what `ModelReport` finds. The only crate that uses `std`. | `nanoglia` and the three backends |
 
-Everything is `#![no_std]`, with no dependency on a HAL, an RTOS or a
+Everything else is `#![no_std]`, with no dependency on a HAL, an RTOS or a
 vendor SDK. The only C code is CMSIS-NN and ESP-NN (compiled without
 ESP-IDF), which need the C headers of the target but link no C
 library.

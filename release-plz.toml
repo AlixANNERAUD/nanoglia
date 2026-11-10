@@ -99,3 +99,12 @@ changelog_path = "./crates/nanoglia-c/CHANGELOG.md"
 git_tag_enable = true
 git_tag_name = "{{ package }}-v{{ version }}"
 git_release_enable = false
+
+# The host tools (the `nanoglia` command): published to crates.io for `cargo install`; their own
+# changelog and tag.
+[[package]]
+name = "nanoglia-tools"
+changelog_path = "./crates/nanoglia-tools/CHANGELOG.md"
+git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_enable = false

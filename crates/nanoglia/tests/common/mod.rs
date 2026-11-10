@@ -16,12 +16,17 @@ pub struct Aligned {
 impl Aligned {
     pub fn read(path: &Path) -> Self {
         let bytes = std::fs::read(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        Self::copy(&bytes)
+    }
+
+    #[allow(dead_code)]
+    pub fn copy(bytes: &[u8]) -> Self {
         let mut storage = vec![0u128; bytes.len().div_ceil(16)];
         // SAFETY: `storage` holds at least `bytes.len()` bytes.
         let dst = unsafe {
             std::slice::from_raw_parts_mut(storage.as_mut_ptr().cast::<u8>(), bytes.len())
         };
-        dst.copy_from_slice(&bytes);
+        dst.copy_from_slice(bytes);
         Self {
             storage,
             len: bytes.len(),

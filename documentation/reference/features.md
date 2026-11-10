@@ -120,3 +120,24 @@ project of the crate sets the features from its options (`NANOGLIA_STD`,
 
 Neither `std` nor `panic-handler` is on by default: the crate is also an
 rlib, which a Rust program links with its own panic handler or `std`.
+
+## nanoglia-tools
+
+The `nanoglia` command-line tool
+([Check whether a model runs](../how-to-guides/check-whether-a-model-runs.md)).
+It always builds the three backends (CMSIS-NN, ESP-NN, the Rust kernels)
+and chooses among them at run time with `--backends`, so it has no
+feature for them; the features below are fixed when the tool is built,
+and its output lists those that are on. Default features: `float`,
+`int16`.
+
+| Feature | Default | Enables |
+| --- | :---: | --- |
+| `float` | yes | Checks with the f32 kernels, as feature `float` of `nanoglia`. Forwards `nanoglia-kernels/float`. |
+| `int16` | yes | Checks with the 16x8 kernels, as feature `int16` of `nanoglia`. Forwards `nanoglia-cmsis-nn/int16` and `nanoglia-kernels/int16`. |
+| `single-rounding` | no | Checks with single-rounding requantization, as feature `single-rounding` of `nanoglia`: ESP-NN then claims no operator. |
+
+Build it for one configuration with `-p`, which keeps the features of
+the other crates of the workspace out: `cargo run -p nanoglia-tools
+--no-default-features -- check model.tflite` checks for an int8-only
+firmware.

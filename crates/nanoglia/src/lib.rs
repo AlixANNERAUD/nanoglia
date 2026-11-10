@@ -5,6 +5,7 @@
 #[cfg(feature = "alloc")]
 extern crate alloc as _;
 
+mod check;
 mod context;
 mod graph;
 mod ownership;
@@ -12,6 +13,7 @@ mod planner;
 mod registry;
 mod tensor;
 
+pub use check::*;
 pub use context::*;
 pub use graph::*;
 pub use ownership::*;
@@ -22,8 +24,8 @@ pub use nanoglia_core as core;
 #[cfg(feature = "alloc")]
 pub use nanoglia_core::allocator_api2::alloc::Global;
 pub use nanoglia_core::{
-    Activation, AllocError, Allocator, Arena, DataType, Detail, Dims, Error, ErrorCode, OpCode,
-    Quantization, Result, TensorDesc,
+    Activation, AllocError, Allocator, Arena, BuiltinOp, DataType, Detail, Dims, Error, ErrorCode,
+    OpCode, Quantization, Result, TensorDesc,
 };
 
 /// How the model bytes are encoded, as in wasi-nn's `graph-encoding`.
