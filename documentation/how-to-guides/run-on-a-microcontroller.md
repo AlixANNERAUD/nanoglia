@@ -71,7 +71,7 @@ and keep `kernels` for the operators CMSIS-NN does not have (such as
 
 ```toml
 [dependencies]
-nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features = false, features = ["cmsis-nn", "kernels", "all-ops"] }
+nanoglia = { version = "0.3", default-features = false, features = ["cmsis-nn", "kernels", "all-ops"] }
 ```
 
 or, to link only the kernels your models need, the `op-*` feature of
@@ -186,7 +186,7 @@ operators ESP-NN refuses (dilated convolutions, for example) and
 
 ```toml
 [dependencies]
-nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features = false, features = ["esp-nn", "cmsis-nn", "kernels", "all-ops"] }
+nanoglia = { version = "0.3", default-features = false, features = ["esp-nn", "cmsis-nn", "kernels", "all-ops"] }
 ```
 
 The target, `xtensa-esp32s3-none-elf`, needs Espressif's Rust toolchain

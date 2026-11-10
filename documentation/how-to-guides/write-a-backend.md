@@ -12,14 +12,14 @@ pool of buffers, a hardware lock. How the pieces fit is explained in
 ## 1. Add the dependencies
 
 The bundled backends are in their own crates. To list them after yours,
-depend on them from the same source as `nanoglia`, so that all share one
+depend on the versions released with your `nanoglia`, so that all share one
 `nanoglia-core`:
 
 ```toml
 [dependencies]
-nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia" }
-nanoglia-cmsis-nn = { git = "https://github.com/AlixANNERAUD/nanoglia" }
-nanoglia-kernels = { git = "https://github.com/AlixANNERAUD/nanoglia" }
+nanoglia = "0.3"
+nanoglia-cmsis-nn = "0.2"
+nanoglia-kernels = "0.2"
 ```
 
 ## 2. Write the kernel

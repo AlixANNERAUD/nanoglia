@@ -17,7 +17,7 @@ memory nanoglia used.
 - A C compiler: nanoglia compiles the CMSIS-NN kernels, written in C,
   for your computer. `gcc` or `clang` both work (on Debian or Ubuntu,
   the `build-essential` package).
-- Git and curl.
+- curl, to download the model.
 
 ## 1. Create the project
 
@@ -28,19 +28,18 @@ cd first-inference
 
 ## 2. Add nanoglia
 
-nanoglia is not published on crates.io yet: add it from its Git
-repository. The `alloc` feature lets nanoglia use the Rust global
-allocator, which is the simplest start on a computer.
+Add nanoglia from crates.io. The `alloc` feature lets nanoglia use the
+Rust global allocator, which is the simplest start on a computer.
 
 ```sh
-cargo add nanoglia --git https://github.com/AlixANNERAUD/nanoglia --features alloc
+cargo add nanoglia --features alloc
 ```
 
-`Cargo.toml` now has:
+`Cargo.toml` now has (the version is that of the latest release):
 
 ```toml
 [dependencies]
-nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", version = "0.1.0", features = ["alloc"] }
+nanoglia = { version = "0.3.0", features = ["alloc"] }
 ```
 
 ## 3. Download the model
