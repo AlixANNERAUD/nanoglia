@@ -16,16 +16,15 @@
 //! - int32 biases are refused: LiteRT reads the bias of a 16x8 depthwise convolution as int64;
 //! - requantization shifts must stay below 8 (TFLite's 64-bit `MultiplyByQuantizedMultiplier`);
 //! - CMSIS-NN's `arm_nn_requantize_s64` truncates `acc * multiplier >> (14 - shift)` to 32 bits
-//!   before its last rounding shift, where TFLite keeps 64 bits: the kernel is claimed only when
-//!   the largest possible accumulator (every product at `2^22`, plus the constant bias) keeps that
-//!   value in an `int32_t` and the product in 62 bits, so that both agree. A bias computed at run
-//!   time cannot be bounded and is refused;
+//!   before its last rounding shift, where TFLite keeps 64 bits (issue #38): the kernel is claimed
+//!   only when the largest possible accumulator of each channel (`2^15 × Σ|weight| + |bias|`, see
+//!   `common::s16_accumulators_exact`) keeps that value in an `int32_t` and the product in 62
+//!   bits, so that both agree. A bias computed at run time cannot be bounded and is refused;
 //! - CMSIS-NN keeps the top-left input coordinate of each window in an `int16_t`, so
 //!   `(output size - 1) × stride - padding` must fit one.
 
 use nanoglia_cmsis_nn_sys as sys;
 use nanoglia_core::backend::{EvalCtx, FnKernel, KernelPlan};
-use nanoglia_core::le::LeSlice;
 use nanoglia_core::pod::{Pod, cast_slice, cast_slice_mut};
 use nanoglia_core::quant::{self, Multiplier};
 use nanoglia_core::{BuiltinOp, DataType, OpDesc, OpOptions, Result, TensorDesc};
@@ -48,9 +47,6 @@ pub(crate) static KERNEL_S16: FnKernel = FnKernel {
     prepare,
     eval: eval_s16,
 };
-
-/// The largest magnitude of one int16 × int8 product (`-32768 × -128`).
-const S16_MAX_PRODUCT: u128 = 1 << 22;
 
 /// Persistent parameters, followed by the per-channel multipliers and shifts.
 #[repr(C)]
@@ -90,60 +86,6 @@ fn channel_multiplier(
         common::weight_scale(filter, channel),
         output.quant.scale(),
     ))
-}
-
-/// Whether CMSIS-NN's `arm_nn_requantize_s64` computes TFLite's 64-bit
-/// `MultiplyByQuantizedMultiplier` for every accumulator of magnitude at most `max_acc`: the
-/// product with the 16-bit multiplier must fit 62 bits, and its shift by `14 - shift` an
-/// `int32_t` (CMSIS-NN truncates it to 32 bits before its last rounding shift).
-fn s16_requantize_exact(max_acc: u128, m: Multiplier) -> bool {
-    if m.shift >= 8 {
-        return false;
-    }
-    // `REDUCE_MULTIPLIER`: the Q31 multiplier rounded to Q15.
-    let reduced = if m.multiplier < 0x7fff_0000 {
-        (i64::from(m.multiplier) + (1 << 15)) >> 16
-    } else {
-        0x7fff
-    };
-    let reduced = u128::try_from(reduced).unwrap_or(0);
-    // CMSIS-NN computes `result = (int32_t)(product >> (14 - shift))`, then `(result + 1) >> 1`
-    // in `int32_t`: both stay in range when `|product| < 2^(45 - shift) - 2^(14 - shift)`, so
-    // that `product >> (14 - shift)` is at most `2^31 - 2`. `45 - shift` is at least 38 and
-    // `14 - shift` at least 7 (shift < 8); the product must also fit 62 bits.
-    let bits = (45 - i64::from(m.shift)).min(62) as u32;
-    let low = (14 - i64::from(m.shift)).min(63) as u32;
-    let limit = (1u128 << bits).saturating_sub(1u128 << low);
-    max_acc
-        .checked_mul(reduced)
-        .is_some_and(|product| product < limit)
-}
-
-/// The 16x8 conditions on the multipliers and the bias (see the module documentation).
-fn s16_supported(
-    input: &TensorDesc<'_>,
-    filter: &TensorDesc<'_>,
-    bias: Option<&TensorDesc<'_>>,
-    output: &TensorDesc<'_>,
-    taps: i32,
-    channels: i32,
-) -> Option<()> {
-    let bias_values = match bias {
-        Some(b) => Some(LeSlice::<i64>::new(b.data?)),
-        None => None,
-    };
-    let products = u128::try_from(taps).ok()? * S16_MAX_PRODUCT;
-    for c in 0..channels as usize {
-        let bias = match bias_values {
-            Some(values) => values.get(c)?.unsigned_abs(),
-            None => 0,
-        };
-        let max_acc = products + u128::from(bias);
-        if !s16_requantize_exact(max_acc, channel_multiplier(input, filter, output, c)) {
-            return None;
-        }
-    }
-    Some(())
 }
 
 fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
@@ -211,7 +153,17 @@ fn analyze<'a>(op: &'a OpDesc<'a, '_>) -> Option<Analysis<'a>> {
         return None;
     }
     if int16 {
-        s16_supported(input, filter, bias, output, filter_h * filter_w, out_c)?;
+        // Workaround for CMSIS-NN v8.0.0's 32-bit requantization intermediate (issue #38, see
+        // `common::s16_requantize_exact`): remove once a fixed CMSIS-NN release is vendored.
+        let (channels, taps) = (out_c as usize, (filter_h * filter_w) as usize);
+        common::s16_accumulators_exact(
+            filter,
+            bias,
+            channels,
+            taps,
+            |c, t| t * channels + c,
+            |c| channel_multiplier(input, filter, output, c),
+        )?;
     }
     let (act_min, act_max) =
         common::activation_range(options.activation, dtype, output_scale, output_zero_point)?;

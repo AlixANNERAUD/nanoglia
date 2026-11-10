@@ -175,6 +175,10 @@ fn conv_16x8_refusals() {
     assert!(!selected(&shifted, &filter, None, &output));
     let shifted = Tensor::activation(DataType::I16, &[1, 4, 4, 3], 0.002, -1);
     assert!(!selected(&input, &filter, None, &shifted));
+    // A bias computed at run time cannot be bounded (issue #38).
+    let mut runtime_bias = Tensor::bias_i64(&[1, 2, 3]);
+    runtime_bias.constant = false;
+    assert!(!selected(&input, &filter, Some(&runtime_bias), &output));
     // Grouped convolution.
     let grouped = Tensor::weights(&[3, 3, 3, 1], &[1; 27], &[0.01], 0);
     assert!(!selected(&input, &grouped, None, &output));
@@ -289,4 +293,159 @@ fn fully_connected_16x8_refusals() {
     // Nonzero zero points.
     let shifted = Tensor::activation(DataType::I16, &[2, 4], 0.001, 2);
     assert!(!fc_op(&shifted, &filter, None, &output, none).selected());
+    // A bias computed at run time cannot be bounded (issue #38).
+    let mut runtime_bias = Tensor::bias_i64(&[1, 2, 3]);
+    assert!(fc_op(&input, &filter, Some(&runtime_bias), &output, none).selected());
+    runtime_bias.constant = false;
+    assert!(!fc_op(&input, &filter, Some(&runtime_bias), &output, none).selected());
+}
+
+/// A 16x8 1x1 convolution (or, with `fc`, a fully-connected layer) of one output over
+/// `weights.len()` inputs, with input and output scales 1 and the filter scale `filter_scale`:
+/// the output of the CMSIS-NN backend if it claims the layer, and TFLite's output.
+fn run_unit_layer(
+    fc: bool,
+    input: &[i16],
+    weights: &[i8],
+    constant_weights: bool,
+    filter_scale: f32,
+    bias: Option<i64>,
+) -> (Option<Vec<i16>>, Vec<i16>) {
+    let n = weights.len() as i32;
+    let (input_dims, filter_dims, output_dims) = if fc {
+        (vec![1, n], vec![1, n], vec![1, 1])
+    } else {
+        (vec![1, 1, 1, n], vec![1, 1, 1, n], vec![1, 1, 1, 1])
+    };
+    let input_tensor = Tensor::activation(DataType::I16, &input_dims, 1.0, 0).with_data_i16(input);
+    let mut filter = Tensor::weights(&filter_dims, weights, &[filter_scale], 0);
+    filter.constant = constant_weights;
+    let bias_tensor = bias.map(|b| Tensor::bias_i64(&[b]));
+    let output = Tensor::activation(DataType::I16, &output_dims, 1.0, 0);
+    let op = if fc {
+        fc_op(
+            &input_tensor,
+            &filter,
+            bias_tensor.as_ref(),
+            &output,
+            Activation::None,
+        )
+    } else {
+        let case = ConvCase {
+            input: [1, 1, 1, n],
+            filter: [1, 1, 1, n],
+            stride: (1, 1),
+            dilation: (1, 1),
+            padding: Padding::Valid,
+            per_channel: false,
+            bias: bias.is_some(),
+        };
+        Op::new(BuiltinOp::CONV_2D, conv_options(&case, Activation::None))
+            .input(&input_tensor)
+            .input(&filter)
+            .optional(bias_tensor.as_ref())
+            .output(&output)
+    };
+    let multipliers = reference::channel_multipliers(1.0, &[filter_scale], 1.0, 1);
+    let bias = bias.map(|b| [b]);
+    let want = reference::fully_connected_16x8(
+        (i16::MIN as i32, i16::MAX as i32),
+        &multipliers,
+        1,
+        weights.len(),
+        1,
+        input,
+        weights,
+        bias.as_ref().map(|b| &b[..]),
+    );
+    let got = op.selected().then(|| {
+        let kernel = if fc {
+            "cmsis-nn/fully_connected_s16"
+        } else {
+            "cmsis-nn/conv2d_s16"
+        };
+        assert_eq!(op.kernel_name(), kernel);
+        // Weights computed at run time still hold their values in the test buffers.
+        op.run_i16()
+    });
+    (got, want)
+}
+
+/// CMSIS-NN v8.0.0 keeps `acc * multiplier >> (14 - shift)` in an `int32_t` (issue #38): the
+/// 16x8 convolution and fully-connected layer are claimed only when no accumulator can overflow
+/// it, bounded by `2^15 × Σ|weight| + |bias|`. Beyond that bound CMSIS-NN gives -32768 where
+/// TFLite saturates to 32767.
+#[test]
+fn conv_and_fully_connected_16x8_accumulator_limit() {
+    for fc in [false, true] {
+        let run = |input: &[i16], weights: &[i8], scale: f32, bias: Option<i64>| {
+            run_unit_layer(fc, input, weights, true, scale, bias)
+        };
+        // Scale 0.5: multiplier 2^30, shift 0, CMSIS-NN's 16-bit multiplier 2^14. Accumulators
+        // up to `2^31 - 2` keep `product >> 14` below `2^31 - 1`.
+        let over = run(&[-32768], &[-128], 0.5, Some((1 << 31) - 1 - (1 << 22)));
+        assert_eq!(over, (None, vec![32767]), "fc {fc}");
+        let limit = run(&[-32768], &[-128], 0.5, Some((1 << 31) - 2 - (1 << 22)));
+        assert_eq!(limit, (Some(vec![32767]), vec![32767]), "fc {fc}");
+        // Scale 1: multiplier 2^30, shift 1: accumulators below 2^30, here from the weights
+        // alone. 256 products of `-32768 × -128` reach 2^30.
+        let input = [-32768; 256];
+        let over = run(&input, &[-128; 256], 1.0, None);
+        assert_eq!(over, (None, vec![32767]), "fc {fc}");
+        let mut weights = [-128; 256];
+        weights[255] = 127;
+        let (got, want) = run(&input, &weights, 1.0, None);
+        assert_eq!(want, [32767]);
+        assert_eq!(got.as_deref(), Some(&want[..]), "fc {fc}");
+        // The bound comes from the actual weights, not from `2^22` per product.
+        let (got, want) = run(&[-32768; 511], &[1; 511], 1.0, Some(-(1 << 29)));
+        assert_eq!(want, [-32768]);
+        assert_eq!(got.as_deref(), Some(&want[..]), "fc {fc}");
+        // Weights computed at run time count as -128 each.
+        let runtime = |weights: &[i8]| {
+            let input = vec![-32768; weights.len()];
+            run_unit_layer(fc, &input, weights, false, 1.0, None).0
+        };
+        assert!(runtime(&[1; 256]).is_none(), "fc {fc}");
+        assert_eq!(runtime(&[1; 255]), Some(vec![-32768]), "fc {fc}");
+    }
+}
+
+/// CMSIS-NN's DSP and Helium code sums the first 512 products of a 16x8 fully-connected row in an
+/// `int32_t`, which 512 weights of -128 at inputs of -32768 overflow (`2^31`): such rows, and
+/// weights computed at run time with a depth of 512 or more, are refused even when the
+/// requantization bound holds (filter scale 2^-20). Host builds run CMSIS-NN's portable code, which
+/// sums in 64 bits, so only the selection is checked here.
+#[test]
+fn fully_connected_16x8_int32_columns() {
+    let scale = 1.0 / (1 << 20) as f32;
+    let input = [-32768; 512];
+    let (got, want) = run_unit_layer(true, &input, &[-128; 512], true, scale, None);
+    assert_eq!((got, want), (None, vec![2048]));
+    let mut weights = [-128; 512];
+    weights[511] = -127;
+    let (got, want) = run_unit_layer(true, &input, &weights, true, scale, None);
+    assert_eq!(want, [2048]);
+    assert_eq!(got.as_deref(), Some(&want[..]));
+    // A row of 600 whose first 512 weights are -128 is refused; past them it does not matter.
+    let input = [-32768; 600];
+    let mut weights = [-128; 600];
+    weights[600 - 1] = 0;
+    assert!(
+        run_unit_layer(true, &input, &weights, true, scale, None)
+            .0
+            .is_none()
+    );
+    weights[0] = 0;
+    weights[599] = -128;
+    assert!(
+        run_unit_layer(true, &input, &weights, true, scale, None)
+            .0
+            .is_some()
+    );
+    // Weights computed at run time: refused from a depth of 512.
+    let runtime =
+        |n: usize| run_unit_layer(true, &vec![-32768; n], &vec![1; n], false, scale, None).0;
+    assert!(runtime(512).is_none());
+    assert!(runtime(511).is_some());
 }
