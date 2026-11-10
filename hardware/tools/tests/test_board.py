@@ -6,7 +6,8 @@ import sys
 import pytest
 
 from nanoglia_hardware import board
-from nanoglia_hardware.board import Image, Port, SerialBoard, SetupError, Unreachable
+from nanoglia_hardware import protocol as p
+from nanoglia_hardware.board import FirmwareDead, Image, Port, SerialBoard, SetupError, Unreachable
 
 
 def binary(stack=0x2004_0000, reset=0x0001_0101, size=4096):
@@ -72,32 +73,136 @@ def test_ports_are_told_apart():
     assert Port("/dev/ttyACM3", *board.RUNNER, "another test device", "").role.startswith("other")
 
 
-def test_flash_runs_bossac_as_the_arduino_core_does(tmp_path, monkeypatch):
+def fake_bossac(directory, version="1.9.1-17-g89f3556", fail=""):
+    """A stand-in for bossac: says its version, records its arguments, fails on demand."""
+    arguments = directory / "arguments"
+    bossac = directory / "bossac"
+    bossac.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "if '--help' in sys.argv:\n"
+        f"    print('Usage: bossac [OPTION...] [FILE]\\nBasic Open Source SAM-BA Application (BOSSA) Version {version}')\n"
+        "    sys.exit(0)\n"
+        f"open({str(arguments)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+        + (f"print({fail!r})\nsys.exit(1)\n" if fail else "")
+    )
+    bossac.chmod(0o755)
+    return str(bossac), arguments
+
+
+@pytest.fixture
+def quick(monkeypatch):
+    """The waits of a board, shortened."""
+    for name, seconds in (("BOOT_S", 0.6), ("RESTART_S", 2.0), ("START_S", 2.5), ("PORT_S", 0.6), ("SETTLE_S", 0.5)):
+        monkeypatch.setattr(SerialBoard, name, seconds)
+
+
+def test_the_waits_follow_the_firmware():
+    # After a crash: the firmware may hang at each start, and reaches the bootloader only after
+    # its watchdog fired `MAX_FAILED_BOOTS` times. After a flash: a firmware without a port gives
+    # the hand back after `NO_CONTACT_S`.
+    assert SerialBoard.RESTART_S >= p.MAX_FAILED_BOOTS * p.WATCHDOG_S + 3 * SerialBoard.BOOT_S == 90
+    assert SerialBoard.START_S >= p.NO_CONTACT_S + 30 == 330
+    assert (p.WATCHDOG_S, p.MAX_FAILED_BOOTS, p.NO_CONTACT_S) == (20, 3, 300)
+
+
+def test_flash_runs_bossac_as_the_arduino_core_does(tmp_path, monkeypatch, quick):
     image_path = tmp_path / "firmware.bin"
     image_path.write_bytes(binary())
-    arguments = tmp_path / "arguments"
-    bossac = tmp_path / "bossac"
-    bossac.write_text(f"#!{sys.executable}\nimport sys\nopen({str(arguments)!r}, 'w').write('\\n'.join(sys.argv[1:]))\n")
-    bossac.chmod(0o755)
-    monkeypatch.setattr(board, "list_ports", Ports([BOOTLOADER]))
-    connected = []
-    serial_board = SerialBoard(bossac=str(bossac), log=lambda _: None)
-    monkeypatch.setattr(serial_board, "_connect", lambda seconds: connected.append(seconds) or object())
+    bossac, arguments = fake_bossac(tmp_path)
+    # In the bootloader, then gone with the reset, then the firmware.
+    monkeypatch.setattr(board, "list_ports", Ports([BOOTLOADER], [BOOTLOADER], [], [RUNNER]))
+    serial_board = SerialBoard(bossac=bossac, log=lambda _: None)
+    monkeypatch.setattr(serial_board, "_open", lambda port: setattr(serial_board, "device", object()) or object())
     serial_board.flash(Image.load(image_path))
     written = tmp_path / "firmware.bin.bin"
-    assert arguments.read_text().split("\n") == ["-d", "--port=ttyACM1", "-U", "-i", "-e", "-w", str(written), "-R"]
+    assert arguments.read_text() == f"-d --port=ttyACM1 -U -i -e -w -v {written} -R\n"
     assert written.read_bytes() == binary()
-    assert connected, "the firmware is waited for after the flash"
+    assert serial_board.device is not None, "the firmware is waited for after the flash"
 
-    # bossac fails: a setup error with its output; no bossac: the same, before touching the board.
-    bossac.write_text(f"#!{sys.executable}\nimport sys\nprint('No device found on ttyACM1')\nsys.exit(1)\n")
+    # bossac fails: a setup error with its output.
+    bossac, _ = fake_bossac(tmp_path, fail="No device found on ttyACM1")
+    monkeypatch.setattr(board, "list_ports", Ports([BOOTLOADER]))
     with pytest.raises(SetupError, match="No device found"):
         serial_board.flash(Image.load(image_path))
+
+
+def test_only_arduinos_bossac_is_used(tmp_path, monkeypatch):
+    image_path = tmp_path / "firmware.bin"
+    image_path.write_bytes(binary())
+    monkeypatch.setattr(board, "list_ports", Ports([BOOTLOADER]))
+    # The mainline bossac does not know the chip: refused before the board is touched.
+    bossac, arguments = fake_bossac(tmp_path, version="1.9.1")
+    with pytest.raises(SetupError, match="not Arduino's bossac"):
+        SerialBoard(bossac=bossac, log=lambda _: None).flash(Image.load(image_path))
+    assert not arguments.exists()
+    assert board.bossac_version(fake_bossac(tmp_path)[0]) == "1.9.1-17-g89f3556"
+    # No bossac at all.
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
     monkeypatch.delenv("BOSSAC", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     with pytest.raises(SetupError, match="bossac not found"):
         SerialBoard(log=lambda _: None).flash(Image.load(image_path))
+
+
+def test_a_firmware_that_never_answers_is_told_from_a_lost_board(tmp_path, monkeypatch, quick):
+    image = tmp_path / "firmware.bin"
+    image.write_bytes(binary())
+    bossac, _ = fake_bossac(tmp_path)
+    # Flashed, the port of the bootloader goes, nothing answers, then the bootloader is back and
+    # stays: the firmware gave the hand back by itself.
+    monkeypatch.setattr(board, "list_ports", Ports([BOOTLOADER], [BOOTLOADER], [], [], [], [], [BOOTLOADER]))
+    with pytest.raises(FirmwareDead, match="does not work on this board"):
+        SerialBoard(bossac=bossac, log=lambda _: None).flash(Image.load(image))
+    # Nothing ever comes back: only then is a hand asked for.
+    monkeypatch.setattr(board, "list_ports", Ports([BOOTLOADER], [BOOTLOADER], []))
+    with pytest.raises(Unreachable, match="double-tap"):
+        SerialBoard(bossac=bossac, log=lambda _: None).flash(Image.load(image))
+    # The port of the bootloader seen in passing, during the reset, is not the bootloader.
+    monkeypatch.setattr(board, "list_ports", Ports([BOOTLOADER], [BOOTLOADER], [], [BOOTLOADER], [], [RUNNER]))
+    serial_board = SerialBoard(bossac=bossac, log=lambda _: None)
+    monkeypatch.setattr(serial_board, "_open", lambda port: setattr(serial_board, "device", object()) or object())
+    serial_board.flash(Image.load(image))
+
+
+def test_after_a_crash_the_bootloader_is_waited_for_too(tmp_path, monkeypatch, quick):
+    image = tmp_path / "firmware.bin"
+    image.write_bytes(binary())
+    # The firmware crashed at each restart: no port for a while, then the bootloader.
+    monkeypatch.setattr(board, "list_ports", Ports([], [], [], [], [BOOTLOADER]))
+    serial_board = SerialBoard(log=lambda _: None)
+    with pytest.raises(FirmwareDead, match="pass the images"):
+        serial_board.recover()
+    flashed = []
+    monkeypatch.setattr(board, "list_ports", Ports([], [], [], [], [BOOTLOADER]))
+    serial_board.image = Image.load(image)
+    monkeypatch.setattr(serial_board, "flash", lambda image: flashed.append(image))
+    monkeypatch.setattr(serial_board, "open", lambda: "device")
+    assert serial_board.recover() == "device" and flashed == [serial_board.image]
+    # The firmware comes back: no flash.
+    monkeypatch.setattr(board, "list_ports", Ports([], [], [RUNNER]))
+    monkeypatch.setattr(serial_board, "_open", lambda port: setattr(serial_board, "device", "runner") or "runner")
+    assert serial_board.recover() == "runner" and len(flashed) == 1
+    # Nothing comes back.
+    serial_board.device = None
+    monkeypatch.setattr(board, "list_ports", Ports([]))
+    with pytest.raises(Unreachable, match="double-tap"):
+        serial_board.recover()
+
+
+def test_leaving_the_bootloader(tmp_path, monkeypatch, quick):
+    bossac, arguments = fake_bossac(tmp_path)
+    monkeypatch.setattr(board, "list_ports", Ports([BOOTLOADER], [], [RUNNER]))
+    serial_board = SerialBoard(bossac=bossac, log=lambda _: None)
+    monkeypatch.setattr(serial_board, "_open", lambda port: setattr(serial_board, "device", object()) or object())
+    assert serial_board.leave_bootloader()
+    assert arguments.read_text() == "-d --port=ttyACM1 -U -R\n"
+    # Without an application the bootloader stays.
+    monkeypatch.setattr(board, "list_ports", Ports([BOOTLOADER]))
+    assert not serial_board.leave_bootloader()
+    monkeypatch.setattr(board, "list_ports", Ports([RUNNER]))
+    with pytest.raises(SetupError, match="not in its bootloader"):
+        serial_board.leave_bootloader()
 
 
 def test_without_a_bootloader_port_the_board_needs_a_hand(monkeypatch):

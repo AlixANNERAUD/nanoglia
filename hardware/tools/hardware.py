@@ -13,12 +13,15 @@ emulated runner (hardware/emulated) under Unicorn; `--device simulated` (or `--d
 simulated device that answers with the expected outputs, to check the tool itself.
 
 `--list-ports` lists the serial ports and what answers on each; `--info` prints what the firmware
-says of itself; `--bootloader` resets the board into its bootloader; `--self-test` makes the
-firmware panic, fault and hang, and checks that the board comes back each time.
+says of itself; `--bootloader` resets the board into its bootloader and `--leave-bootloader`
+starts its application again; `--self-test` makes the firmware panic, fault and hang, and checks
+that the board comes back each time.
 
 Exit codes: 0, every case passed (cases skipped for lack of memory are listed); 1, a case failed
 or a check of the run did; 2, the host lacks something (a port, bossac, an image); 3, the board
-stopped answering and could not be brought back: it needs a double tap on its reset button.
+stopped answering and could not be brought back: it needs a double tap on its reset button; 4,
+the firmware does not work on the board, which went back to its bootloader by itself: nothing to
+do by hand, the firmware is to fix.
 `NANOGLIA_GOLDEN_DIR` (an absolute path) runs the cases of that directory instead of testdata/.
 """
 
@@ -36,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from nanoglia_hardware import protocol as p  # noqa: E402
 from nanoglia_hardware.board import (  # noqa: E402
     EmulatedBoard,
+    FirmwareDead,
     Image,
     SerialBoard,
     SetupError,
@@ -149,6 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--list-ports", action="store_true", help="list the serial ports and exit")
     action.add_argument("--info", action="store_true", help="print what the firmware says of itself and exit")
     action.add_argument("--bootloader", action="store_true", help="reset the board into its bootloader and exit")
+    action.add_argument("--leave-bootloader", action="store_true", help="start the application of a board that sits in its bootloader")
     action.add_argument("--flash-only", action="store_true", help="flash the last --image and exit")
     action.add_argument("--self-test", action="store_true", help="check that the board comes back from a panic, a fault and a hang")
     args = parser.parse_args(argv)
@@ -183,10 +188,18 @@ def main(argv: list[str] | None = None) -> int:
             board = SimulatedBoard(SimulatedDevice(golden_oracle(root), images[0]), log)
             log("simulated device: its outputs are the expected ones, this run checks the host tool only")
 
+        if (args.bootloader or args.leave_bootloader) and args.device != "serial":
+            parser.error("--bootloader and --leave-bootloader are for a board (--device serial)")
         if args.bootloader:
             port = board.enter_bootloader()
             log(f"the board is in its bootloader on {port.device}")
             return 0
+        if args.leave_bootloader:
+            if board.leave_bootloader():
+                log(f"the firmware answers: {board.open().info().firmware}")
+                return 0
+            log("the bootloader was told to start the application, and no runner firmware answers: flash one")
+            return 1
         if args.flash_only:
             if not images:
                 parser.error("--flash-only needs --image")
@@ -210,6 +223,9 @@ def main(argv: list[str] | None = None) -> int:
     except Unreachable as error:
         log(f"error: {error}")
         return 3
+    except FirmwareDead as error:
+        log(f"error: {error}")
+        return 4
     except (p.NoAnswer, p.Disconnected, p.ProtocolError) as error:
         log(f"error: the device stopped answering: {error}")
         return 3

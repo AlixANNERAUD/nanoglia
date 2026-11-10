@@ -26,8 +26,17 @@ def board():
     return EmulatedBoard(ELF)
 
 
+def test_the_crash_message_is_kept_above_what_the_bootloader_uses(board):
+    # The record of a crash lives in the last 256 bytes of the RAM: the bootloader of the board
+    # clears and uses the RAM up to 0x20009e14 at every reset.
+    record = next(address for name, address in board.emulator.fw.symbols.items() if "crash" in name and "RECORD" in name)
+    assert record == 0x2004_0000 - 256
+    assert board.emulator.fw.symbols["_stack_start"] == record
+
+
 def test_info(board):
     info = board.open().info()
+    assert info.opt_level == "3" and info.rustc.startswith("rustc ") and info.settings.startswith("none")
     assert info.protocol == p.VERSION and info.max_payload == p.MAX_PAYLOAD
     assert info.board.startswith("emulated") and info.counter_hz == 0
     assert info.crash is None and info.failed_boots == 0
@@ -53,9 +62,9 @@ def test_golden_cases_from_flash_and_from_ram(board):
     assert kws.status == "ok" and len(kws.operators) == 13
     assert kws.operators[0]["kernel"] == "cmsis-nn/conv2d_s8"
     # The counter of the emulator moves by a fixed step at each reading: every operator is one
-    # step, the inference two readings per operator and one more.
+    # step, and the inference the sum of its operators.
     assert all(op["cycles"] == 1000 for op in kws.operators)
-    assert kws.compute_cycles == 1000 * (2 * 13 + 1)
+    assert kws.compute_cycles == 1000 * 13
     assert not kws.timing and kws.compute_ms is None
     assert 0 < kws.stack_peak < 24 * 1024
     vww = results["vww_96_int8"]
@@ -132,10 +141,11 @@ def test_a_firmware_that_crashes_while_starting_ends_in_the_bootloader(board):
         board.open().fault(p.PANIC)
     except (p.NoAnswer, p.Disconnected):
         pass
-    # The panic the host asked for, then a panic at each start: after the third crash in a row
-    # without a request, the firmware gives the hand to the bootloader.
+    # The panic the host asked for, then a panic at each start, before the runner even exists:
+    # the handler of the third crash in a row gives the hand to the bootloader.
     assert emulator.bootloader
-    assert emulator.resets == [p.APPLICATION, p.APPLICATION, p.APPLICATION, p.BOOTLOADER]
+    assert emulator.resets == [p.APPLICATION, p.APPLICATION, p.BOOTLOADER]
+    assert emulator.retained == 0xA0, "the count starts again for the next firmware"
     # A good firmware flashed from there starts with a clean count.
     emulator.inject = 0
     board.flash(None)

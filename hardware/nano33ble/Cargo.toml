@@ -18,6 +18,9 @@ model-resnet = []
 model-str-ww = []
 model-ad = []
 model-vww = []
+# Turns on the instruction cache of the flash (NVMC `ICACHECNF`), which is off after a reset and
+# which some firmwares enable: to measure both. The firmware reports the state it runs with.
+icache = []
 
 [dependencies]
 nanoglia-hardware-runner.workspace = true
@@ -26,7 +29,10 @@ cortex-m-rt.workspace = true
 # A HAL is fine here: this firmware is a test bench, not the library. embassy-nrf has the USB
 # driver of the nRF52840 that is maintained (VBUS detection, errata), embassy-usb the CDC-ACM
 # class. No executor: the firmware polls the two by hand.
-embassy-nrf = { version = "0.11", default-features = false, features = ["nrf52840", "rt", "unstable-pac"] }
+# `reset-pin-as-gpio`: without it, `embassy_nrf::init` programs `UICR.PSELRESET` when it finds it
+# erased, and resets. With it, `init` wants the register erased: it finds it so or gives up, and
+# never writes. The reset button works as the UICR of the board has it, which nothing here changes.
+embassy-nrf = { version = "0.11", default-features = false, features = ["nrf52840", "rt", "unstable-pac", "reset-pin-as-gpio"] }
 embassy-usb = { version = "0.6", default-features = false }
 
 [lints]

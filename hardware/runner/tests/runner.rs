@@ -24,6 +24,7 @@ struct MemoryBoard {
     retained: u8,
     resets: Vec<Reset>,
     idles: usize,
+    contacts: usize,
 }
 
 impl Board for MemoryBoard {
@@ -34,6 +35,7 @@ impl Board for MemoryBoard {
             clock: "a counter",
             counter_hz: 1000,
             reset_reason: 4,
+            settings: "no cache",
         }
     }
 
@@ -78,6 +80,10 @@ impl Board for MemoryBoard {
 
     fn reset(&mut self, to: Reset) {
         self.resets.push(to);
+    }
+
+    fn contact(&mut self) {
+        self.contacts += 1;
     }
 
     fn retained(&mut self) -> u8 {
@@ -239,7 +245,7 @@ fn info_describes_the_firmware() {
     assert_eq!(info.u32(13), 4);
     assert_eq!(info.u32(17), 256);
     assert_eq!(&info.payload[21..23], &[0, 0]);
-    let (strings, models) = strings(&info.payload[23..], 7);
+    let (strings, models) = strings(&info.payload[23..], 10);
     assert_eq!(strings[0], "test 0.0.0");
     assert!(!strings[1].is_empty(), "revision");
     assert_eq!(
@@ -248,8 +254,18 @@ fn info_describes_the_firmware() {
         "version of nanoglia: {}",
         strings[2]
     );
-    assert!(strings[3].contains("opt-level"), "{}", strings[3]);
-    assert_eq!(&strings[4..], ["memory", "a counter", ""]);
+    assert!(
+        strings[3].starts_with("cmsis-nn kernels float int16 all-ops, "),
+        "{}",
+        strings[3]
+    );
+    assert!(
+        ["0", "1", "2", "3", "s", "z"].contains(&&*strings[4]),
+        "optimization level: {}",
+        strings[4]
+    );
+    assert!(strings[5].starts_with("rustc "), "{}", strings[5]);
+    assert_eq!(&strings[6..], ["memory", "a counter", "no cache", ""]);
     // The embedded models: a count, then a name and a length each.
     assert_eq!(models[0], 2);
     let (names, rest) = self::strings(&models[1..], 1);
@@ -264,6 +280,7 @@ fn info_describes_the_firmware() {
     // The request cleared the count of failed boots (there was none) and left no reset.
     assert_eq!(boot::decode(board.retained), (boot::Crash::None, 0));
     assert!(board.resets.is_empty());
+    assert_eq!(board.contacts, 1);
 }
 
 /// Sends a golden case, runs it and reads everything back.
@@ -335,14 +352,12 @@ fn run_case(model_store: u8) {
     // The clock of the board moves 7 ticks per reading.
     assert_eq!(run.u32(21), 7, "cycles of the load");
     assert_eq!(run.u32(25), 7, "cycles of the context");
-    assert_eq!(
-        run.u32(29) as usize,
-        7 * (2 * operators + 1),
-        "cycles of the inference"
-    );
-    assert_eq!(run.payload[33], 0, "flags");
-    assert_eq!(run.payload[34], 1, "outputs");
-    assert_eq!(run.u32(35) as usize, expected.len());
+    // One reading before and one after each operator: 7 ticks each, and nothing in between.
+    let inference = u64::from_le_bytes(run.payload[29..37].try_into().unwrap());
+    assert_eq!(inference, 7 * operators as u64, "cycles of the inference");
+    assert_eq!(run.payload[37], 0, "flags");
+    assert_eq!(run.payload[38], 1, "outputs");
+    assert_eq!(run.u32(39) as usize, expected.len());
     assert_eq!(board.idles, operators);
 
     // The operators, from two requests that overlap.
@@ -560,7 +575,7 @@ fn a_model_that_does_not_fit_or_is_no_model_fails_to_load() {
     let (responses, _) = exchange(bytes(&frames), arena + 64 * 1024);
     let by_seq = |seq: u8| responses.iter().find(|r| r.seq == seq).unwrap();
     assert_eq!(by_seq(100).payload[0], status::OK);
-    assert_eq!(by_seq(100).payload[33] & flag::CYCLES_TRUNCATED, 0);
+    assert_eq!(by_seq(100).payload[37] & flag::CYCLES_TRUNCATED, 0);
     assert_eq!(
         &by_seq(101).payload[..2],
         &[status::LOAD, 1],
@@ -590,10 +605,10 @@ fn reset_answers_then_resets() {
 }
 
 #[test]
-fn crashes_are_reported_counted_and_end_in_the_bootloader() {
+fn crashes_are_reported_and_a_request_clears_their_count() {
     // The previous run panicked: INFO says so, and the request clears the count.
     let board = MemoryBoard {
-        retained: boot::note_crash(0, boot::Crash::Panic),
+        retained: boot::crash(0, boot::Crash::Panic).retained,
         ..Default::default()
     };
     let (responses, board) = exchange_on(board, bytes(&[request(command::INFO, 1, &[])]), 64);
@@ -604,23 +619,23 @@ fn crashes_are_reported_counted_and_end_in_the_bootloader() {
     assert_eq!(boot::decode(board.retained), (boot::Crash::None, 0));
     assert!(board.resets.is_empty());
 
-    // Crash after crash without a word of the host: the third boot goes to the bootloader.
-    let mut retained = 0;
-    for boot_number in 1..=3 {
-        let board = MemoryBoard {
-            retained: boot::note_crash(retained, boot::Crash::Watchdog),
-            ..Default::default()
-        };
-        let (_, board) = exchange_on(board, Vec::new(), 64);
-        retained = board.retained;
-        if boot_number < 3 {
-            assert_eq!(boot::decode(retained), (boot::Crash::None, boot_number));
-            assert!(board.resets.is_empty());
-        } else {
-            assert_eq!(boot::decode(retained), (boot::Crash::None, 0));
-            assert_eq!(board.resets, [Reset::Bootloader]);
-        }
-    }
+    // Without a request, the runner forgets the kind of the crash it will report and keeps the
+    // count: the next crash goes on from it. The runner itself never resets into the bootloader:
+    // the handler of the crash does (`boot::crash`), even when the runner never started.
+    let twice = boot::crash(
+        boot::crash(0, boot::Crash::Fault).retained,
+        boot::Crash::Watchdog,
+    );
+    let board = MemoryBoard {
+        retained: twice.retained,
+        ..Default::default()
+    };
+    let (_, board) = exchange_on(board, Vec::new(), 64);
+    assert_eq!(boot::decode(board.retained), (boot::Crash::None, 2));
+    assert!(board.resets.is_empty() && board.contacts == 0);
+    let verdict = boot::crash(board.retained, boot::Crash::Panic);
+    assert_eq!(verdict.to, Reset::Bootloader);
+    assert_eq!(boot::decode(verdict.retained), (boot::Crash::None, 0));
 
     // A reset the host asked for is no crash: the count does not move.
     let (_, board) = exchange(Vec::new(), 64);

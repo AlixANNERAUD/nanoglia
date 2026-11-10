@@ -34,10 +34,17 @@ APPLICATION_MAX = 983040
 RAM = (0x2000_0000, 256 * 1024)
 
 BOSSAC_VERSION = "1.9.1-arduino2"
+# What that version says of itself with --help: the commit of its tag in arduino/BOSSA.
+BOSSAC_BUILDS = ("1.9.1-17-g89f3556", "arduino")
 
 
 class Unreachable(Exception):
     """The board does not answer and nothing the host can do brings it back."""
+
+
+class FirmwareDead(Exception):
+    """The firmware does not work on the board, which went back to its bootloader by itself: no
+    hand is needed, a firmware that works is."""
 
 
 class SetupError(Exception):
@@ -110,19 +117,37 @@ class Image:
         return cls(path, data)
 
 
+def bossac_version(bossac: str) -> str:
+    """What `bossac --help` says its version is; empty if it does not say."""
+    try:
+        done = subprocess.run([bossac, "--help"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    for line in (done.stdout + done.stderr).splitlines():
+        if "Version" in line:
+            return line.split("Version", 1)[1].strip()
+    return ""
+
+
 def find_bossac(explicit: str | None) -> str:
     """Arduino's bossac: the one named, `$BOSSAC`, the one on the path, or the one of an Arduino
-    installation."""
+    installation. Any other build is refused: the mainline one does not know the nRF52840."""
     candidates = [explicit, os.environ.get("BOSSAC"), shutil.which("bossac")]
     for arduino in ("~/.arduino15", "~/Library/Arduino15"):
         candidates.append(os.path.expanduser(f"{arduino}/packages/arduino/tools/bossac/{BOSSAC_VERSION}/bossac"))
+    where = "documentation/how-to-guides/run-the-golden-cases-on-a-board.md"
     for candidate in candidates:
         if candidate and Path(candidate).is_file():
+            version = bossac_version(candidate)
+            if not any(build in version for build in BOSSAC_BUILDS):
+                raise SetupError(
+                    f"{candidate} is version {version or 'unknown'}, not Arduino's bossac {BOSSAC_VERSION} "
+                    f"(which says {BOSSAC_BUILDS[0]}): the mainline bossac cannot flash this board; see {where}"
+                )
             return candidate
     raise SetupError(
         f"bossac not found: install Arduino's bossac {BOSSAC_VERSION} (the mainline one does not know the "
-        "nRF52840) and pass --bossac, set $BOSSAC or put it on the path; see "
-        "documentation/how-to-guides/run-the-golden-cases-on-a-board.md"
+        f"nRF52840) and pass --bossac, set $BOSSAC or put it on the path; see {where}"
     )
 
 
@@ -163,11 +188,21 @@ class SerialBoard:
     """An Arduino Nano 33 BLE on a USB serial port."""
 
     name = "serial"
-    # Time the firmware has to come back by itself: its watchdog (20 s), the reset through the
-    # bootloader and the enumeration of the port.
-    RESTART_S = 60
-    # Time the bootloader, then the firmware, has to show its port.
+    # Seconds a reset takes: the bootloader (which waits 500 ms for a second tap on the reset
+    # button), the start of the firmware and the enumeration of its port.
+    BOOT_S = 10
+    # Seconds the firmware has to come back by itself after it stopped answering. The worst case
+    # is a firmware that hangs at each start: its watchdog resets it `MAX_FAILED_BOOTS` times,
+    # the last one into the bootloader.
+    RESTART_S = p.MAX_FAILED_BOOTS * (p.WATCHDOG_S + BOOT_S)
+    # Seconds a firmware just flashed has to answer. One whose port does not work gives the hand
+    # back to the bootloader after `NO_CONTACT_S`: wait for that, rather than ask for a hand on
+    # the reset button while the board is about to come back by itself.
+    START_S = p.NO_CONTACT_S + 3 * BOOT_S
+    # Seconds the bootloader has to show its port once asked for.
     PORT_S = 15
+    # Seconds the port of the bootloader must stay to count: it may show during a reset.
+    SETTLE_S = 3
 
     def __init__(self, port: str | None = None, bossac: str | None = None, log=print):
         self.port_hint = port
@@ -185,31 +220,47 @@ class SerialBoard:
             raise SetupError(f"several boards ({names}): pass --port")
         return found[0] if found else None
 
-    def _wait(self, role: str, seconds: float) -> Port | None:
+    def _wait(self, role: str, seconds: float, present: bool = True) -> Port | None:
+        """Waits for the port of `role` to be there (or, with `present` false, to be gone)."""
         deadline = time.monotonic() + seconds
         while True:
-            if (port := self._find(role)) is not None:
+            port = self._find(role)
+            if (port is not None) == present:
                 return port
             if time.monotonic() >= deadline:
-                return None
+                return port if present else None
             time.sleep(0.25)
 
-    def _connect(self, seconds: float) -> p.Device | None:
-        """A device that answers INFO on the port of the runner, within `seconds`."""
+    def _open(self, port: Port) -> p.Device | None:
+        """A device that answers INFO on `port`."""
+        try:
+            device = p.Device(p.Link(SerialTransport(port.device)))
+            device.info(timeout=1.0, attempts=2)
+        except (p.Disconnected, p.NoAnswer):
+            # The port is there before the firmware serves it, or it just went away.
+            return None
+        self.device = device
+        return device
+
+    def _await(self, seconds: float) -> str | None:
+        """Waits for the board to settle: "runner" when the firmware answers (`self.device` is
+        then set), "bootloader" when the board sits in its bootloader, None when neither happens
+        in `seconds`."""
         deadline = time.monotonic() + seconds
-        while (remaining := deadline - time.monotonic()) > 0:
-            port = self._wait("runner", remaining)
-            if port is None:
-                return None
-            try:
-                device = p.Device(p.Link(SerialTransport(port.device)))
-                device.info(timeout=1.0, attempts=2)
-            except (p.Disconnected, p.NoAnswer):
-                # The port is there before the firmware serves it, or it just went away.
-                time.sleep(0.5)
-                continue
-            self.device = device
-            return device
+        in_bootloader_since = None
+        while time.monotonic() < deadline:
+            if (port := self._find("runner")) is not None:
+                in_bootloader_since = None
+                if self._open(port) is not None:
+                    return "runner"
+            elif self._find("bootloader") is not None:
+                now = time.monotonic()
+                in_bootloader_since = in_bootloader_since or now
+                if now - in_bootloader_since >= self.SETTLE_S:
+                    return "bootloader"
+            else:
+                in_bootloader_since = None
+            time.sleep(0.25)
         return None
 
     def close(self) -> None:
@@ -218,7 +269,7 @@ class SerialBoard:
             self.device = None
 
     def open(self) -> p.Device:
-        if self.device is None and self._connect(3) is None:
+        if self.device is None and self._await(3) != "runner":
             ports = ", ".join(f"{port.device} ({port.role})" for port in list_ports()) or "none"
             raise SetupError(
                 f"no board running the runner firmware (serial ports: {ports}): flash it by passing "
@@ -229,22 +280,28 @@ class SerialBoard:
     def recover(self) -> p.Device:
         self.close()
         self.log(f"  waiting up to {self.RESTART_S} s for the firmware to restart")
-        if self._connect(self.RESTART_S) is not None:
+        state = self._await(self.RESTART_S)
+        if state == "runner":
             return self.device
-        if self._find("bootloader") is not None and self.image is not None:
+        if state == "bootloader":
+            if self.image is None:
+                raise FirmwareDead(
+                    "the firmware gave the hand back to the bootloader (it crashed several times in a "
+                    "row): the board is in its bootloader; pass the images to flash it again"
+                )
             self.log("  the board is in its bootloader: flashing the image again")
             self.flash(self.image)
             return self.open()
         raise Unreachable(
-            "the board does not answer and did not restart: double-tap its reset button (the orange "
-            "LED fades in and out in the bootloader), then run again"
+            f"the board does not answer and did not restart in {self.RESTART_S} s: double-tap its reset "
+            "button (the orange LED fades in and out in the bootloader), then run again"
         )
 
     def enter_bootloader(self) -> Port:
         """Brings the board into its bootloader, from whatever answers on its port."""
         if (port := self._find("bootloader")) is not None:
             return port
-        if self.device is not None or self._connect(1) is not None:
+        if self.device is not None or ((port := self._find("runner")) is not None and self._open(port)):
             try:
                 self.device.reset(p.BOOTLOADER)
             except (p.Disconnected, p.NoAnswer, p.DeviceError):
@@ -271,16 +328,10 @@ class SerialBoard:
             )
         return port
 
-    def flash(self, image: Image) -> None:
-        bossac = find_bossac(self.bossac)
-        port = self.enter_bootloader()
-        binary = image.path.with_name(image.path.name + ".bin")
-        binary.write_bytes(image.binary)
-        # The upload pattern of ArduinoCore-mbed's platform.txt (tools.bossac.upload.pattern):
-        # bossac takes the name of the port without /dev/, addresses the application from 0 (the
-        # bootloader places it at 0x10000 and cannot be written), erases, writes and resets.
-        command = [bossac, "-d", f"--port={Path(port.device).name}", "-U", "-i", "-e", "-w", str(binary), "-R"]
-        self.log(f"  flashing {image.path.name} ({len(image.binary)} bytes): {' '.join(command)}")
+    def _bossac(self, port: Port, arguments: list[str]) -> None:
+        # bossac takes the name of the port without /dev/.
+        command = [find_bossac(self.bossac), "-d", f"--port={Path(port.device).name}", "-U", *arguments]
+        self.log(f"  {' '.join(command)}")
         try:
             done = subprocess.run(command, capture_output=True, text=True, timeout=180)
         except subprocess.TimeoutExpired:
@@ -288,12 +339,47 @@ class SerialBoard:
         if done.returncode != 0:
             tail = "\n".join((done.stdout + done.stderr).strip().splitlines()[-15:])
             raise SetupError(f"bossac failed ({done.returncode}):\n{tail}")
+
+    def flash(self, image: Image) -> None:
+        find_bossac(self.bossac)
+        port = self.enter_bootloader()
+        binary = image.path.with_name(image.path.name + ".bin")
+        binary.write_bytes(image.binary)
+        # The upload pattern of ArduinoCore-mbed's platform.txt (tools.bossac.upload.pattern), plus
+        # the verification: bossac addresses the application from 0 (the bootloader adds 0x10000
+        # to every address it is given, so it cannot be written), writes, reads the checksum of
+        # what was written back, and resets.
+        self.log(f"  flashing {image.path.name} ({len(image.binary)} bytes)")
+        self._bossac(port, ["-i", "-e", "-w", "-v", str(binary), "-R"])
         self.image = image
-        if self._connect(self.PORT_S + 15) is None:
-            raise Unreachable(
-                f"{image.path.name} was written but the firmware does not answer: it may not start on "
-                "this board. Double-tap the reset button to return to the bootloader"
+        # The bootloader goes away with the reset; then either the firmware answers, or it gives
+        # the hand back to the bootloader by itself.
+        self._wait("bootloader", self.PORT_S, present=False)
+        state = self._await(self.BOOT_S)
+        if state is None:
+            self.log(f"  the firmware does not answer yet: waiting up to {self.START_S} s for it, or for the bootloader")
+            state = self._await(self.START_S - self.BOOT_S)
+        if state == "bootloader":
+            raise FirmwareDead(
+                f"{image.path.name} was written and verified, but its firmware does not work on this board: "
+                "it never answered and gave the hand back to the bootloader, where the board now waits. "
+                "No hand is needed on the board; the firmware is"
             )
+        if state is None:
+            raise Unreachable(
+                f"{image.path.name} was written but the firmware does not answer, and the board did not "
+                f"return to its bootloader in {self.START_S} s: double-tap the reset button"
+            )
+
+    def leave_bootloader(self) -> bool:
+        """Makes a board that sits in its bootloader start its application (`bossac -R`). False if
+        the firmware does not answer afterwards: the bootloader stays when there is no application."""
+        port = self._find("bootloader")
+        if port is None:
+            raise SetupError("the board is not in its bootloader")
+        self._bossac(port, ["-R"])
+        self._wait("bootloader", self.PORT_S, present=False)
+        return self._await(self.BOOT_S) == "runner"
 
 
 class EmulatedBoard:

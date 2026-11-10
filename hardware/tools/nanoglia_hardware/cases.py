@@ -18,7 +18,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from . import protocol as p
-from .board import SetupError, Unreachable
+from .board import FirmwareDead, Unreachable
 from .shared import REPO, golden
 
 # The cases whose model must run from flash: the realistic models.
@@ -51,7 +51,8 @@ class CaseResult:
     operators: list[dict] = field(default_factory=list)
     load_cycles: int | None = None
     context_cycles: int | None = None
-    # Cycles of the inference: the fastest of the repeats, then each of them.
+    # Cycles of the inference, the sum of those of its operators (what the firmware does between
+    # two operators is not counted): the fastest of the repeats, then each of them.
     compute_cycles: int | None = None
     compute_cycles_runs: list[int] = field(default_factory=list)
     compute_ms: float | None = None
@@ -200,7 +201,8 @@ class Report:
     results: list[CaseResult] = field(default_factory=list)
     images: list[dict] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
-    # 0: every case passed; 1: a case failed; 3: the board was lost.
+    # 0: every case passed; 1: a case failed; 3: the board was lost; 4: the firmware does not work
+    # on the board, which is back in its bootloader.
     exit_code: int = 0
 
     def counts(self) -> dict[str, int]:
@@ -217,8 +219,11 @@ def describe(info: p.Info) -> dict:
         "revision": info.revision,
         "nanoglia": info.nanoglia,
         "build": info.build,
+        "opt_level": info.opt_level,
+        "rustc": info.rustc,
         "board": info.board,
         "clock": info.clock,
+        "settings": info.settings,
         "counter_hz": info.counter_hz,
         "ram_store_bytes": info.ram_bytes,
         "models_in_flash": [name for name, _ in info.models],
@@ -264,8 +269,8 @@ def run_cases(board, images: list, root: Path, filter: str = "", repeat: int = 1
             label = getattr(getattr(image, "path", None), "name", None) or f"image {number + 1}"
             session = Session(board, device, info, label if image is not None else "as found on the board")
             report.images.append({"image": session.image, **describe(info)})
-            log(f"{session.image}: {info.firmware} ({info.revision}), nanoglia {info.nanoglia}, {info.build}")
-            log(f"  {info.board}; {info.clock}; RAM store of {info.ram_bytes} bytes; in flash: {', '.join(n for n, _ in info.models) or 'no model'}")
+            log(f"{session.image}: {info.firmware} ({info.revision}), nanoglia {info.nanoglia}, {info.build}, opt-level {info.opt_level}, {info.rustc}")
+            log(f"  {info.board}; {info.clock}; {info.settings}; RAM store of {info.ram_bytes} bytes; in flash: {', '.join(n for n, _ in info.models) or 'no model'}")
             if crash := info.describe_crash():
                 log(f"  {crash}")
             for name, directory in cases:
@@ -293,7 +298,7 @@ def run_cases(board, images: list, root: Path, filter: str = "", repeat: int = 1
                     except (p.NoAnswer, p.Disconnected, p.ProtocolError) as error:
                         finish(result)
                         raise Unreachable(f"the board came back but does not answer: {error}") from None
-                    except Unreachable:
+                    except (Unreachable, FirmwareDead):
                         finish(result)
                         raise
                     if lost_in_a_row >= MAX_LOST_IN_A_ROW:
@@ -304,9 +309,9 @@ def run_cases(board, images: list, root: Path, filter: str = "", repeat: int = 1
                         continue
                     result = CaseResult(name, "skipped", "its model must run from flash and is in none of the firmware images", model=spec["model"], image=session.image)
                 finish(result)
-    except Unreachable as error:
+    except (Unreachable, FirmwareDead) as error:
         report.problems.append(str(error))
-        report.exit_code = 3
+        report.exit_code = 3 if isinstance(error, Unreachable) else 4
         log(f"STOPPED  {error}")
     report.results = [done[name] for name, _ in cases if name in done]
     logged = len(report.problems)

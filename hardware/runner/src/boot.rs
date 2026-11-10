@@ -1,10 +1,11 @@
 //! The byte that survives a reset: how the previous run ended, and how many runs in a row ended in
 //! a crash before the host said a word.
 //!
-//! A firmware that crashes while it starts would reset forever, out of reach of the host. So each
-//! crash is counted, the count is cleared when a request of the host arrives, and at
-//! [`MAX_FAILED_BOOTS`] the firmware resets into the bootloader instead, where a new firmware can
-//! be flashed.
+//! A firmware that crashes while it starts would reset forever, out of reach of the host. So the
+//! handler of every crash counts it, in [`crash`], before it resets: at [`MAX_FAILED_BOOTS`] it
+//! resets into the bootloader instead, where a new firmware can be flashed. The count is made
+//! there, not when the firmware starts, so that a crash in the very first instructions of `main`
+//! counts too. A request of the host clears it ([`contact`]).
 //!
 //! | Bits | Field |
 //! | --- | --- |
@@ -58,9 +59,31 @@ pub fn encode(crash: Crash, failed: u8) -> u8 {
     MARK | (crash as u8) << 2 | failed.min(3)
 }
 
-/// The retained byte a crash handler writes before it resets: `retained` with `crash` noted.
-pub fn note_crash(retained: u8, crash: Crash) -> u8 {
-    encode(crash, decode(retained).1)
+/// What a crash handler does after a crash.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Verdict {
+    /// The retained byte to write before the reset.
+    pub retained: u8,
+    /// Where to reset: the bootloader after [`MAX_FAILED_BOOTS`] crashes in a row.
+    pub to: Reset,
+}
+
+/// Counts the crash `kind` in `retained`, the byte as the handler finds it. Every handler of a
+/// crash (panic, fault, watchdog) calls this, writes [`Verdict::retained`] and resets to
+/// [`Verdict::to`].
+pub fn crash(retained: u8, kind: Crash) -> Verdict {
+    let failed = decode(retained).1 + 1;
+    if failed >= MAX_FAILED_BOOTS {
+        // The count starts again: the bootloader runs this firmware if none replaces it.
+        return Verdict {
+            retained: encode(Crash::None, 0),
+            to: Reset::Bootloader,
+        };
+    }
+    Verdict {
+        retained: encode(kind, failed),
+        to: Reset::Application,
+    }
 }
 
 /// What the retained byte says when the firmware starts.
@@ -68,24 +91,14 @@ pub fn note_crash(retained: u8, crash: Crash) -> u8 {
 pub struct Boot {
     /// How the previous run ended.
     pub crash: Crash,
-    /// Crashes in a row without a request of the host, this one included.
+    /// Crashes in a row without a request of the host, the one of the previous run included.
     pub failed: u8,
 }
 
-/// Reads the retained byte when the firmware starts, counts the crash of the previous run if there
-/// was one, and resets into the bootloader at [`MAX_FAILED_BOOTS`].
+/// Reads the retained byte when the runner starts: how the previous run ended, which is forgotten
+/// from then on, and the count of crashes, which stays until a request of the host.
 pub fn start<B: Board>(board: &mut B) -> Boot {
-    let (crash, mut failed) = decode(board.retained());
-    if crash != Crash::None {
-        failed += 1;
-    }
-    if failed >= MAX_FAILED_BOOTS {
-        // The count starts again: the bootloader runs this firmware if none replaces it.
-        board.set_retained(encode(Crash::None, 0));
-        board.reset(Reset::Bootloader);
-        // Only the tests come here.
-        return Boot { crash, failed };
-    }
+    let (crash, failed) = decode(board.retained());
     board.set_retained(encode(Crash::None, failed));
     Boot { crash, failed }
 }
@@ -96,6 +109,7 @@ pub fn contact<B: Board>(board: &mut B) {
     if failed != 0 {
         board.set_retained(encode(crash, 0));
     }
+    board.contact();
 }
 
 #[cfg(test)]
@@ -120,12 +134,31 @@ mod tests {
     }
 
     #[test]
-    fn a_crash_keeps_the_count() {
-        assert_eq!(decode(note_crash(0, Crash::Panic)), (Crash::Panic, 0));
-        let two = encode(Crash::None, 2);
+    fn crashes_are_counted_where_they_happen() {
+        // After a power-on, and from a byte another firmware left.
+        for first in [0, 0xFF, 0xB0] {
+            let verdict = crash(first, Crash::Panic);
+            assert_eq!(decode(verdict.retained), (Crash::Panic, 1));
+            assert_eq!(verdict.to, Reset::Application);
+        }
+        // Crash after crash, without the runner ever starting (so without `start`): the third
+        // one goes to the bootloader, with a count that starts again.
+        let mut retained = 0;
+        let mut resets = [Reset::Application; 4];
+        for reset in &mut resets {
+            let verdict = crash(retained, Crash::Watchdog);
+            retained = verdict.retained;
+            *reset = verdict.to;
+        }
         assert_eq!(
-            decode(note_crash(two, Crash::Watchdog)),
-            (Crash::Watchdog, 2)
+            resets,
+            [
+                Reset::Application,
+                Reset::Application,
+                Reset::Bootloader,
+                Reset::Application
+            ]
         );
+        assert_eq!(decode(retained), (Crash::Watchdog, 1));
     }
 }

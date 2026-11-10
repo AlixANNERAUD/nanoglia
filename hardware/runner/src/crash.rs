@@ -5,6 +5,11 @@
 //! resets; the firmware reports the record in its next answer to `INFO`. The record is checked by
 //! a magic word and a CRC: a bootloader that ran in between may have used this memory, in which
 //! case the message is lost and only the kind of the crash, in the retained byte, remains.
+//!
+//! The linker script of a firmware places the section `.nanoglia_crash` where its bootloader does
+//! not write: the Arduino bootloader of the Nano 33 BLE clears and uses the RAM from `0x20000000`
+//! to `0x20009e14` on every reset (the `bss`, `noinit` and data sections of its published ELF),
+//! so the record lives in the last 256 bytes of the RAM, above the stack.
 
 use crate::frame::crc32;
 use core::fmt::{self, Write};
@@ -24,8 +29,9 @@ struct Record {
     message: [u8; MAX_MESSAGE],
 }
 
-/// The record. On a bare-metal target, in `.uninit`, which cortex-m-rt neither loads nor clears.
-#[cfg_attr(target_os = "none", unsafe(link_section = ".uninit.nanoglia_crash"))]
+/// The record. On a bare-metal target, in a section of its own, which the start-up code neither
+/// loads nor clears.
+#[cfg_attr(target_os = "none", unsafe(link_section = ".nanoglia_crash"))]
 static mut RECORD: MaybeUninit<Record> = MaybeUninit::zeroed();
 
 struct Message<'a> {

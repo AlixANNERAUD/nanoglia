@@ -21,10 +21,10 @@
 //!
 //! | Command | Request | Response |
 //! | --- | --- | --- |
-//! | [`command::INFO`] | nothing | `u8` protocol version, `u32` largest payload, `u32` size of the RAM store, `u32` ticks of the cycle counter per second, `u32` reason of the last reset (as the chip encodes it), `u32` operators whose cycles are kept, `u8` how the previous run ended ([`boot::Crash`]), `u8` crashes in a row before this request, then the strings: firmware, revision of the sources, version of nanoglia, build settings, board, clock, message of the crash; then `u8` number of embedded models and for each a string, its name, and the `u32` length of its bytes |
+//! | [`command::INFO`] | nothing | `u8` protocol version, `u32` largest payload, `u32` size of the RAM store, `u32` ticks of the cycle counter per second, `u32` reason of the last reset (as the chip encodes it), `u32` operators whose cycles are kept, `u8` how the previous run ended ([`boot::Crash`]), `u8` crashes in a row before this request, then the strings: firmware, revision of the sources, version of nanoglia, kernel families and target, optimization level, compiler, board, clock, other settings of the board that decide the times, message of the crash; then `u8` number of embedded models and for each a string, its name, and the `u32` length of its bytes |
 //! | [`command::WRITE`] | `u32` offset in the RAM store, then the bytes | nothing |
 //! | [`command::CRC`] | `u8` store, then `u32` offset and `u32` length in the RAM store, or `u32` index of an embedded model and `u32` its length | `u32` CRC-32 of these bytes (of the whole model) |
-//! | [`command::RUN`] | `u8` store of the model, then `u32` its offset and `u32` its length in the RAM store, or `u32` index of an embedded model and `u32` its length; `u32` offset of the arena in the RAM store, `u8` number of inputs, then for each `u32` offset and `u32` length in the RAM store | `u8` [`status`]; if [`status::OK`]: `u32` operators, `u32` graph bytes, `u32` context bytes, `u32` arena bytes used, `u32` peak stack in bytes (`0xFFFFFFFF` if not measured), `u32` cycles of the load, `u32` cycles of the context creation, `u32` cycles of the inference, `u8` [`flag`]s, `u8` number of outputs, then the `u32` length of each; otherwise `u8` error code of nanoglia ([`error_number`]) and a message |
+//! | [`command::RUN`] | `u8` store of the model, then `u32` its offset and `u32` its length in the RAM store, or `u32` index of an embedded model and `u32` its length; `u32` offset of the arena in the RAM store, `u8` number of inputs, then for each `u32` offset and `u32` length in the RAM store | `u8` [`status`]; if [`status::OK`]: `u32` operators, `u32` graph bytes, `u32` context bytes, `u32` arena bytes used, `u32` peak stack in bytes (`0xFFFFFFFF` if not measured), `u32` cycles of the load, `u32` cycles of the context creation, `u64` cycles of the inference (the sum of those of its operators: what the firmware does between two operators is not counted), `u8` [`flag`]s, `u8` number of outputs, then the `u32` length of each; otherwise `u8` error code of nanoglia ([`error_number`]) and a message |
 //! | [`command::OPERATORS`] | `u32` first operator | `u32` first operator, `u8` count, then for each `u32` cycles and a string, its kernel: as many as fit |
 //! | [`command::OUTPUT`] | `u8` output, `u32` offset, `u32` length wanted | the bytes, at most a payload |
 //! | [`command::RESET`] | `u8` where to: [`Reset`] | nothing, then the board resets |
@@ -33,15 +33,14 @@
 //! `OPERATORS` and `OUTPUT` read the results of the last `RUN`, which stay in the arena until any
 //! other command.
 //!
-//! The firmware never writes to flash: nothing a host sends can touch the firmware or the
-//! bootloader.
+//! No command writes to flash: nothing a host sends can touch the firmware or the bootloader.
 //!
 //! # Getting out of trouble
 //!
 //! A frame cut short is dropped after [`FRAME_TIMEOUT_MS`] without a byte. A crash is noted in a
-//! byte that survives the reset and reported by the next `INFO` ([`boot`], [`crash`]); after
-//! [`boot::MAX_FAILED_BOOTS`] crashes without a request in between, the firmware resets into the
-//! bootloader.
+//! byte that survives the reset, by the handler that takes it, and reported by the next `INFO`
+//! ([`boot`], [`crash`]); after [`boot::MAX_FAILED_BOOTS`] crashes without a request in between,
+//! the handler resets into the bootloader.
 
 #![no_std]
 
@@ -125,8 +124,12 @@ pub const STACK_UNKNOWN: u32 = u32::MAX;
 pub const NANOGLIA_VERSION: &str = env!("RUNNER_NANOGLIA_VERSION");
 /// The revision of the sources the runner is built from.
 pub const REVISION: &str = env!("RUNNER_REVISION");
-/// The kernel families, optimization level and target of the build.
+/// The kernel families and the target of the build.
 pub const BUILD: &str = env!("RUNNER_BUILD");
+/// The optimization level of the build.
+pub const OPT_LEVEL: &str = env!("RUNNER_OPT_LEVEL");
+/// The compiler of the build.
+pub const RUSTC: &str = env!("RUNNER_RUSTC");
 
 /// The number of an error code of nanoglia in the response to a failed `RUN`.
 pub fn error_number(code: nanoglia::ErrorCode) -> u8 {
@@ -337,6 +340,9 @@ struct Timer<'a, B: Board> {
     board: &'a mut B,
     cycles: &'a mut [u32; MAX_OPERATORS],
     start: u32,
+    /// The sum of the cycles of the operators: a count of 32 bits wraps around after 67 s at
+    /// 64 MHz, which an operator never takes (the watchdog ends it first) but a model could.
+    total: u64,
     truncated: bool,
 }
 
@@ -349,6 +355,7 @@ impl<B: Board> Observer for Timer<'_, B> {
 
     fn after(&mut self, op: &OpInfo<'_>, _result: &nanoglia::Result<()>) {
         let elapsed = self.board.cycles().wrapping_sub(self.start);
+        self.total += u64::from(elapsed);
         match self.cycles.get_mut(op.index()) {
             Some(slot) => *slot = elapsed,
             None => self.truncated = true,
@@ -453,12 +460,11 @@ fn run<B: Board>(
         board: &mut *board,
         cycles: &mut *cycles,
         start: 0,
+        total: 0,
         truncated: false,
     };
-    let start = timer.board.cycles();
     let result = context.compute_with(&mut timer);
-    let compute_cycles = timer.board.cycles().wrapping_sub(start);
-    let truncated = timer.truncated;
+    let (compute_cycles, truncated) = (timer.total, timer.truncated);
     if let Err(error) = result {
         return run_failed(link, board, request, status::COMPUTE, error);
     }
@@ -474,7 +480,7 @@ fn run<B: Board>(
             .u32(stack_peak)
             .u32(load_cycles)
             .u32(context_cycles)
-            .u32(compute_cycles)
+            .bytes(&compute_cycles.to_le_bytes())
             .u8(if truncated { flag::CYCLES_TRUNCATED } else { 0 })
             .u8(output_count as u8);
         for index in 0..output_count {
@@ -562,8 +568,7 @@ impl<'a, B: Board> Runner<'a, B> {
     /// Starts the runner of `board`, with `ram` as its RAM store and the models linked into the
     /// firmware.
     ///
-    /// Reads how the previous run ended; after [`boot::MAX_FAILED_BOOTS`] crashes in a row
-    /// without a request of the host, resets into the bootloader.
+    /// Reads how the previous run ended, for `INFO`.
     pub fn new(mut board: B, ram: &'a mut [u8], models: &'a [EmbeddedModel]) -> Self {
         let mut crash_message = [0; crash::MAX_MESSAGE];
         let crash_len = crash::take(&mut crash_message);
@@ -633,8 +638,11 @@ impl<'a, B: Board> Runner<'a, B> {
                         .string(REVISION)
                         .string(NANOGLIA_VERSION)
                         .string(BUILD)
+                        .string(OPT_LEVEL)
+                        .string(RUSTC)
                         .string(info.board)
                         .string(info.clock)
+                        .string(info.settings)
                         .string(message)
                         .u8(models.len().min(255) as u8);
                     for model in models.iter().take(255) {

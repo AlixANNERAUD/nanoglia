@@ -6,11 +6,12 @@
 //! | Link | USB CDC-ACM (embassy-usb on embassy-nrf's driver), polled by hand: no executor, no interrupt handler of ours on the path of the data. |
 //! | Clock | HFCLK from the 32 MHz crystal (HFXO), which USB needs; the core runs at 64 MHz. |
 //! | Cycle counter | `DWT.CYCCNT`, at the core clock. |
-//! | Watchdog | TIMER1 at 1 MHz: its compare interrupt fires when nothing fed it for [`WATCHDOG_US`], notes the crash and resets. Not the WDT of the chip, which cannot be stopped and would go on counting in the bootloader, where nothing feeds it. |
+//! | Watchdog | TIMER1 at 1 MHz: its compare interrupt, the only one at the highest priority, fires when nothing fed it for [`WATCHDOG_US`], counts the crash and resets. Not the WDT of the chip, which cannot be stopped and would go on counting in the bootloader, where nothing feeds it. |
 //! | Bootloader | `GPREGRET = 0xB0` then a system reset, what the Arduino core does when the port is opened at 1200 baud and closed (`_ontouch1200bps_` in `variants/ARDUINO_NANO33BLE/variant.cpp` of ArduinoCore-mbed); the firmware does it on the `RESET` command and on the same 1200 baud touch. |
-//! | Silence | A firmware that receives no byte from a host for [`NO_CONTACT_US`] after it started resets into the bootloader: one whose USB port does not work does not stay out of reach. |
-//! | Crashes | The panic and HardFault handlers and the watchdog leave a message in RAM and their kind in `GPREGRET2`, then reset; the next `INFO` reports them. |
-//! | Flash | Read only: the firmware has no code that writes or erases it. |
+//! | Silence | A firmware that gets no request from a host for [`NO_CONTACT_US`] after it started resets into the bootloader: one whose USB port does not work does not stay out of reach. |
+//! | Crashes | The panic, fault and unexpected-interrupt handlers and the watchdog leave a message in the last bytes of the RAM, count the crash in `GPREGRET2` and reset: into the bootloader at the third in a row without a request. The count is made in the handler, so a crash in the first lines of `main` counts. |
+//! | Start | The bootloader jumps here without resetting the peripherals: `main` first turns off what it left on (the interrupts of CLOCK and POWER, RTC1, UARTE0, the two clocks), so that `embassy_nrf::init` starts from the state after a reset. |
+//! | Flash | The firmware has no code that erases or writes a page of flash. `embassy_nrf::init` holds a routine that programs words of the UICR; as configured here (`reset-pin-as-gpio`, NFC pins and debug port left alone, no regulator voltage) every call either finds the word as wanted or gives up, and none writes. |
 //!
 //! Nothing here has a test on the host: it first runs on the board. The runner, which does, is in
 //! `../runner`.
@@ -23,6 +24,7 @@ use core::future::Future;
 use core::pin::{Pin, pin};
 use core::task::{Context, Poll, Waker};
 use cortex_m_rt::entry;
+use embassy_nrf::interrupt::{self, InterruptExt, Priority};
 use embassy_nrf::usb::vbus_detect::{self, HardwareVbusDetect};
 use embassy_nrf::usb::{self, Driver};
 use embassy_nrf::{bind_interrupts, pac, peripherals};
@@ -45,9 +47,10 @@ const CPU_HZ: u32 = 64_000_000;
 /// Time without [`feed`] after which the watchdog resets the board, in microseconds. Far above the
 /// longest operator of a model that fits the board; the host waits longer than this for a run.
 const WATCHDOG_US: u32 = 20_000_000;
-/// Time after the start without a byte from a host after which the firmware resets into the
+/// Time after the start without a request from a host after which the firmware resets into the
 /// bootloader, in microseconds: a firmware whose port does not work on this board gives the hand
-/// back by itself. The host tool talks to the firmware within seconds of flashing it.
+/// back by itself. The host tool talks to the firmware within seconds of flashing it, and waits
+/// longer than this before giving the board up (`NO_CONTACT_S` in tools/).
 const NO_CONTACT_US: u32 = 300_000_000;
 /// Time the host has to read a packet, in microseconds.
 const WRITE_TIMEOUT_US: u32 = 2_000_000;
@@ -96,10 +99,33 @@ static MODELS: &[EmbeddedModel] = &[
     },
 ];
 
+/// Turns off what the bootloader leaves on. It jumps to the application without resetting the
+/// peripherals (it only disables and clears the interrupt lines), with its clocks running; the
+/// Arduino core does the same clean-up when a sketch starts (`initVariant` in `variant.cpp`).
+/// After a reset this changes nothing.
+fn quiesce() {
+    // CLOCK and POWER are one peripheral, with one set of interrupt enables.
+    pac::CLOCK.intenclr().write(|w| w.0 = !0);
+    pac::RTC1.tasks_stop().write_value(1);
+    pac::RTC1.intenclr().write(|w| w.0 = !0);
+    pac::RTC1.evtenclr().write(|w| w.0 = !0);
+    pac::UARTE0.intenclr().write(|w| w.0 = !0);
+    pac::UARTE0.enable().write(|w| w.0 = 0);
+    // Both clocks stopped, their events cleared: `embassy_nrf::init` starts each and waits for
+    // its event, which a clock that already runs may never give again.
+    let clock = pac::CLOCK;
+    clock.tasks_lfclkstop().write_value(1);
+    clock.tasks_hfclkstop().write_value(1);
+    clock.events_lfclkstarted().write_value(0);
+    clock.events_hfclkstarted().write_value(0);
+}
+
 /// Starts TIMER1 as a free-running 1 MHz counter whose compare 0 is the watchdog.
 fn timer_start() {
     let timer = pac::TIMER1;
     timer.tasks_stop().write_value(1);
+    timer.shorts().write(|w| w.0 = 0);
+    timer.intenclr().write(|w| w.0 = !0);
     // Timer mode, 32 bits, 16 MHz / 2^4.
     timer.mode().write(|w| w.0 = 0);
     timer.bitmode().write(|w| w.0 = 3);
@@ -107,8 +133,9 @@ fn timer_start() {
     timer.tasks_clear().write_value(1);
     timer.cc(0).write_value(WATCHDOG_US);
     timer.events_compare(0).write_value(0);
-    // Interrupt on compare 0.
+    // Interrupt on compare 0, above every other interrupt of the firmware.
     timer.intenset().write(|w| w.0 = 1 << 16);
+    interrupt::TIMER1.set_priority(Priority::P0);
     timer.tasks_start().write_value(1);
     // SAFETY: the handler below is the only user of this interrupt and shares no data.
     unsafe { cortex_m::peripheral::NVIC::unmask(pac::Interrupt::TIMER1) };
@@ -149,15 +176,16 @@ fn reset(to: Reset) -> ! {
     cortex_m::peripheral::SCB::sys_reset()
 }
 
-/// Notes the crash for the next run and resets.
+/// Counts the crash, leaves its message for the next run and resets: into the bootloader after
+/// [`boot::MAX_FAILED_BOOTS`] crashes in a row without a request of the host.
 fn die(kind: Crash, message: fmt::Arguments<'_>) -> ! {
     cortex_m::interrupt::disable();
     crash::store(message);
-    let retained = pac::POWER.gpregret2().read().0 as u8;
+    let verdict = boot::crash(pac::POWER.gpregret2().read().0 as u8, kind);
     pac::POWER
         .gpregret2()
-        .write(|w| w.0 = u32::from(boot::note_crash(retained, kind)));
-    reset(Reset::Application)
+        .write(|w| w.0 = u32::from(verdict.retained));
+    reset(verdict.to)
 }
 
 #[panic_handler]
@@ -175,6 +203,13 @@ unsafe fn HardFault(frame: &cortex_m_rt::ExceptionFrame) -> ! {
             frame.lr()
         ),
     )
+}
+
+/// An interrupt nothing handles (one the bootloader left pending, or a bug): a crash like the
+/// others, not the endless loop of the default handler.
+#[cortex_m_rt::exception]
+unsafe fn DefaultHandler(irqn: i16) -> ! {
+    die(Crash::Fault, format_args!("unexpected interrupt {irqn}"))
 }
 
 /// Polls a future once. The futures of embassy check their condition at each poll: nothing here
@@ -196,8 +231,10 @@ struct Nano<'f, 'd, F: Future> {
     packet_len: usize,
     packet_at: usize,
     reset_reason: u32,
-    /// Whether a host sent a byte since the firmware started.
+    /// Whether a host sent a request since the firmware started: the runner says so.
     contacted: bool,
+    /// What decides the times besides the clock: the state of the instruction cache.
+    settings: &'static str,
     /// Whether `DWT.CYCCNT` counts.
     cycle_counter: bool,
 }
@@ -237,6 +274,7 @@ impl<F: Future> Board for Nano<'_, '_, F> {
             },
             counter_hz: if self.cycle_counter { CPU_HZ } else { 0 },
             reset_reason: self.reset_reason,
+            settings: self.settings,
         }
     }
 
@@ -253,9 +291,8 @@ impl<F: Future> Board for Nano<'_, '_, F> {
                         self.sender.line_coding().data_rate(),
                         self.sender.dtr(),
                     );
-                    if let Poll::Ready(received) = poll(read.as_mut()) {
-                        break received;
-                    }
+                    // Checked at every turn, before the port is asked: while the host has not
+                    // configured the device, the read fails at once, and this loop turns on it.
                     let now = now_us();
                     if !self.contacted && now >= NO_CONTACT_US {
                         reset(Reset::Bootloader);
@@ -264,12 +301,14 @@ impl<F: Future> Board for Nano<'_, '_, F> {
                     if timeout_ms.is_some_and(|timeout| waited >= timeout.saturating_mul(1000)) {
                         return Err(LinkError::Timeout);
                     }
+                    if let Poll::Ready(received) = poll(read.as_mut()) {
+                        break received;
+                    }
                 }
             };
-            // An error is a port that is not configured yet, or was closed: wait on.
+            // An error is a port that is not configured yet, or was closed: nothing received.
             self.packet_len = received.unwrap_or(0);
             self.packet_at = 0;
-            self.contacted |= self.packet_len > 0;
         }
         let available = &self.packet[self.packet_at..self.packet_len];
         let count = available.len().min(buffer.len());
@@ -337,6 +376,10 @@ impl<F: Future> Board for Nano<'_, '_, F> {
         }
     }
 
+    fn contact(&mut self) {
+        self.contacted = true;
+    }
+
     fn retained(&mut self) -> u8 {
         pac::POWER.gpregret2().read().0 as u8
     }
@@ -361,9 +404,10 @@ unsafe extern "C" {
 
 #[entry]
 fn main() -> ! {
-    // The watchdog first: a start-up that hangs resets, and after a few resets ends in the
-    // bootloader.
+    // The watchdog first: a start-up that hangs resets, and at the third reset ends in the
+    // bootloader. Then the state a reset leaves, whatever the bootloader left.
     timer_start();
+    quiesce();
 
     // Why the chip reset; the bits are cleared by writing them.
     let reset_reason = pac::POWER.resetreas().read().0;
@@ -375,6 +419,16 @@ fn main() -> ! {
     // Leave the debug port as it is: the default would write `UICR.APPROTECT`.
     config.debug = embassy_nrf::config::Debug::NotConfigured;
     let p = embassy_nrf::init(config);
+
+    // The instruction cache of the flash: off after a reset, on with the feature `icache`.
+    if cfg!(feature = "icache") {
+        pac::NVMC.icachecnf().write(|w| w.0 = 1);
+    }
+    let settings = if pac::NVMC.icachecnf().read().0 & 1 == 1 {
+        "instruction cache of the flash on (NVMC ICACHECNF)"
+    } else {
+        "instruction cache of the flash off (NVMC ICACHECNF, as after a reset)"
+    };
 
     // SAFETY: embassy-nrf does not use the DCB nor the DWT, and nothing else does.
     let mut core = unsafe { cortex_m::Peripherals::steal() };
@@ -393,6 +447,9 @@ fn main() -> ! {
         *digit = b"0123456789ABCDEF"[((id >> (60 - 4 * index)) & 0xF) as usize];
     }
 
+    // Below the watchdog, which must be able to interrupt them.
+    interrupt::USBD.set_priority(Priority::P2);
+    interrupt::CLOCK_POWER.set_priority(Priority::P2);
     let driver = Driver::new(p.USBD, Irqs, HardwareVbusDetect::new(Irqs));
     // The test identifiers of pid.codes: this firmware is a test bench, not a product.
     let mut config = embassy_usb::Config::new(0x1209, 0x0001);
@@ -437,6 +494,7 @@ fn main() -> ! {
         packet_at: 0,
         reset_reason,
         contacted: false,
+        settings,
         cycle_counter,
     };
     let mut runner = Runner::new(board, ram, MODELS);

@@ -45,6 +45,8 @@ pub struct BoardInfo {
     pub counter_hz: u32,
     /// Why the board last reset, in the encoding of the chip (`RESETREAS` on an nRF52).
     pub reset_reason: u32,
+    /// What else decides the times measured on this board, in words (the state of a cache...).
+    pub settings: &'static str,
 }
 
 /// A board: its link to the host, its cycle counter and its ways out.
@@ -82,6 +84,10 @@ pub trait Board {
             },
         }
     }
+
+    /// A request of the host arrived, for the first time since the firmware started: the link
+    /// works.
+    fn contact(&mut self) {}
 
     /// The byte that survives a reset, see [`crate::boot`]. 0 after a power-on.
     fn retained(&mut self) -> u8;

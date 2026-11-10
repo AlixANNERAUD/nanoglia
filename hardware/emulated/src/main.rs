@@ -11,7 +11,7 @@
 //! | `0x4000_0010` | write: reset, 1 into the firmware, 2 into the bootloader |
 //! | `0x4000_0014` | the byte that survives a reset |
 //! | `0x4000_0018` | read: the time in milliseconds, which the emulator moves when the host waits |
-//! | `0x4000_001C` | read: 1 to panic while starting, for the test of the boot loop |
+//! | `0x4000_001C` | read: 1 to panic while starting, before the runner exists, for the test of the boot loop |
 //!
 //! When it has nothing to read, the firmware calls [`emulated_wait`]: the emulator stops there
 //! and gives the hand back to the host.
@@ -82,14 +82,13 @@ static MODELS: [EmbeddedModel; 5] = [
     },
 ];
 
-/// Notes the crash for the next run and resets, as the handlers of a board do.
+/// Counts the crash, leaves its message for the next run and resets, into the bootloader after
+/// too many: as the handlers of a board do.
 fn die(kind: Crash, message: fmt::Arguments<'_>) -> ! {
     crash::store(message);
-    write(
-        RETAINED,
-        u32::from(boot::note_crash(read(RETAINED) as u8, kind)),
-    );
-    write(RESET, 1);
+    let verdict = boot::crash(read(RETAINED) as u8, kind);
+    write(RETAINED, u32::from(verdict.retained));
+    write(RESET, verdict.to as u32 + 1);
     // The emulator restarts the firmware on this write.
     loop {
         emulated_wait();
@@ -106,6 +105,7 @@ impl Board for Emulated {
             clock: "a counter of the emulator, not a time",
             counter_hz: 0,
             reset_reason: 0,
+            settings: "none: an emulator has no timing",
         }
     }
 
@@ -198,10 +198,11 @@ fn main() -> ! {
         start.write_bytes(0, len);
         core::slice::from_raw_parts_mut(start, len)
     };
-    let mut runner = Runner::new(Emulated, ram, &MODELS);
+    // Before the runner exists, as a board that fails to start its clock or its port would.
     if read(INJECT) == 1 {
         panic!("panic while starting, injected by the emulator");
     }
+    let mut runner = Runner::new(Emulated, ram, &MODELS);
     runner.serve();
     loop {
         emulated_wait();

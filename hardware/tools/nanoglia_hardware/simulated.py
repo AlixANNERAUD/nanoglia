@@ -165,7 +165,7 @@ class SimulatedDevice:
             results = self.results
         if kind == p.INFO:
             numbers = struct.pack("<BIIIIIBB", p.VERSION, p.MAX_PAYLOAD, len(self.ram), 0, 0, 256, self.crash, self.failed_boots)
-            strings = ["simulated 0.0.0", "none", "none", "no kernel: the outputs are the expected ones", "simulated device", "none", self.crash_message]
+            strings = ["simulated 0.0.0", "none", "none", "no kernel: the outputs are the expected ones", "none", "none", "simulated device", "none", "none", self.crash_message]
             answer = numbers + b"".join(bytes([len(s)]) + s.encode() for s in strings) + bytes([len(self.models)])
             for name, data in self.models:
                 answer += bytes([len(name)]) + name.encode() + struct.pack("<I", len(data))
@@ -245,6 +245,6 @@ class SimulatedDevice:
             return self._send(p.RUN | p.RESPONSE, seq, bytes([p.LOAD, code]) + message.encode())
         outputs, kernels = outcome
         self.results = (outputs, kernels)
-        answer = struct.pack("<BIIIIIIIIBB", p.OK, len(kernels), 4096, 8192, 12288, 2048, 100, 10, 1000 * len(kernels), 0, len(outputs))
+        answer = struct.pack("<BIIIIIIIQBB", p.OK, len(kernels), 4096, 8192, 12288, 2048, 100, 10, 1000 * len(kernels), 0, len(outputs))
         answer += b"".join(struct.pack("<I", len(output)) for output in outputs)
         self._send(p.RUN | p.RESPONSE, seq, answer)

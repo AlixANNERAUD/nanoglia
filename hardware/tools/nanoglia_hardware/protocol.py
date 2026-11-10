@@ -45,6 +45,15 @@ PANIC, HARD_FAULT, HANG = 1, 2, 3
 CRASHES = {0: None, 1: "panic", 2: "fault", 3: "watchdog"}
 STACK_UNKNOWN = 0xFFFF_FFFF
 
+# What the firmware of the board does by itself, which the waits of the host are derived from.
+# Keep in step with hardware/nano33ble/src/main.rs and hardware/runner/src/boot.rs.
+# Seconds without progress after which its watchdog resets it (`WATCHDOG_US`).
+WATCHDOG_S = 20
+# Crashes in a row, without a request of the host, at which it resets into the bootloader.
+MAX_FAILED_BOOTS = 3
+# Seconds without a request of a host after which it resets into the bootloader (`NO_CONTACT_US`).
+NO_CONTACT_S = 300
+
 
 class Disconnected(Exception):
     """The device is gone: its port closed, or it stopped running."""
@@ -219,9 +228,14 @@ class Info:
     firmware: str
     revision: str
     nanoglia: str
+    # The kernel families and the target, the optimization level, the compiler.
     build: str
+    opt_level: str
+    rustc: str
     board: str
     clock: str
+    # What else decides the times on this board: the state of the instruction cache.
+    settings: str
     crash_message: str
     # Name and length of each model linked into the firmware, in the order of their index.
     models: list[tuple[str, int]] = field(default_factory=list)
@@ -248,6 +262,7 @@ class RunResult:
     stack_peak: int | None = None
     load_cycles: int = 0
     context_cycles: int = 0
+    # The sum of the cycles of the operators: what the firmware does between two is not counted.
     compute_cycles: int = 0
     cycles_truncated: bool = False
     output_lengths: list[int] = field(default_factory=list)
@@ -262,7 +277,7 @@ class Device:
     def info(self, timeout: float | None = None, attempts: int | None = None) -> Info:
         r = Reader(self.link.request(INFO, timeout=timeout, attempts=attempts))
         numbers = r.unpack("BIIIIIBB")
-        strings = [r.string() for _ in range(7)]
+        strings = [r.string() for _ in range(10)]
         models = [(r.string(), r.unpack("I")) for _ in range(r.unpack("B"))]
         protocol, max_payload, ram, hz, reason, max_operators, crash, failed = numbers
         return Info(protocol, max_payload, ram, hz, reason, max_operators, CRASHES.get(crash, "crash"), failed, *strings, models)
@@ -287,7 +302,7 @@ class Device:
         status = r.unpack("B")
         if status != OK:
             return RunResult(status, r.unpack("B"), r.rest().decode(errors="replace"))
-        operators, graph, context, used, stack, load, create, compute, flags, outputs = r.unpack("IIIIIIIIBB")
+        operators, graph, context, used, stack, load, create, compute, flags, outputs = r.unpack("IIIIIIIQBB")
         return RunResult(
             status,
             operators=operators,

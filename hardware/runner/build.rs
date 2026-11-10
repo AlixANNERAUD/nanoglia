@@ -46,8 +46,24 @@ fn main() {
     );
 
     println!(
-        "cargo:rustc-env=RUNNER_BUILD=cmsis-nn kernels float int16 all-ops, opt-level {}, {}",
-        env::var("OPT_LEVEL").unwrap(),
+        "cargo:rustc-env=RUNNER_BUILD=cmsis-nn kernels float int16 all-ops, {}",
         env::var("TARGET").unwrap()
+    );
+    println!(
+        "cargo:rustc-env=RUNNER_OPT_LEVEL={}",
+        env::var("OPT_LEVEL").unwrap()
+    );
+
+    // The compiler, as `rustc --version` names it.
+    let rustc = env::var("RUSTC").unwrap_or_else(|_| "rustc".to_owned());
+    let version = Command::new(rustc)
+        .arg("--version")
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned());
+    println!(
+        "cargo:rustc-env=RUNNER_RUSTC={}",
+        version.as_deref().unwrap_or("unknown")
     );
 }
