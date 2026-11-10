@@ -58,12 +58,26 @@ let scores = ctx.output(0)?.as_slice::<i8>()?;
 | `kernels` | ✅ | Pure Rust kernels for the operators the C libraries lack |
 | `float` | ✅ | float32 operators |
 | `int16` | ✅ | int16 (16x8) operators |
+| `all-ops` | ✅ | Every operator: the `op-*` features, one per operator (`op-conv-2d`, `op-softmax`...) |
 | `esp-nn` | | ESP-NN kernels, tried first (ESP32-S3 SIMD on `xtensa-esp32s3`) |
 | `alloc` | | `Graph::load` and friends, with the Rust global allocator |
 | `single-rounding` | | `TFLITE_SINGLE_ROUNDING` requantization instead of TensorFlow Lite Micro's double rounding |
 | `defmt` | | `defmt::Format` for the error types |
 
-An int8-only firmware can use `default-features = false, features = ["cmsis-nn", "kernels"]`.
+An int8-only firmware can use `default-features = false, features = ["cmsis-nn", "kernels", "all-ops"]`.
+
+Models are loaded at run time, so the linker keeps the kernels of every enabled operator. To link
+only those of your models, replace `all-ops` with the feature of each of their operators:
+
+```toml
+nanoglia = { version = "0.2", default-features = false, features = [
+  "cmsis-nn", "kernels",
+  "op-conv-2d", "op-depthwise-conv-2d", "op-average-pool-2d", "op-reshape", "op-fully-connected", "op-softmax",
+] }
+```
+
+A model with another operator then fails to load with `Detail::UnsupportedOp`. See
+[Reduce the code size](https://github.com/AlixANNERAUD/nanoglia/blob/main/documentation/how-to-guides/reduce-code-size.md).
 
 ## Owned models and persistent contexts
 

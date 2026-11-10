@@ -234,3 +234,63 @@ with the DSP or Helium extension, CMSIS-NN may ask for different scratch
 sizes, so `context_bytes` can differ: compute the requirements for your
 target ([Size the memory](../how-to-guides/size-memory.md)), or read
 them on the device (the Nano 33 BLE example prints them).
+
+## Code size
+
+What nanoglia adds to the flash depends on the Cargo features
+([Cargo features](features.md)): the backends, the float32 and int16
+kernels (`float`, `int16`), and the operators (`all-ops`, or the `op-*`
+features of your models,
+[Reduce the code size](../how-to-guides/reduce-code-size.md)).
+
+The firmware of `examples/nano33ble` (`thumbv7em-none-eabihf`,
+`target-cpu=cortex-m4`, CMSIS-NN with its DSP code paths, `opt-level =
+"s"`, fat LTO, one codegen unit, `defmt` over RTT), which loads one
+model from flash and runs it. `text` of `arm-none-eabi-size`, in bytes:
+code and constants, **the model included**; `data` is 56 bytes and `bss`
+33808 bytes (the 32 KiB arena) in every row.
+
+| `nanoglia` features, besides `cmsis-nn`, `kernels`, `defmt` | Keyword spotting (model: 53936 B) | Gesture classifier (model: 5048 B) |
+| --- | ---: | ---: |
+| `all-ops`, `float`, `int16` (the default operators and types) | 313688 | 264808 |
+| `all-ops` (int8 only, every operator) | 274120 | 225240 |
+| the operators of the model, `float`, `int16` | 169332 | 116268 |
+| the operators of the model (int8 only) | 138240 | 91688 |
+
+- The operators of the keyword-spotting model
+  (`testdata/mlperf-tiny/kws_ref_model.tflite`): `op-conv-2d`,
+  `op-depthwise-conv-2d`, `op-average-pool-2d`, `op-reshape`,
+  `op-fully-connected`, `op-softmax`. This last row is the example as
+  committed.
+- The operators of the gesture classifier
+  (`examples/train-to-device/reference/model.tflite`, built into the same
+  firmware in place of the keyword-spotting model): `op-conv-2d`,
+  `op-max-pool-2d`, `op-mean`, `op-fully-connected`, `op-softmax`.
+- Listing the operators of the model saves 135880 bytes of an int8-only
+  keyword-spotting firmware (274120 to 138240) and 133552 bytes of the
+  gesture one. Without the model, 84304 bytes remain for keyword
+  spotting: the firmware's own code (startup, `defmt`), the model
+  verifier, the memory planner, and the kernels of six operators.
+- The C kernels go too: the int8-only keyword-spotting firmware links 53
+  CMSIS-NN functions with every operator and 38 with the operators of the
+  model (`arm-none-eabi-nm` on the two files, symbols `arm_*`). Those
+  that leave are the kernels of the other operators:
+  `arm_elementwise_add_s8`, `arm_elementwise_mul_s8`, `arm_maximum_s8`,
+  `arm_minimum_s8`, `arm_max_pool_s8`, `arm_pad_s8`,
+  `arm_transpose_conv_s8` and their helpers.
+- Before the `op-*` features (commit `6825380`, release 0.2.0) the same
+  firmware measured 313872 bytes with `float` and `int16` and 274920
+  bytes without, for keyword spotting; 264992 and 226040 bytes for the
+  gesture classifier.
+
+Measured on 2026-11-10 at commit `e607b15`, on a Linux aarch64 host with
+rustc 1.99.1 and `arm-none-eabi-gcc` 14.2.1: for each cell, the
+`features` of `nanoglia` in `examples/nano33ble/Cargo.toml` set to the
+row's, the model of `src/main.rs` to the column's, then
+`cargo build --release` in `examples/nano33ble` and `arm-none-eabi-size
+target/thumbv7em-none-eabihf/release/nanoglia-example-nano33ble`
+(`mise run example-nano33ble` does both for the committed example).
+These are sizes of a linked firmware; it has not run on the board
+([issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2)). The
+sizes of a firmware compared with other engines are in
+[Performance](performance.md#keyword-spotting-firmware).

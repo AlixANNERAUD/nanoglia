@@ -264,7 +264,9 @@ computed by the firmware under the emulator.
   ahead-of-time engines compile only the operators of this model, with
   its weights as plain arrays. The float32 and int16 kernels add 26452
   bytes. A firmware that holds several models, or receives them later,
-  pays for the engine once.
+  pays for the engine once. This firmware is built with every operator
+  (`all-ops`); a firmware that knows the operators of its models can
+  link only their kernels ([Memory](memory.md#code-size)).
 - **RAM: nanoglia needs 28.3 KiB, known before running**: the arena
   (23.3 KiB, from `MemoryRequirements`) and 5 KiB of stack. MicroFlow
   and ember-rs keep every activation in the stack frame of the

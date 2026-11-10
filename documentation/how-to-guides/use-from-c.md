@@ -34,7 +34,8 @@ library needs (`pthread`, `dl` and `m` on Linux). The CMake options:
 | `NANOGLIA_CARGO_TARGET` | empty (the host) | Rust target triple to build for, such as `thumbv7em-none-eabihf` |
 | `NANOGLIA_STD` | `ON` on the host, `OFF` with a target | Link the Rust standard library (needed on a host) |
 | `NANOGLIA_PANIC_HANDLER` | `ON` | Without `NANOGLIA_STD`, include a panic handler ([Panics](#panics)) |
-| `NANOGLIA_INT8_ONLY` | `OFF` | Leave out the float32 and int16 operators (features `cmsis-nn`, `kernels` only) |
+| `NANOGLIA_INT8_ONLY` | `OFF` | Leave out the float32 and int16 kernels (features `float` and `int16`) |
+| `NANOGLIA_OPERATORS` | empty (every operator) | Operators to build kernels for, as a list of TensorFlow Lite names (`CONV_2D;FULLY_CONNECTED;SOFTMAX`): the `op-*` features. A model with another operator fails to load with `NANOGLIA_STATUS_UNSUPPORTED_OPERATION` |
 | `NANOGLIA_ESP_NN` | `OFF` | Use the ESP-NN kernels first (feature `esp-nn`) |
 | `NANOGLIA_CARGO_PROFILE` | `release` | Cargo profile |
 | `NANOGLIA_CARGO_FLAGS` | empty | Extra Cargo arguments, such as `--features single-rounding` |
@@ -100,8 +101,8 @@ cmake --build build-firmware
 The archive is `build-firmware/cargo/thumbv7em-none-eabihf/release/libnanoglia_c.a`.
 In a CMake firmware project that already uses your cross toolchain, add
 the directory with these options and link `nanoglia::nanoglia`; with
-another build system, link the archive with `--gc-sections` so that the
-kernels your model does not use are dropped. Without `NANOGLIA_STD` the
+another build system, link the archive with `--gc-sections` so that
+unreachable code is dropped. Without `NANOGLIA_STD` the
 archive is self-contained: it brings its own `memcpy` and `memset`
 (from Rust's `compiler_builtins`) and references no `malloc`, `free` or
 any other C library function. `mise run cross-c` checks it by linking
@@ -112,7 +113,12 @@ hardware yet ([issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2)).
 
 `NANOGLIA_INT8_ONLY` is enough for fully quantized int8 models such as
 the MLPerf Tiny ones, and saves flash
-([Cargo features](../reference/features.md)).
+([Cargo features](../reference/features.md)). The models are loaded at
+run time, so `--gc-sections` cannot drop the kernels of the operators
+they do not use: name the operators of your models in
+`NANOGLIA_OPERATORS` to leave the other kernels out
+([Reduce the code size](reduce-code-size.md)), as
+`examples/train-to-device/c/CMakeLists.txt` does.
 
 ### Panics
 
@@ -128,7 +134,8 @@ and a program can contain only one:
   static library next to this one (both would define the panic handler
   and the Rust core library). Build one static library of your own
   instead: a Rust crate of type `staticlib` that depends on `nanoglia-c`
-  with `default-features = false` and the backend features you need,
+  with `default-features = false` and the backend and operator features
+  you need (`all-ops` for every operator),
   re-exports it (`pub use nanoglia_c;`), and defines the program's
   `#[panic_handler]`. The functions of the C API are exported from it.
   That is why `nanoglia-c` is an rlib for Cargo and the CMake project

@@ -56,6 +56,16 @@ cases, see `testdata/README.md`).
   backend (the bundled backends lend `FnKernel` statics), and `Sync`: contexts may run it at the
   same time. `prepare` computes everything from the model, `eval` never reads the model and never
   allocates.
+- **Every operator has a Cargo feature**, `op-<name>` in lower case with dashes (`op-conv-2d`),
+  all on by default through `all-ops`: a firmware links only the kernels of the operators it
+  names. To add an operator, or a kernel for one in another backend: put its arm in the backend's
+  table behind `#[cfg(feature = "op-...")]` (and the module of its kernels behind the features of
+  its operators), name the feature in `BuiltinOp::feature` (nanoglia-core), and declare it in the
+  manifests of the backend, of `nanoglia` (forwarded to every backend that has the operator),
+  `nanoglia-c` and `nanoglia-tools`, and in their `all-ops`. Features only add: never gate code
+  on the absence of one. `crates/nanoglia-tools/tests/op_features.rs` fails until all of this
+  agrees, and `mise run op-features` builds each feature alone. A build with
+  `default-features = false` must name `all-ops` or its operators, or no model loads.
 
 ## Testing
 
@@ -111,10 +121,12 @@ number.
   wasmtime timings as microcontroller numbers, and keep the hardware-validation status (issue #2)
   visible where it matters.
 - When a change lands, update: `reference/supported-operators.md` (a `select`/`plan` condition,
-  a kernel or an operator), `reference/features.md` (Cargo features, those of `nanoglia-tools` too), `reference/errors.md` (an
+  a kernel or an operator), `reference/features.md` (Cargo features, those of `nanoglia-tools` too;
+  the table of operator features for a new operator), `reference/errors.md` (an
   `Error`, `ErrorCode` or `Detail` returned by a public function), `reference/memory.md` (the
   allocation contract or the block layout; re-measure the MLPerf Tiny footprints with
-  `cargo test -p nanoglia --test memory -- --nocapture`), `reference/performance.md` (after
+  `cargo test -p nanoglia --test memory -- --nocapture`; its code-size table after a change of
+  what a firmware links, with `mise run example-nano33ble` per feature set), `reference/performance.md` (after
   `mise run bench` / `bench-wasm` on a performance change), `reference/development-tasks.md`
   (`mise.toml` or `.github/workflows/`), and the tutorial or guides whose code or output changes
   (run their code again; the output of `nanoglia check` is quoted in

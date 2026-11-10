@@ -66,12 +66,18 @@ stays intact and usable.
 
 For an int8 model, leave out the float32 and int16 kernels to save flash,
 and keep `kernels` for the operators CMSIS-NN does not have (such as
-`RESHAPE`):
+`RESHAPE`). Without the default features, name the operators too:
+`all-ops` for all of them,
 
 ```toml
 [dependencies]
-nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features = false, features = ["cmsis-nn", "kernels"] }
+nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features = false, features = ["cmsis-nn", "kernels", "all-ops"] }
 ```
+
+or, to link only the kernels your models need, the `op-*` feature of
+each of their operators in place of `all-ops`, as the Nano 33 BLE example
+does ([Reduce the code size](reduce-code-size.md)). With neither, no
+model loads.
 
 Add `defmt` to format nanoglia's errors with `defmt`. Leave out `alloc`:
 nothing then needs a global allocator. [Cargo features](../reference/features.md)
@@ -168,8 +174,8 @@ let graph = match Graph::load_in(&[&MODEL.0], Encoding::Autodetect, Target::Auto
 ```
 
 `Detail::UnsupportedOp { op_index, opcode }` names the first operator no
-enabled backend supports; `ErrorCode::TooLarge` means `MEMORY` is too
-small.
+enabled backend supports, or whose `op-*` feature is off;
+`ErrorCode::TooLarge` means `MEMORY` is too small.
 
 ## On an ESP32-S3
 
@@ -180,7 +186,7 @@ operators ESP-NN refuses (dilated convolutions, for example) and
 
 ```toml
 [dependencies]
-nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features = false, features = ["esp-nn", "cmsis-nn", "kernels"] }
+nanoglia = { git = "https://github.com/AlixANNERAUD/nanoglia", default-features = false, features = ["esp-nn", "cmsis-nn", "kernels", "all-ops"] }
 ```
 
 The target, `xtensa-esp32s3-none-elf`, needs Espressif's Rust toolchain
