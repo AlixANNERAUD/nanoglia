@@ -5,17 +5,21 @@ from the example firmware for the Arduino Nano 33 BLE (Arm Cortex-M4F),
 then adapting it to your own firmware, on Arm Cortex-M or on the
 ESP32-S3.
 
-> **Status: not yet validated on hardware.** The firmware builds in CI
-> (`mise run example-nano33ble`, and `mise run cross-esp32s3` for the
-> ESP32-S3 libraries) and the same code runs bit-exact on the host, where
-> CMSIS-NN and ESP-NN compile their portable C code. The golden cases
-> also pass under an instruction-set emulator for Cortex-M4F, M33 (with
-> CMSIS-NN's DSP code paths), M0+ and riscv32imc (`mise run
-> test-emulated`). Nothing has been run and compared with the golden
-> outputs on a board yet, and CMSIS-NN's Helium paths and ESP-NN's
-> ESP32-S3 kernels not even in an emulator: this is tracked in issue #2.
-> Check the results on your device against the host before relying on
-> them.
+> **Status: validated on one board only.** The firmware of this guide
+> builds in CI (`mise run example-nano33ble`, and `mise run
+> cross-esp32s3` for the ESP32-S3 libraries) but has not run on a board.
+> The same code runs bit-exact on the host, where CMSIS-NN and ESP-NN
+> compile their portable C code, and the golden cases pass under an
+> instruction-set emulator for Cortex-M4F, M33 (with CMSIS-NN's DSP code
+> paths), M0+ and riscv32imc (`mise run test-emulated`). On one Arduino
+> Nano 33 BLE (Cortex-M4F), a test-bench firmware ran every golden case
+> once: 373 of 376 matched LiteRT (bit for bit, the float32 ones within
+> 1e-5), the 3 others the known LiteRT difference
+> ([run the golden cases on a board](run-the-golden-cases-on-a-board.md#what-has-run-on-a-board)).
+> No other chip has run them, and CMSIS-NN's Helium paths and ESP-NN's
+> ESP32-S3 kernels have not run even in an emulator: this is tracked in
+> issue #2. Check the results on your device against the host before
+> relying on them.
 
 ## The Nano 33 BLE example
 

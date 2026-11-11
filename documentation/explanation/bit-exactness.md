@@ -98,10 +98,15 @@ The golden cases run a second time with the ESP-NN backend first
 
 What the oracle does not cover: on the host, CMSIS-NN compiles its
 portable C code and ESP-NN its ANSI C kernels. CMSIS-NN's DSP code paths
-match the golden data under the emulator only; its Helium paths and
-ESP-NN's ESP32-S3 kernels are written to give the same results but have
-not run against the golden data at all. Nothing has run on hardware yet
-(issue #2): an emulator checks the instructions, not the chip.
+match the golden data under the emulator, and on one real Cortex-M4F: on
+an Arduino Nano 33 BLE, on 2026-11-10, 373 of the 376 golden cases gave
+LiteRT's bytes (the float32 ones: within their tolerance of 1e-5), the
+other 3 the `ad01_int8` difference (issue #1, below), as on the host
+([run the golden cases on a board](../how-to-guides/run-the-golden-cases-on-a-board.md#what-has-run-on-a-board)).
+That is one board and one session. CMSIS-NN's Helium paths and ESP-NN's
+ESP32-S3 kernels are written to give the same results but have not run
+against the golden data at all, and no other chip has run the golden
+cases (issue #2).
 
 ## Single and double rounding
 

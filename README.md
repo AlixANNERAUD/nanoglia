@@ -163,11 +163,15 @@ layout, lifetimes, the step API and errors.
 Every library builds without any global allocator, and a CI job checks that no C code references
 `malloc`. The golden cases run in CI under the Unicorn emulator for Cortex-M4F, M33 (CMSIS-NN's DSP
 code paths), M0+ and riscv32imc (`mise run test-emulated`); the ESP32-S3 SIMD code paths are only
-built. Nothing has run on hardware yet: an emulator says nothing about timing, caches, flash wait
-states or alignment faults, and [issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2) tracks that validation.
-`mise run test-hardware-nano33ble` is the tool for it: it flashes an Arduino Nano 33 BLE over USB, runs
-every golden case on it and times each operator
-([run the golden cases on a board](documentation/how-to-guides/run-the-golden-cases-on-a-board.md)); it has not run on a board yet either.
+built. An emulator says nothing about timing, caches, flash wait states or alignment faults:
+`mise run test-hardware-nano33ble` flashes an Arduino Nano 33 BLE over USB, runs every golden case
+on it and times each operator
+([run the golden cases on a board](documentation/how-to-guides/run-the-golden-cases-on-a-board.md)).
+It has run once, on one board (2026-11-10): 373 of the 376 golden cases matched LiteRT (bit for bit;
+the float32 ones within their tolerance of 1e-5), the other 3 the known LiteRT difference of
+`ad01_int8` (issue #1), with CMSIS-NN's DSP code paths on a real Cortex-M4F; the times are in [Performance](documentation/reference/performance.md#on-an-arduino-nano-33-ble).
+No other board has run anything, and CMSIS-NN's Helium paths and ESP-NN's ESP32-S3 kernels have run
+nowhere: [issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2) tracks that validation.
 
 ## Compared to other options
 

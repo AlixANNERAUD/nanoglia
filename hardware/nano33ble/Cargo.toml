@@ -18,8 +18,10 @@ model-resnet = []
 model-str-ww = []
 model-ad = []
 model-vww = []
-# Turns on the instruction cache of the flash (NVMC `ICACHECNF`), which is off after a reset and
-# which some firmwares enable: to measure both. The firmware reports the state it runs with.
+# Turns on the instruction cache of the flash (NVMC `ICACHECNF`). It is off after a reset of the
+# chip, but the Arduino bootloader turns it on before it starts the application, so the firmware
+# runs with it on either way when that bootloader starts it. The firmware reports the state it
+# runs with.
 icache = []
 
 [dependencies]

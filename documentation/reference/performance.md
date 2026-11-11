@@ -2,15 +2,21 @@
 
 Inference times of the four MLPerf Tiny int8 models, measured by `mise
 run bench` (host) and `mise run bench-wasm` (WebAssembly under
-wasmtime), and a comparison with the other Rust inference engines
-(`mise run bench-compare`, [below](#compared-with-other-rust-engines)):
-outputs, host time, and size and RAM of a keyword-spotting firmware.
+wasmtime); the times of the five MLPerf Tiny models on one
+microcontroller, an Arduino Nano 33 BLE
+([below](#on-an-arduino-nano-33-ble)); and a comparison with the other
+Rust inference engines (`mise run bench-compare`,
+[below](#compared-with-other-rust-engines)): outputs, host time, and
+size and RAM of a keyword-spotting firmware.
 
-> These are **host and wasmtime numbers, not microcontroller numbers.**
-> On the host and in WebAssembly, CMSIS-NN runs its portable C code; its
-> Arm DSP and Helium paths have not been measured on hardware yet
-> (issue #2). Use them to compare builds and targets on the same machine,
-> not to predict the time on a chip.
+> The first sections give **host and wasmtime numbers, not
+> microcontroller numbers.** On the host and in WebAssembly, CMSIS-NN
+> runs its portable C code. Use them to compare builds and targets on
+> the same machine, not to predict the time on a chip. The only
+> microcontroller numbers are those of the
+> [Nano 33 BLE](#on-an-arduino-nano-33-ble): one board (Cortex-M4F,
+> CMSIS-NN's DSP code paths), one session. CMSIS-NN's Helium paths and
+> ESP-NN's ESP32-S3 kernels have not been timed anywhere (issue #2).
 
 ## How it is measured
 
@@ -68,6 +74,123 @@ NANOGLIA_BENCH_MS=5000 mise run bench
 When you publish numbers, record the machine, the toolchain, the date
 and the commit, as above.
 
+## On an Arduino Nano 33 BLE
+
+The five MLPerf Tiny int8 models on a microcontroller: an Arduino Nano
+33 BLE (nRF52840, Arm Cortex-M4F), running the test-bench firmware of
+`hardware/nano33ble`
+([Run the golden cases on a board](../how-to-guides/run-the-golden-cases-on-a-board.md)).
+**One board, one session**: no second board, and no other runtime, has
+been timed on it, so nothing here compares nanoglia with another engine.
+
+### How it is measured
+
+- **The model is in flash and read in place**, as in an application:
+  the firmware links the five models (`include_bytes!`, aligned on 16
+  bytes; two images, since the five do not fit in one), loads them with
+  `Graph::load_in` from an `Arena` in RAM and runs them on the three
+  golden samples of each (`testdata/mlperf-tiny/golden/`). Each output
+  is compared with LiteRT's: 12 of the 15 cases are bit-exact, the 3 of
+  `ad01_int8` differ as on the host (issue #1,
+  [bit-exactness](../explanation/bit-exactness.md)).
+- **The clock** is the cycle counter of the core (`DWT.CYCCNT`), read
+  around each operator by an `Observer` of `compute_with`; the core
+  runs at 64 MHz from the 32 MHz crystal (HFXO). The inference time is
+  the sum of the operators' cycles: what the firmware does between two
+  operators (serving its USB port) is not counted. The load time is
+  `Graph::load_in` alone: verifying the model, selecting the kernels,
+  planning the memory, preparing each operator.
+- **Each case was run 5 times**, and the fastest inference kept
+  (`--repeat 5`). The five runs of every timed case gave the same
+  number of cycles, to the cycle; the run before it, each case once,
+  gave the same counts again. The three samples of a model differ by at
+  most 3794 cycles (0.035 %, keyword spotting).
+
+### Conditions
+
+As the results file records them (`firmware_images` of
+`hardware/results/nano33ble/nano33ble-repeat-5.json`):
+
+| | |
+| --- | --- |
+| Board | Arduino Nano 33 BLE (nRF52840, Cortex-M4F), one board |
+| Clock | 64 MHz from the 32 MHz crystal (HFXO); DWT cycle counter |
+| Instruction cache of the flash | **On** (`NVMC.ICACHECNF`), left on by the Arduino bootloader: the images were built without the feature `icache`, see [the instruction cache](../how-to-guides/run-the-golden-cases-on-a-board.md#the-instruction-cache). No time with the cache off has been measured. |
+| Firmware | `nanoglia-hardware-nano33ble` 0.0.0, nanoglia 0.2.0, features `cmsis-nn kernels float int16 all-ops`, `thumbv7em-none-eabihf`, `opt-level` 3; fat LTO, one codegen unit, overflow checks on (profile `release` of `hardware/Cargo.toml`, not recorded in the file); CMSIS-NN with its DSP code paths |
+| Compiler | rustc 1.99.1 (58cf8f9c3 2026-10-13) |
+| Images | built by CI (`ci.yml`, job "Board runner") at commit `2fd26df` |
+| Date | 2026-11-10 (UTC) |
+| Host | a Linux x86_64 computer, the board on USB, no debug probe |
+
+### Inference and load time
+
+Sample 0 of each model, fastest of 5 runs (all 5 equal):
+
+| Model | Operators | Inference | Cycles | Load (`Graph::load_in`) |
+| --- | ---: | ---: | ---: | ---: |
+| `kws_ref_model` (keyword spotting) | 13 | 167.20 ms | 10700515 | 36.7 ms |
+| `vww_96_int8` (visual wake words) | 31 | 544.32 ms | 34836509 | 139.7 ms |
+| `pretrainedResnet_quant` (image classification) | 16 | 670.50 ms | 42912013 | 31.5 ms |
+| `ad01_int8` (anomaly detection) | 10 | 15.07 ms | 964708 | 66.0 ms |
+| `str_ww_ref_model` (streaming wake word) | 11 | 51.69 ms | 3308340 | 44.1 ms |
+
+### Time by kernel
+
+The cycles of the operators of sample 0, summed by kernel (`kernel`
+and `cycles` of `operators` in the results file), with their share of
+the inference:
+
+| Model | Kernel | Operators | Time | Share |
+| --- | --- | ---: | ---: | ---: |
+| `kws_ref_model` | `cmsis-nn/conv2d_s8` | 5 | 120.04 ms | 71.8 % |
+| | `cmsis-nn/depthwise_conv2d_s8` | 4 | 45.83 ms | 27.4 % |
+| | `cmsis-nn/average_pool2d_s8` | 1 | 1.19 ms | 0.7 % |
+| | `cmsis-nn/fully_connected_s8` | 1 | 0.07 ms | 0.0 % |
+| | `cmsis-nn/softmax_s8` | 1 | 0.05 ms | 0.0 % |
+| | `rust/reshape` | 1 | 0.01 ms | 0.0 % |
+| `vww_96_int8` | `cmsis-nn/conv2d_s8` | 14 | 411.30 ms | 75.6 % |
+| | `cmsis-nn/depthwise_conv2d_s8` | 13 | 132.51 ms | 24.3 % |
+| | `cmsis-nn/average_pool2d_s8` | 1 | 0.42 ms | 0.1 % |
+| | `cmsis-nn/fully_connected_s8` | 1 | 0.05 ms | 0.0 % |
+| | `cmsis-nn/softmax_s8` | 1 | 0.03 ms | 0.0 % |
+| | `rust/reshape` | 1 | 0.01 ms | 0.0 % |
+| `pretrainedResnet_quant` | `cmsis-nn/conv2d_s8` | 9 | 631.65 ms | 94.2 % |
+| | `cmsis-nn/add_s8` | 3 | 38.09 ms | 5.7 % |
+| | `cmsis-nn/average_pool2d_s8` | 1 | 0.62 ms | 0.1 % |
+| | `cmsis-nn/fully_connected_s8` | 1 | 0.06 ms | 0.0 % |
+| | `cmsis-nn/softmax_s8` | 1 | 0.06 ms | 0.0 % |
+| | `rust/reshape` | 1 | 0.01 ms | 0.0 % |
+| `ad01_int8` | `cmsis-nn/fully_connected_s8` | 10 | 15.07 ms | 100.0 % |
+| `str_ww_ref_model` | `cmsis-nn/conv2d_s8` | 4 | 39.31 ms | 76.1 % |
+| | `cmsis-nn/depthwise_conv2d_s8` | 4 | 12.31 ms | 23.8 % |
+| | `cmsis-nn/softmax_s8` | 1 | 0.03 ms | 0.1 % |
+| | `cmsis-nn/fully_connected_s8` | 1 | 0.03 ms | 0.1 % |
+| | `rust/reshape` | 1 | 0.01 ms | 0.0 % |
+
+Every operator of these models runs a CMSIS-NN kernel except RESHAPE
+(the Rust backend). The convolutions and depthwise convolutions take
+94.2 to 99.9 % of the four convolutional models; the fully connected
+layers, all of the autoencoder. The RAM each model takes on the
+board is in [Memory](memory.md#the-nano-33-ble-test-bench).
+
+### Where the numbers come from
+
+Every number of this section is printed by
+
+```sh
+python3 -I hardware/results/nano33ble/summarize.py \
+  hardware/results/nano33ble/nano33ble-repeat-5.json \
+  hardware/results/nano33ble/nano33ble.json
+```
+
+from the results files of the session (`nano33ble-repeat-5.json`: each
+case 5 times; `nano33ble.json`: each case once), committed with its logs
+in `hardware/results/nano33ble/`
+([README](../../hardware/results/nano33ble/README.md)). They are the
+times of this firmware, with this compiler and these settings: another
+`opt-level`, the instruction cache off, or another clock gives other
+times.
+
 ## Compared with other Rust engines
 
 `mise run bench-compare` runs the same models, with the same inputs, on
@@ -80,7 +203,10 @@ runs per engine and the time budget per model.
 
 > The host times are **host numbers, not microcontroller numbers**, and
 > the firmware run in an emulator, which gives no time at all. No engine
-> has been timed on a chip here (issue #2).
+> of this comparison has been timed on a chip: nanoglia's times on a
+> Nano 33 BLE ([above](#on-an-arduino-nano-33-ble)) come from another
+> firmware, built at `opt-level` 3, and no other engine ran on that
+> board.
 
 ### Engines
 
@@ -276,12 +402,18 @@ computed by the firmware under the emulator.
   prepared parameters), but its scores differ from the reference.
 - Under the emulator, the nanoglia firmware, with CMSIS-NN's DSP
   kernels, gives the reference output of sample 0 byte for byte. This
-  is an instruction-set emulator, not the chip: issue #2 stays open.
+  is an instruction-set emulator, not the chip. On a real Nano 33 BLE,
+  the test-bench firmware (the same kernels, another build) gives the
+  reference outputs of the three samples byte for byte too
+  ([above](#on-an-arduino-nano-33-ble)); this comparison firmware itself
+  has not run on the board.
 
 ### Not measured
 
-- **Time on a microcontroller**, for every engine: no hardware was used,
-  and the emulator does not model time.
+- **Time on a microcontroller**, for every engine of this comparison:
+  the emulator does not model time. nanoglia's own times on one board,
+  with another firmware, are [above](#on-an-arduino-nano-33-ble); the
+  other engines have not run on it.
 - **WebAssembly**: the comparison has not been built for `wasm32-wasip1`.
 - **tract firmware**: tract needs `std`. **tfmicro**: does not build
   (above).

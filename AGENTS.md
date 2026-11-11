@@ -98,8 +98,11 @@ do not run several builds in the same target directory at once.
   Cortex-M0+ and riscv32imc; it also runs clippy on `emulation/` (`mise run fmt` checks its
   formatting). Host tests run CMSIS-NN's portable C code and ESP-NN's ANSI C code only. Emulated
   is not validated: Unicorn models no timing and takes alignment faults on its Cortex-M0 only
-  (an unaligned `ldm` on a Cortex-M4 or M33 runs unnoticed), nothing has run on hardware yet (issue #2), and
-  CMSIS-NN's Helium paths and ESP-NN's ESP32-S3 kernels have run nowhere. `mise run cross-esp32s3` builds the latter (toolchain:
+  (an unaligned `ldm` on a Cortex-M4 or M33 runs unnoticed). On hardware, only one board has
+  run anything: an Arduino Nano 33 BLE (Cortex-M4F, CMSIS-NN's DSP code paths), one session on
+  2026-11-10, every golden case through `hardware/` (results in `hardware/results/nano33ble/`).
+  No other board or core has run on hardware (issue #2), and CMSIS-NN's Helium paths and
+  ESP-NN's ESP32-S3 kernels have run nowhere. `mise run cross-esp32s3` builds the latter (toolchain:
   `mise run install-esp`). Say what you actually checked.
 - `mise run test-hardware` tests `hardware/` without a board: the runner on the host behind a
   link in memory, then built for Cortex-M4F and driven by the host tool under Unicorn through
@@ -108,9 +111,13 @@ do not run several builds in the same target directory at once.
   the two images of the Nano 33 BLE (the MLPerf Tiny models are linked in and run from flash:
   only their cases are timed; the single-operator cases are received into RAM and check results
   only). `mise run test-hardware-nano33ble` flashes them with Arduino's `bossac` and runs the
-  cases on a board plugged in over USB: **it has never run**, and neither has anything in
-  `hardware/nano33ble/src/main.rs` (USB, clock, cycle counter, watchdog, resets); the how-to
-  "run the golden cases on a board" lists it. Keep the hardware-only code there, thin, and
+  cases on a board plugged in over USB: it has run **once**, on one Nano 33 BLE on 2026-11-10,
+  with the images CI built at `2fd26df` (USB, clock, cycle counter, watchdog, panic and fault
+  handlers, the reset into the bootloader all ran; the instruction cache of the flash turned out
+  to be on, left so by the bootloader). Paths it has not exercised (the 1200 baud touch of this
+  firmware, the 5-minute and third-crash returns to the bootloader, recovery in the middle of a
+  run, the cache off, macOS, another board) are listed in the how-to "run the golden cases on a
+  board": a change there is untested on hardware until a board runs it again. Keep the hardware-only code there, thin, and
   everything else in `runner` or the host tool, where it is tested. The firmware has no code
   that erases or writes a page of flash; `embassy_nrf::init` holds a UICR routine that the
   configuration of the firmware keeps from writing (`reset-pin-as-gpio`, debug port and regulator

@@ -643,6 +643,8 @@ with the `esp-nn` backend first (its ANSI C kernels on the host), and
 `crates/nanoglia-esp-nn/tests/kernels/` checks its kernels against a
 TFLite reference. Host tests run the portable C code of CMSIS-NN and
 ESP-NN. `mise run test-emulated` runs the golden cases with CMSIS-NN's
-DSP code paths (Cortex-M4F, M33) under an emulator; its Helium code
-paths and the ESP32-S3 kernels of ESP-NN have not run, and nothing has
-run on hardware yet (issue #2).
+DSP code paths (Cortex-M4F, M33) under an emulator, and the hardware
+test bench ran them once on one Cortex-M4F, an Arduino Nano 33 BLE
+([run the golden cases on a board](../how-to-guides/run-the-golden-cases-on-a-board.md#what-has-run-on-a-board));
+its Helium code paths and the ESP32-S3 kernels of ESP-NN have not run,
+and no other chip has (issue #2).
