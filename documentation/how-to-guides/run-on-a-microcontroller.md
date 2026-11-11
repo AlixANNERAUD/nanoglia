@@ -5,7 +5,8 @@ from the example firmware for the Arduino Nano 33 BLE (Arm Cortex-M4F),
 then adapting it to your own firmware, on Arm Cortex-M or on the
 ESP32-S3.
 
-> **Status: validated on one board only.** The firmware of this guide
+> **Status: the golden cases have run on one board; this guide's
+> firmware has not.** The firmware of this guide
 > builds in CI (`mise run example-nano33ble`, and `mise run
 > cross-esp32s3` for the ESP32-S3 libraries) but has not run on a board.
 > The same code runs bit-exact on the host, where CMSIS-NN and ESP-NN

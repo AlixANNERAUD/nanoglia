@@ -659,8 +659,10 @@ Linux x86_64 computer, without a debug probe, with the two images CI
 built at commit `2fd26df` (artifact `hardware-nano33ble-images`),
 flashed with Arduino's `bossac` 1.9.1-17-g89f3556. Its results files and
 logs are in `hardware/results/nano33ble/`
-([README](../../hardware/results/nano33ble/README.md)). Every step of
-the [first session](#first-session-on-a-new-board) passed, and with them
+([README](../../hardware/results/nano33ble/README.md), with the log of
+the session). Every step of the
+[first session](#first-session-on-a-new-board) reached its expected
+output (step 2 after a double tap), and with them
 what `hardware/nano33ble/src/main.rs` does on the chip:
 
 - the clean-up of what the bootloader leaves on, the start of the clocks

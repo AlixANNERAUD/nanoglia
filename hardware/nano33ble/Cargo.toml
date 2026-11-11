@@ -19,9 +19,9 @@ model-str-ww = []
 model-ad = []
 model-vww = []
 # Turns on the instruction cache of the flash (NVMC `ICACHECNF`). It is off after a reset of the
-# chip, but the Arduino bootloader turns it on before it starts the application, so the firmware
-# runs with it on either way when that bootloader starts it. The firmware reports the state it
-# runs with.
+# chip; the bootloader Arduino publishes turns it on before it starts the application, and on
+# one board the firmware found it on without this feature (the guide, "The instruction cache").
+# The firmware reports the state it runs with.
 icache = []
 
 [dependencies]

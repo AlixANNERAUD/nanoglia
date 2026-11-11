@@ -10,6 +10,7 @@ The files of the first session of `hardware/` on a real board, an Arduino Nano 3
 | `nano33ble.json` | Every golden case of `testdata/`, each run once: 373 ok, 3 pending (`ad01_int8`, issue #1), 0 failed, 0 skipped. |
 | `nano33ble-repeat-5.json` | The same cases, each run 5 times, the fastest inference kept: the figures of `documentation/reference/performance.md` and `memory.md`. |
 | `first-case.json` | The first inference of the session: `kws_ref_model/sample_0`. |
+| `session.log` | The commands of the session before and around the two runs, with their output and the time of day: the first flash, `--info`, the way back to the bootloader, the self-test, the first inference. |
 | `run-full.log`, `run-repeat-5.log` | The output of the host tool for the two runs. |
 | `host.txt` | The kernel of the computer, the USB identifiers of the board, the version of `bossac` and the SHA-256 of the two firmware images. |
 | `summarize.py` | Prints the tables the documentation quotes from a results file. |

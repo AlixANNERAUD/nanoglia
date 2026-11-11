@@ -333,7 +333,7 @@ of it, measured on the board, and on the same runner under emulation
 
 The inputs, graph, context and arena are the same on the board as under
 emulation, to the byte. The stack is 2064 bytes deeper on the board for
-each of the five models: the board's firmware reaches the runner through
+each of the five models, presumably because the board's firmware reaches the runner through
 its USB loop and serves the USB and timer interrupts, where the emulated
 one reads memory-mapped registers (which frames make up the difference
 has not been measured). All five run: the largest, visual wake words,

@@ -9,7 +9,7 @@ Rust inference engines (`mise run bench-compare`,
 [below](#compared-with-other-rust-engines)): outputs, host time, and
 size and RAM of a keyword-spotting firmware.
 
-> The first sections give **host and wasmtime numbers, not
+> The other sections give **host and wasmtime numbers, not
 > microcontroller numbers.** On the host and in WebAssembly, CMSIS-NN
 > runs its portable C code. Use them to compare builds and targets on
 > the same machine, not to predict the time on a chip. The only

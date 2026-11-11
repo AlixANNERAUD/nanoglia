@@ -106,8 +106,8 @@ unreachable code is dropped. Without `NANOGLIA_STD` the
 archive is self-contained: it brings its own `memcpy` and `memset`
 (from Rust's `compiler_builtins`) and references no `malloc`, `free` or
 any other C library function. `mise run cross-c` checks it by linking
-it with `arm-none-eabi-gcc -nostdlib` into a program that calls every
-function, never run; the Cortex-M4F DSP code paths of CMSIS-NN match
+it with `arm-none-eabi-gcc -nostdlib` into a program, never run, that
+calls every function; the Cortex-M4F DSP code paths of CMSIS-NN match
 the golden data under an emulator (`mise run test-emulated`) and on one
 Arduino Nano 33 BLE, through the Rust API
 ([run the golden cases on a board](run-the-golden-cases-on-a-board.md#what-has-run-on-a-board));

@@ -448,8 +448,9 @@ fn main() -> ! {
     config.debug = embassy_nrf::config::Debug::NotConfigured;
     let p = embassy_nrf::init(config);
 
-    // The instruction cache of the flash: off after a reset of the chip, but the Arduino bootloader
-    // turns it on before it starts the application (`nordicsemi_nrf52_init` of its Zephyr image),
+    // The instruction cache of the flash: off after a reset of the chip, but the bootloader
+    // Arduino publishes turns it on before it starts the application (`nordicsemi_nrf52_init` of
+    // its Zephyr image),
     // and nothing here turns it off: without the feature `icache`, the firmware runs with the state
     // it inherits, on after that bootloader. The state read here is the one reported.
     if cfg!(feature = "icache") {

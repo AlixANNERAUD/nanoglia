@@ -117,7 +117,7 @@ do not run several builds in the same target directory at once.
   to be on, left so by the bootloader). Paths it has not exercised (the 1200 baud touch of this
   firmware, the 5-minute and third-crash returns to the bootloader, recovery in the middle of a
   run, the cache off, macOS, another board) are listed in the how-to "run the golden cases on a
-  board": a change there is untested on hardware until a board runs it again. Keep the hardware-only code there, thin, and
+  board": a change there is untested on hardware until a board runs it again. Keep the hardware-only code in `hardware/nano33ble/src/main.rs`, thin, and
   everything else in `runner` or the host tool, where it is tested. The firmware has no code
   that erases or writes a page of flash; `embassy_nrf::init` holds a UICR routine that the
   configuration of the firmware keeps from writing (`reset-pin-as-gpio`, debug port and regulator
