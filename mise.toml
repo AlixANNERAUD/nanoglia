@@ -245,7 +245,7 @@ description = "Build the two firmware images that run the golden cases on an Ard
 # after the bootloader; an image linked without its linker scripts is empty and still "builds":
 # require real code and the models.
 # `NANOGLIA_NANO33BLE_FEATURES=icache` adds features of the firmware to both images: `icache`
-# turns on the instruction cache of the flash, off by default as after a reset.
+# turns on the instruction cache of the flash, which the bootloader Arduino publishes leaves on (found on, on one board).
 dir = "{{config_root}}/hardware"
 env.RUSTFLAGS = "-D warnings"
 env.NANOGLIA_REVISION = "{{exec(command='git describe --always --dirty --abbrev=12 --exclude=*')}}"

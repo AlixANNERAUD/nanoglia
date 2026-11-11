@@ -284,12 +284,14 @@ It does not tell:
   confirm on the device ([Size the memory](size-memory.md#3-account-for-the-target)).
 - **The stack**, which the kernels use besides the two blocks.
 - **The speed** ([Performance](../reference/performance.md) has host and
-  wasmtime timings, not microcontroller ones).
+  wasmtime timings, and those of the five MLPerf Tiny models on one
+  Arduino Nano 33 BLE).
 - **That the outputs are right on your chip.** The outputs are checked
   bit for bit against LiteRT on the host, under WebAssembly and under
-  instruction-set emulation of Cortex-M and RISC-V cores, but the Arm
-  DSP and Helium paths and ESP-NN's ESP32-S3 kernels have not run on
-  hardware yet
+  instruction-set emulation of Cortex-M and RISC-V cores, and the golden
+  cases have run on one board (a Nano 33 BLE: Cortex-M4F, CMSIS-NN's
+  DSP paths); the Helium paths, ESP-NN's ESP32-S3 kernels and every
+  other chip have not run on hardware yet
   ([issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2)).
 
 ## See also

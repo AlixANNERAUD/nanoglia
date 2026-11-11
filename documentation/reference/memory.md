@@ -290,8 +290,9 @@ row's, the model of `src/main.rs` to the column's, then
 `cargo build --release` in `examples/nano33ble` and `arm-none-eabi-size
 target/thumbv7em-none-eabihf/release/nanoglia-example-nano33ble`
 (`mise run example-nano33ble` does both for the committed example).
-These are sizes of a linked firmware; it has not run on the board
-([issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2)). The
+These are sizes of a linked firmware; this example has not run on a
+board (the test bench below has,
+[issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2)). The
 sizes of a firmware compared with other engines are in
 [Performance](performance.md#keyword-spotting-firmware).
 
@@ -319,25 +320,33 @@ arena (the graph and context blocks) only. Of the 262144 bytes of RAM,
 the firmware keeps the last 256 for the message of a crash, 24576
 below them for the stack, and 160 for its static data; the rest, 237152
 bytes, receives the inputs and holds the arena. What each model takes
-of it, measured on the same code under emulation (`hardware/emulated`:
-the same memory layout, without static data):
+of it, measured on the board, and on the same runner under emulation
+(`hardware/emulated`: the same memory layout, without static data):
 
-| Model | Inputs | Graph | Context | Arena used | Peak stack | Inputs + arena, of 237152 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `kws_ref_model` | 490 | 7616 | 16256 | 23872 | 8208 | 24362 |
-| `pretrainedResnet_quant` | 3072 | 6064 | 51456 | 57520 | 8208 | 60592 |
-| `str_ww_ref_model` | 1200 | 9248 | 10496 | 19744 | 7936 | 20944 |
-| `ad01_int8` | 640 | 16208 | 768 | 16976 | 7936 | 17616 |
-| `vww_96_int8` | 27648 | 29280 | 65536 | 94816 | 8208 | 122464 |
+| Model | Inputs | Graph | Context | Arena used | Peak stack, board | Peak stack, emulated | Inputs + arena, of 237152 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `kws_ref_model` | 490 | 7616 | 16256 | 23872 | 10272 | 8208 | 24362 |
+| `pretrainedResnet_quant` | 3072 | 6064 | 51456 | 57520 | 10272 | 8208 | 60592 |
+| `str_ww_ref_model` | 1200 | 9248 | 10496 | 19744 | 10000 | 7936 | 20944 |
+| `ad01_int8` | 640 | 16208 | 768 | 16976 | 10000 | 7936 | 17616 |
+| `vww_96_int8` | 27648 | 29280 | 65536 | 94816 | 10272 | 8208 | 122464 |
 
-All five run: the largest, visual wake words, takes about half of what
-is free. The contexts differ from the 32-bit column of the
-[footprints](#mlperf-tiny-footprints) where CMSIS-NN's DSP kernels ask
+The inputs, graph, context and arena are the same on the board as under
+emulation, to the byte. The stack is 2064 bytes deeper on the board for
+each of the five models, presumably because the board's firmware reaches the runner through
+its USB loop and serves the USB and timer interrupts, where the emulated
+one reads memory-mapped registers (which frames make up the difference
+has not been measured). All five run: the largest, visual wake words,
+takes about half of what is free. The graphs are those of the 32-bit
+column of the [footprints](#mlperf-tiny-footprints), to the byte (7616
+for keyword spotting); the contexts differ from it where CMSIS-NN's DSP
+kernels ask
 for other scratch sizes than its portable C code (keyword spotting,
 visual wake words). The single-operator cases of `testdata/ops/` are
 received into the same RAM with their model: the largest model is 7648
 bytes, the largest arena 4352 bytes, and the deepest stack over every
-golden case is 8444 bytes of the 24576.
+golden case is 10500 bytes of the 24576 on the board (8444 under
+emulation).
 
 Measured on 2026-11-10, with the change that added `hardware/`, on top
 of commit `d98b750`, on a Linux aarch64 host with rustc 1.99.1,
@@ -347,6 +356,11 @@ thumbv7em-none-eabihf -p nanoglia-hardware-nano33ble` for the image
 without model); the RAM with `mise run test-hardware`, from
 `hardware/target/results/emulated.json` (fields `inputs_bytes`,
 `graph_bytes`, `context_bytes`, `arena_used`, `stack_peak`). The stack
-is measured by painting it. These are figures of a linked firmware and
-of an emulated run: the firmware has not run on the board
-([issue #2](https://github.com/AlixANNERAUD/nanoglia/issues/2)).
+is measured by painting it. The board's column comes from one Arduino
+Nano 33 BLE, on 2026-11-10, running the two images CI built at commit
+`2fd26df`: `stack_peak` and the other fields of
+`hardware/results/nano33ble/nano33ble-repeat-5.json`, printed by
+`python3 -I hardware/results/nano33ble/summarize.py
+hardware/results/nano33ble/nano33ble-repeat-5.json`
+([the results](../../hardware/results/nano33ble/README.md)). The sizes
+of the images are those of the build above, not of CI's.

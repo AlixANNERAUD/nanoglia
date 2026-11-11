@@ -703,9 +703,12 @@ for the Arduino Nano 33 BLE, a board that carries an accelerometer. For
 C firmware, see
 [Use nanoglia from C](../how-to-guides/use-from-c.md#link-it-into-a-firmware).
 
-> The outputs of this tutorial were computed on computers. nanoglia has
-> not been validated on hardware yet: its kernels run under an emulator
-> in CI, without timing, and this is tracked in issue #2.
+> The outputs of this tutorial were computed on computers, and its
+> firmware has not run on a board. nanoglia's kernels run under an
+> emulator in CI, without timing, and its golden cases have run on one
+> Arduino Nano 33 BLE
+> ([run the golden cases on a board](../how-to-guides/run-the-golden-cases-on-a-board.md));
+> the validation on other chips is tracked in issue #2.
 
 ## What you did
 

@@ -1,0 +1,139 @@
+The commands of the first session and their output, in order (2026-11-11, local time of the
+computer; UTC+1). The path of the home directory is replaced by `~`. Lines of `--list-ports` for
+the serial ports of the computer itself (ttyS0 to ttyS3) are left out.
+
+== Before: the board runs another firmware, which ignores the 1200-baud touch ==
+
+$ mise run hardware -- --list-ports
+/dev/ttyACM0  1209:0001  other (pid.codes test identifiers)  (the product name of that firmware)
+
+$ date +%T; mise run hardware -- --bootloader; date +%T
+00:25:09
+error: the board did not enter its bootloader: double-tap its reset button (the orange LED fades in and out in the bootloader), then run again
+[hardware] ERROR task failed
+exit=3
+00:25:27
+
+(the reset button is double-tapped by hand; ModemManager is stopped)
+
+== Step 3: the first flash ==
+
+$ systemctl is-active ModemManager; lsusb | grep 2341
+inactive
+Bus 003 Device 012: ID 2341:005a Arduino SA Arduino Nano 33 BLE
+
+$ mise run hardware -- --list-ports
+/dev/ttyACM0  2341:005a  bootloader  Arduino Nano 33 BLE 0000000000000000DD2BBDCBD72170FB
+
+$ date +%T; mise run hardware -- --image target/images/nano33ble-image-1.elf --flash-only; date +%T
+00:28:09
+  flashing nano33ble-image-1.elf (862828 bytes)
+  ~/.local/share/mise/installs/http-bossac/1.9.1-arduino2/bin/bossac -d --port=ttyACM0 -U -i -e -w -v target/images/nano33ble-image-1.elf.bin -R
+flashed: nanoglia-hardware-nano33ble 0.0.0
+exit=0
+00:28:45
+
+$ mise run hardware -- --list-ports; date +%T
+/dev/ttyACM0  1209:0001  runner  nanoglia hardware runner 969305309BFDDDB5
+00:28:49
+
+== Step 4: the firmware answers ==
+
+$ mise run hardware -- --info
+protocol: 1
+max_payload: 1024
+ram_bytes: 237152
+counter_hz: 64000000
+reset_reason: 1
+max_operators: 256
+crash: None
+failed_boots: 0
+firmware: nanoglia-hardware-nano33ble 0.0.0
+revision: 2fd26df6bccf
+nanoglia: 0.2.0
+build: cmsis-nn kernels float int16 all-ops, thumbv7em-none-eabihf
+opt_level: 3
+rustc: rustc 1.99.1 (58cf8f9c3 2026-10-13)
+board: Arduino Nano 33 BLE (nRF52840, Cortex-M4F)
+clock: DWT cycle counter, core clock of 64 MHz from the 32 MHz crystal (HFXO)
+settings: instruction cache of the flash on (NVMC ICACHECNF)
+crash_message:
+models: [('kws_ref_model.tflite', 53936), ('pretrainedResnet_quant.tflite', 98496), ('ad01_int8.tflite', 276976)]
+exit=0
+
+== Step 5: the firmware's own way back to the bootloader, and a second flash ==
+
+$ date +%T; mise run hardware -- --bootloader; date +%T; mise run hardware -- --list-ports
+00:30:54
+the board is in its bootloader on /dev/ttyACM0
+exit=0
+00:30:55
+/dev/ttyACM0  2341:005a  bootloader  Arduino Nano 33 BLE 0000000000000000DD2BBDCBD72170FB
+
+$ date +%T; mise run hardware -- --image target/images/nano33ble-image-1.elf --flash-only; date +%T; mise run hardware -- --list-ports
+00:30:59
+  flashing nano33ble-image-1.elf (862828 bytes)
+  ~/.local/share/mise/installs/http-bossac/1.9.1-arduino2/bin/bossac -d --port=ttyACM0 -U -i -e -w -v target/images/nano33ble-image-1.elf.bin -R
+flashed: nanoglia-hardware-nano33ble 0.0.0
+exit=0
+00:31:35
+/dev/ttyACM0  1209:0001  runner  nanoglia hardware runner 969305309BFDDDB5
+
+$ mise run hardware -- --info | grep -E "reset_reason|crash|failed_boots"
+reset_reason: 4
+crash: None
+failed_boots: 0
+crash_message:
+
+== Step 6: the recovery self-test ==
+
+$ date +%T; mise run hardware -- --self-test; date +%T
+00:31:44
+self-test: panic
+  waiting up to 90 s for the firmware to restart
+  ok: the firmware restarted after a panic: panicked at nano33ble/src/main.rs:397:29:
+fault requested by the host
+self-test: hard fault
+  waiting up to 90 s for the firmware to restart
+  ok: the firmware restarted after a fault: hard fault at pc=0x00017154, lr=0x0001081f
+self-test: hang (the watchdog of the firmware ends it, after about 20 s on a board)
+  waiting up to 90 s for the firmware to restart
+  ok: the firmware restarted after a watchdog: watchdog: nothing moved for 20 s
+self-test: reset into the firmware
+  waiting up to 90 s for the firmware to restart
+  ok: the firmware answers again, without a crash to report
+exit=0
+00:32:09
+
+== Step 7: the first inference (first-case.json) ==
+
+$ date +%T; mise run hardware -- --filter kws_ref_model/sample_0 --results target/results/first-case.json; date +%T
+00:32:17
+ok       mlperf-tiny/golden/kws_ref_model/sample_0 [flash, 167.196 ms]
+self-check: a corrupted output 0 of mlperf-tiny/golden/kws_ref_model/sample_0 fails, as it must
+1 cases: 1 ok, 0 pending, 0 skipped, 0 failed; 1 timed with their model in flash
+peak stack 10272 B, largest arena 23872 B
+exit=0
+00:32:17
+
+== Step 8: every case (run-full.log, nano33ble.json), then five times (run-repeat-5.log, nano33ble-repeat-5.json) ==
+
+$ date +%T; mise run hardware -- --image target/images/nano33ble-image-1.elf --image target/images/nano33ble-image-2.elf --results target/results/nano33ble.json; date +%T
+00:33:49
+exit=0
+00:35:11
+
+$ date +%T; mise run hardware -- --image target/images/nano33ble-image-1.elf --image target/images/nano33ble-image-2.elf --repeat 5 --results target/results/nano33ble-repeat-5.json; date +%T
+00:35:15
+exit=0
+00:37:03
+
+== After ==
+
+$ mise run hardware -- --list-ports; mise run hardware -- --info | grep -E "reset_reason|crash|failed_boots|models"
+/dev/ttyACM0  1209:0001  runner  nanoglia hardware runner 969305309BFDDDB5
+reset_reason: 4
+crash: None
+failed_boots: 0
+crash_message:
+models: [('str_ww_ref_model.tflite', 74520), ('vww_96_int8.tflite', 333288)]
