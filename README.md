@@ -4,6 +4,7 @@
 [![docs.rs](https://img.shields.io/docsrs/nanoglia)](https://docs.rs/nanoglia)
 [![CI](https://github.com/AlixANNERAUD/nanoglia/actions/workflows/ci.yml/badge.svg)](https://github.com/AlixANNERAUD/nanoglia/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/AlixANNERAUD/nanoglia/graph/badge.svg)](https://codecov.io/gh/AlixANNERAUD/nanoglia)
+[![vulnerabilities](https://vulnerabilites.anneraud.fr/badges/9758d0827b30b3604843ef9dab8e88f6.svg)](https://vulnerabilites.anneraud.fr/organizations/alix_anneraud/projects/nanoglia)
 [![no_std](https://img.shields.io/badge/no__std-no%20alloc-success)](documentation/reference/memory.md)
 [![MSRV 1.89](https://img.shields.io/badge/MSRV-1.89-informational)](Cargo.toml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
