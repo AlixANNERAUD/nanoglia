@@ -57,7 +57,7 @@ fn concat_params(op: &OpDesc<'_, '_>) -> Result<ConcatParams> {
     };
     let inner: usize = out_dims[axis + 1..].iter().map(|&d| d as usize).product();
     let mut axis_total = 0i64;
-    for i in 0..op.inputs.len() {
+    for (i, chunk) in params.chunk[..op.inputs.len()].iter_mut().enumerate() {
         let t = input(op, i)?;
         if t.dtype != output.dtype {
             return Err(unsupported_type(t));
@@ -80,7 +80,7 @@ fn concat_params(op: &OpDesc<'_, '_>) -> Result<ConcatParams> {
             return Err(unsupported(op));
         }
         axis_total += i64::from(dims[axis]);
-        params.chunk[i] = (dims[axis] as usize * inner * size) as u32;
+        *chunk = (dims[axis] as usize * inner * size) as u32;
     }
     if axis_total != i64::from(out_dims[axis]) {
         return Err(shape_mismatch(output));
