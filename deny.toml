@@ -8,7 +8,8 @@ yanked = "deny"
 
 [licenses]
 version = 2
-allow = ["Apache-2.0", "MIT", "Unicode-3.0"]
+# MPL-2.0: one file of nanoglia-kernels, `src/eigen.rs`, ported from Eigen.
+allow = ["Apache-2.0", "MIT", "MPL-2.0", "Unicode-3.0"]
 confidence-threshold = 0.9
 
 [bans]

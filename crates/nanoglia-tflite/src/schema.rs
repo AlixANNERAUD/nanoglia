@@ -157,6 +157,7 @@ pub(crate) mod builtin_options {
     pub(crate) const SOFTMAX: u8 = 9;
     pub(crate) const CONCATENATION: u8 = 10;
     pub(crate) const ADD: u8 = 11;
+    pub(crate) const L2_NORM: u8 = 12;
     pub(crate) const RESIZE_BILINEAR: u8 = 15;
     pub(crate) const SPACE_TO_DEPTH: u8 = 19;
     pub(crate) const MUL: u8 = 21;
@@ -176,6 +177,8 @@ pub(crate) mod builtin_options {
     pub(crate) const LEAKY_RELU: u8 = 75;
     pub(crate) const SPLIT_V: u8 = 79;
     pub(crate) const DEPTH_TO_SPACE: u8 = 94;
+    pub(crate) const BATCH_MAT_MUL: u8 = 101;
+    pub(crate) const GELU: u8 = 116;
 }
 
 /// `table Conv2DOptions`.
@@ -314,4 +317,21 @@ pub(crate) mod unpack {
 /// `table SpaceToDepthOptions`, `table DepthToSpaceOptions`.
 pub(crate) mod block_size {
     pub(crate) const BLOCK_SIZE: u16 = 0;
+}
+
+/// `table L2NormOptions`.
+pub(crate) mod l2_norm {
+    pub(crate) const FUSED_ACTIVATION_FUNCTION: u16 = 0;
+}
+
+/// `table BatchMatMulOptions`.
+pub(crate) mod batch_mat_mul {
+    pub(crate) const ADJ_X: u16 = 0;
+    pub(crate) const ADJ_Y: u16 = 1;
+    pub(crate) const ASYMMETRIC_QUANTIZE_INPUTS: u16 = 2;
+}
+
+/// `table GeluOptions`.
+pub(crate) mod gelu {
+    pub(crate) const APPROXIMATE: u16 = 0;
 }

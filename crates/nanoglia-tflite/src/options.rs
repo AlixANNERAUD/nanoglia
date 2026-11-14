@@ -13,7 +13,7 @@ use crate::schema::{
     fully_connected, gather, leaky_relu, operator, pool_2d, reducer, resize_bilinear,
     resize_nearest_neighbor, softmax, split, squeeze, strided_slice, transpose_conv,
 };
-use crate::schema::{block_size, pack, unpack};
+use crate::schema::{batch_mat_mul, block_size, gelu, l2_norm, pack, unpack};
 
 /// The `BuiltinOptions` union type carried by `op`, for the operators whose options are decoded.
 pub(crate) fn expected_type(op: BuiltinOp) -> Option<u8> {
@@ -48,6 +48,9 @@ pub(crate) fn expected_type(op: BuiltinOp) -> Option<u8> {
         BuiltinOp::UNPACK => ty::UNPACK,
         BuiltinOp::SPACE_TO_DEPTH => ty::SPACE_TO_DEPTH,
         BuiltinOp::DEPTH_TO_SPACE => ty::DEPTH_TO_SPACE,
+        BuiltinOp::L2_NORMALIZATION => ty::L2_NORM,
+        BuiltinOp::BATCH_MATMUL => ty::BATCH_MAT_MUL,
+        BuiltinOp::GELU => ty::GELU,
         _ => return None,
     })
 }
@@ -133,6 +136,13 @@ pub(crate) fn verify(ty: u8, table: &Table<'_>) -> Result<()> {
         ty::PACK => &[(pack::VALUES_COUNT, INT), (pack::AXIS, INT)],
         ty::UNPACK => &[(unpack::NUM, INT), (unpack::AXIS, INT)],
         ty::SPACE_TO_DEPTH | ty::DEPTH_TO_SPACE => &[(block_size::BLOCK_SIZE, INT)],
+        ty::L2_NORM => &[(l2_norm::FUSED_ACTIVATION_FUNCTION, BYTE)],
+        ty::BATCH_MAT_MUL => &[
+            (batch_mat_mul::ADJ_X, BYTE),
+            (batch_mat_mul::ADJ_Y, BYTE),
+            (batch_mat_mul::ASYMMETRIC_QUANTIZE_INPUTS, BYTE),
+        ],
+        ty::GELU => &[(gelu::APPROXIMATE, BYTE)],
         _ => &[],
     };
     for &(id, size) in scalars {
@@ -318,6 +328,17 @@ pub(crate) fn decode<'m>(
         },
         ty::SPACE_TO_DEPTH | ty::DEPTH_TO_SPACE => OpOptions::BlockSize {
             block_size: f.scalar(block_size::BLOCK_SIZE, 0)?,
+        },
+        ty::L2_NORM => OpOptions::L2Norm {
+            activation: f.activation(l2_norm::FUSED_ACTIVATION_FUNCTION)?,
+        },
+        ty::BATCH_MAT_MUL => OpOptions::BatchMatMul {
+            adj_x: f.flag(batch_mat_mul::ADJ_X)?,
+            adj_y: f.flag(batch_mat_mul::ADJ_Y)?,
+            asymmetric_quantize_inputs: f.flag(batch_mat_mul::ASYMMETRIC_QUANTIZE_INPUTS)?,
+        },
+        ty::GELU => OpOptions::Gelu {
+            approximate: f.flag(gelu::APPROXIMATE)?,
         },
         _ => OpOptions::None,
     })

@@ -9,7 +9,8 @@
 //!
 //! The dot products of the reference convolutions (`total += input * filter`) are compiled into
 //! fused multiply-adds by Clang on AArch64 (the LiteRT wheels) and by GCC on Arm (TFLite Micro),
-//! so [`mul_add`] rounds once too.
+//! so [`mul_add`] rounds once too. Where Clang vectorizes such a loop instead, [`dot_by_eight`]
+//! reproduces the order in which the vectorized code rounds.
 
 /// `2^(i/32)` as `f64` bits, minus `i << 47` (`__exp2f_data.tab`).
 const EXP2_TABLE: [u64; 32] = [
@@ -188,6 +189,27 @@ pub(crate) fn mul_add(a: f32, b: f32, c: f32) -> f32 {
     }
 }
 
+/// The sum of `term(k).0 * term(k).1` for `k` in `0..len`, as LiteRT's AArch64 build computes the
+/// reduction loops of its reference `BATCH_MATMUL` and `L2_NORMALIZATION` (`total += a * b`, both
+/// operands contiguous): Clang vectorizes them eight terms at a time, rounding each product and
+/// adding them in order (a strict, in-order reduction), and fuses the multiply-add of the
+/// `len % 8` terms left, which its scalar loop runs. Measured against LiteRT 2.3.0 for every
+/// length from 1 to 40.
+#[inline(always)]
+pub(crate) fn dot_by_eight(len: usize, term: impl Fn(usize) -> (f32, f32)) -> f32 {
+    let vectorized = len - len % 8;
+    let mut total = 0.0f32;
+    for k in 0..vectorized {
+        let (a, b) = term(k);
+        total += a * b;
+    }
+    for k in vectorized..len {
+        let (a, b) = term(k);
+        total = mul_add(a, b, total);
+    }
+    total
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,5 +262,27 @@ mod tests {
             mul_add(a, a, -1.0),
             2.0 * f32::EPSILON + f32::EPSILON * f32::EPSILON
         );
+    }
+
+    #[test]
+    fn dot_by_eight_fuses_the_remainder_only() {
+        // (1 + 2^-12)^2 - 1: the fused multiply-add keeps the 2^-24 term, the rounded product
+        // loses it.
+        let a = 1.0 + 1.0 / 4096.0;
+        let fused = 1.0 / 2048.0 + 1.0 / 16_777_216.0;
+        let rounded = 1.0 / 2048.0;
+        // -1, zeros, then a * a: the last term decides.
+        let dot = |n: usize| {
+            dot_by_eight(n, |k| match k {
+                0 => (-1.0, 1.0),
+                k if k + 1 == n => (a, a),
+                _ => (0.0, 0.0),
+            })
+        };
+        assert_eq!(dot(4), fused);
+        assert_eq!(dot(8), rounded);
+        assert_eq!(dot(9), fused);
+        assert_eq!(dot(16), rounded);
+        assert_eq!(dot(17), fused);
     }
 }

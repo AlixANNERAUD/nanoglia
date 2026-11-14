@@ -150,10 +150,14 @@ int64 bias.
 | | int16 | `rust/tanh_i16` | int16 |
 | `HARD_SWISH` | f32 | `rust/hard_swish_f32` | float |
 | | int8, uint8 | `rust/hard_swish_q` | — |
+| `GELU` | f32 | `rust/gelu_f32` | float |
+| `BATCH_MATMUL` | f32 | `rust/batch_matmul_f32` | float |
+| `L2_NORMALIZATION` | f32 | `rust/l2_normalization_f32` | float |
 
 Any other operator, any custom operator, and any type not listed (for
-example int16 `TRANSPOSE_CONV` or `HARD_SWISH`, uint8 `ADD`, int4 weights)
-is unsupported.
+example int16 `TRANSPOSE_CONV` or `HARD_SWISH`, uint8 `ADD`, int4 weights,
+quantized `GELU`, `BATCH_MATMUL` or `L2_NORMALIZATION`, hybrid
+`BATCH_MATMUL`) is unsupported.
 
 ## ESP-NN
 
@@ -618,6 +622,41 @@ Two inputs of the output's type, broadcasting up to rank 6.
   C.
 - `rust/hard_swish_q`: refused when the requantization multipliers fall
   outside the range of TFLite's fixed-point implementation.
+- `rust/gelu_f32`: f32 input and output of the same shape; both the exact
+  function (`approximate` false, the default: `0.5 * x * erfc(-x /
+  sqrt(2))`) and its tanh approximation (`approximate` true). LiteRT
+  evaluates them with Eigen's own `erfc` and `tanh` approximations, not
+  the C library's, and so does the kernel
+  (`crates/nanoglia-kernels/src/eigen.rs`), bit for bit
+  with LiteRT's AArch64 build: Eigen's `erfc` gives slightly different
+  results in its packets of four values and in the scalar code that
+  finishes the last `len % 4` ones, and the kernel follows that split too.
+  Quantized `GELU` (a lookup table in TFLite) is not supported.
+
+### BATCH_MATMUL
+
+- `rust/batch_matmul_f32`: two f32 inputs and an f32 output, the inputs
+  of rank 2 to 6 (TFLite: 2 to 5), their batch dimensions (all but the
+  last two) broadcasting against each other, the output of shape
+  `[broadcast batch dimensions, rows, columns]`. `adj_x` and `adj_y`
+  transpose the last two dimensions of an input; either input may be a
+  constant or computed at run time. The inputs are read in place, without
+  the transposed copies TFLite makes, and without scratch memory. Each
+  output sums its products in increasing order, rounding as LiteRT's
+  AArch64 build does: the products of the first multiple of eight terms
+  rounded then added, the remaining terms with a fused multiply-add.
+  Quantized (int8, int16) and hybrid (f32 input, int8 weights) products
+  are refused; `asymmetric_quantize_inputs` only concerns hybrid products
+  and is ignored, as in TFLite.
+
+### L2_NORMALIZATION
+
+- `rust/l2_normalization_f32`: f32 input and output of the same shape, of
+  rank 1 or more; each vector along the last dimension is divided by its
+  L2 norm, or by `1e-6` when the norm is smaller (an all-zero vector gives
+  zeros). The sum of squares rounds as in `BATCH_MATMUL`. A fused
+  activation other than `NONE` is refused, as TFLite does; quantized
+  (int8, uint8) `L2_NORMALIZATION` is not supported.
 
 ## Coverage by tests
 
@@ -630,8 +669,10 @@ The golden cases of `testdata/` exercise `CONV_2D`, `DEPTHWISE_CONV_2D`,
 `GREATER_EQUAL`, `SELECT_V2`, `CAST`, `LOGISTIC`,
 `TANH`, `RELU`, `RELU6`, `CONCATENATION`, `QUANTIZE`, `DEQUANTIZE`,
 `TRANSPOSE`, `SLICE`, `STRIDED_SLICE`, `GATHER`, `SPLIT`, `SPLIT_V`,
-`ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR` and
-`TRANSPOSE_CONV` against LiteRT (see `testdata/README.md`), and checks that
+`ARG_MAX`, `ARG_MIN`, `RESIZE_NEAREST_NEIGHBOR`, `RESIZE_BILINEAR`,
+`TRANSPOSE_CONV`, `BATCH_MATMUL`, `GELU` and `L2_NORMALIZATION` against
+LiteRT (see `testdata/README.md`; the last three without tolerance, bit
+for bit), and checks that
 the int16 cases of `CONV_2D`, `DEPTHWISE_CONV_2D` and pooling run the
 CMSIS-NN kernels and those of `LOGISTIC` and `TANH` the Rust ones; the other kernels have unit
 tests in `crates/nanoglia-kernels/src/tests/` (int16 `ARG_MAX` / `ARG_MIN`

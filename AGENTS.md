@@ -172,6 +172,8 @@ number.
   `refactor:`, `docs:`, `test:`, `build:`, `ci:`, `chore:`), with a body explaining the why.
 - No AI attribution: no `Co-Authored-By` trailers for assistants, no "generated with" lines.
 - Design notes and plans stay out of the repository.
+- Everything is Apache-2.0 except `crates/nanoglia-kernels/src/eigen.rs`, a port of Eigen code under the
+  MPL-2.0: keep its header, and put any other code ported from Eigen in that file.
 - A workaround kept in the repository (build, CI, release, oracle, C libraries) gets a comment next
   to it and an entry in the matching issue labelled `workaround` (#26 build/CI/release, #27 oracle
   and bit-exactness, #28 CMSIS-NN/ESP-NN): what, why, where, and when it can be removed.
