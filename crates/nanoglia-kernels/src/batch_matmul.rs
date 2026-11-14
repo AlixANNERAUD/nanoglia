@@ -10,12 +10,17 @@
 //! order, so the results are the same bits without the copies or any scratch memory. The
 //! right-hand side may be a constant or an activation alike.
 //!
+//! When the rows of the right-hand side are contiguous (no `adj_y`, or a depth of one): the kernel then adds each
+//! term to a whole output row at once (row, depth, column) instead of summing one output at a
+//! time, which reads both operands in memory order and lets the compiler vectorize the loop over
+//! the columns. Each output still receives the same terms in the same order.
+//!
 //! TFLite accepts ranks 2 to 5; this kernel accepts ranks 2 to [`MAX_RANK`]. Quantized and hybrid
 //! (float left-hand side, int8 right-hand side) products are refused; the
 //! `asymmetric_quantize_inputs` option only concerns hybrid products, and TFLite ignores it on
 //! float ones.
 
-use crate::math::dot_by_eight;
+use crate::math::{dot_by_eight, mul_add};
 use crate::util::{
     check_aligned, elements, expect_arity, expect_type, fixed_kernel, in_slice, input, out_slice,
     output, pod_struct, shape_mismatch, unsupported,
@@ -156,7 +161,10 @@ fn batch_matmul_eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
     let (rhs_depth, rhs_col) = (p.rhs_depth_stride as usize, p.rhs_col_stride as usize);
     let batches: usize = p.batch.iter().map(|&d| d as usize).product();
     let mut index = [0u32; BATCH_RANK];
-    let mut out = output.iter_mut();
+    // The output is not empty, so `cols` is not zero.
+    let mut out_rows = output.chunks_exact_mut(cols);
+    // The terms whose products are rounded before being added (see `dot_by_eight`).
+    let rounded = depth - depth % 8;
     for _ in 0..batches {
         let (mut lhs_base, mut rhs_base) = (0usize, 0usize);
         for ((&i, &ls), &rs) in index
@@ -169,16 +177,40 @@ fn batch_matmul_eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
         }
         for row in 0..rows {
             let lhs_row_base = lhs_base + row * lhs_row;
-            for col in 0..cols {
-                let rhs_col_base = rhs_base + col * rhs_col;
-                let total = dot_by_eight(depth, |k| {
-                    (
-                        rhs[rhs_col_base + k * rhs_depth],
-                        lhs[lhs_row_base + k * lhs_depth],
-                    )
-                });
-                if let Some(y) = out.next() {
-                    *y = total;
+            let Some(out_row) = out_rows.next() else {
+                break;
+            };
+            if rhs_col == 1 {
+                // The rows of the right-hand side are contiguous: add each term to the whole
+                // output row at once. Every output still receives its terms in increasing
+                // order, rounded as in `dot_by_eight`, and both rows are read in memory order,
+                // which the compiler vectorizes for the rounded products.
+                out_row.fill(0.0);
+                for k in 0..depth {
+                    let l = lhs[lhs_row_base + k * lhs_depth];
+                    let start = rhs_base + k * rhs_depth;
+                    let rhs_row = &rhs[start..start + cols];
+                    if k < rounded {
+                        for (y, &r) in out_row.iter_mut().zip(rhs_row) {
+                            *y += r * l;
+                        }
+                    } else {
+                        for (y, &r) in out_row.iter_mut().zip(rhs_row) {
+                            *y = mul_add(r, l, *y);
+                        }
+                    }
+                }
+            } else {
+                // The right-hand side is stored transposed (`adj_y`, depth above 1): each of
+                // its columns is contiguous along the depth, so sum one output at a time.
+                for (col, y) in out_row.iter_mut().enumerate() {
+                    let rhs_col_base = rhs_base + col * rhs_col;
+                    *y = dot_by_eight(depth, |k| {
+                        (
+                            rhs[rhs_col_base + k * rhs_depth],
+                            lhs[lhs_row_base + k * lhs_depth],
+                        )
+                    });
                 }
             }
         }
