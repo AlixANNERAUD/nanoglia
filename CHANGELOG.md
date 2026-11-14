@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1](https://github.com/AlixANNERAUD/nanoglia/compare/v0.3.0...v0.3.1) - 2026-11-14
+
+### Added
+
+- add float BATCH_MATMUL, GELU and L2_NORMALIZATION ([#57](https://github.com/AlixANNERAUD/nanoglia/pull/57))
+
+### Fixed
+
+- iterate the concatenation chunks without indexing ([#55](https://github.com/AlixANNERAUD/nanoglia/pull/55))
+
+### Performance
+
+- read the right-hand side of BATCH_MATMUL in memory order ([#58](https://github.com/AlixANNERAUD/nanoglia/pull/58))
+- sum eight outputs of BATCH_MATMUL side by side with adj_y ([#59](https://github.com/AlixANNERAUD/nanoglia/pull/59))
+
 ## [0.3.0](https://github.com/AlixANNERAUD/nanoglia/compare/v0.2.0...v0.3.0) - 2026-11-11
 
 ### Added
