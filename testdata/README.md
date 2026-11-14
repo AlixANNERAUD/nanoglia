@@ -158,7 +158,8 @@ quantized comparisons and the saturating casts.
 
 The transformer operators, all `_f32` and compared without tolerance:
 `BATCH_MATMUL` covers ranks 2 to 5, batch dimensions broadcasting both ways
-and inputs of different ranks, `adj_x`, `adj_y` and both, non-square
+and inputs of different ranks, `adj_x`, `adj_y` and both (also with more
+than eight columns, which the kernel sums eight at a time), non-square
 matrices, constant right-hand sides (one with a batch of one, which TFLite
 merges into the rows of the left-hand side), and depths below, at and past a
 multiple of eight (LiteRT's AArch64 build rounds the products of the first

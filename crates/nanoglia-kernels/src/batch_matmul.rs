@@ -14,6 +14,9 @@
 //! term to a whole output row at once (row, depth, column) instead of summing one output at a
 //! time, which reads both operands in memory order and lets the compiler vectorize the loop over
 //! the columns. Each output still receives the same terms in the same order.
+//! With `adj_y`, each column of the right-hand side is contiguous along the depth instead: the
+//! kernel then sums eight outputs side by side, each in its own order, so that their additions
+//! do not wait for one another, and the last `cols % 8` outputs of a row one at a time.
 //!
 //! TFLite accepts ranks 2 to 5; this kernel accepts ranks 2 to [`MAX_RANK`]. Quantized and hybrid
 //! (float left-hand side, int8 right-hand side) products are refused; the
@@ -31,6 +34,9 @@ use nanoglia_core::{DataType, MAX_RANK, OpDesc, OpOptions, Result, TensorDesc};
 
 /// The number of batch dimensions: all but the two of the matrices.
 const BATCH_RANK: usize = MAX_RANK - 2;
+
+/// The number of outputs summed side by side when the right-hand side is stored transposed.
+const LANES: usize = 8;
 
 pod_struct! {
     /// Parameters of a float batch matrix product `[..., rows, depth] x [..., depth, cols]`.
@@ -201,16 +207,43 @@ fn batch_matmul_eval(ctx: &mut EvalCtx<'_, '_>) -> Result<()> {
                     }
                 }
             } else {
-                // The right-hand side is stored transposed (`adj_y`, depth above 1): each of
-                // its columns is contiguous along the depth, so sum one output at a time.
-                for (col, y) in out_row.iter_mut().enumerate() {
+                // The right-hand side is stored transposed (`adj_y`, any depth but 1): each of
+                // its columns is contiguous along the depth (`rhs_depth` is 1; the test below
+                // only guards the slices). A sum cannot be vectorized along
+                // the depth without changing its order, so `LANES` outputs are summed side by
+                // side instead, each in its own order: their additions do not wait for one
+                // another.
+                let mut col = 0;
+                for out_lanes in out_row.chunks_mut(LANES) {
                     let rhs_col_base = rhs_base + col * rhs_col;
-                    *y = dot_by_eight(depth, |k| {
-                        (
-                            rhs[rhs_col_base + k * rhs_depth],
-                            lhs[lhs_row_base + k * lhs_depth],
-                        )
-                    });
+                    col += out_lanes.len();
+                    if out_lanes.len() == LANES && rhs_depth == 1 {
+                        let columns: [&[f32]; LANES] = core::array::from_fn(|lane| {
+                            let start = rhs_col_base + lane * rhs_col;
+                            &rhs[start..start + depth]
+                        });
+                        let mut totals = [0.0f32; LANES];
+                        for k in 0..rounded {
+                            let l = lhs[lhs_row_base + k * lhs_depth];
+                            for (total, column) in totals.iter_mut().zip(&columns) {
+                                *total += column[k] * l;
+                            }
+                        }
+                        for k in rounded..depth {
+                            let l = lhs[lhs_row_base + k * lhs_depth];
+                            for (total, column) in totals.iter_mut().zip(&columns) {
+                                *total = mul_add(column[k], l, *total);
+                            }
+                        }
+                        out_lanes.copy_from_slice(&totals);
+                    } else {
+                        for (lane, y) in out_lanes.iter_mut().enumerate() {
+                            let base = rhs_col_base + lane * rhs_col;
+                            *y = dot_by_eight(depth, |k| {
+                                (rhs[base + k * rhs_depth], lhs[lhs_row_base + k * lhs_depth])
+                            });
+                        }
+                    }
                 }
             }
         }
