@@ -1901,6 +1901,10 @@ def transformer_cases():
                  adj_y=True)
     batch_matmul("batch_matmul_const_rhs_f32", [2, 4, 6], [6, 7], const_rhs=True)
     batch_matmul("batch_matmul_const_rhs_batch1_f32", [2, 3, 4, 6], [1, 6, 7], const_rhs=True)
+    # adj_y with eight columns and more: the kernel sums eight outputs side by side, then the
+    # remaining ones one at a time.
+    batch_matmul("batch_matmul_adj_y_wide_f32", [2, 3, 21], [2, 11, 21], adj_y=True)
+    batch_matmul("batch_matmul_adj_x_adj_y_wide_f32", [9, 4], [16, 9], adj_x=True, adj_y=True)
     batch_matmul("batch_matmul_const_rhs_adj_y_f32", [5, 8], [3, 8], adj_y=True,
                  const_rhs=True)
     batch_matmul("batch_matmul_const_rhs_batched_f32", [3, 2, 5], [3, 5, 4], const_rhs=True)
