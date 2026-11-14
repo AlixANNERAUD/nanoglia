@@ -292,11 +292,12 @@ fn buffers() {
 
 #[test]
 fn operator_codes() {
-    // `builtin_code` takes over above 127 (`PLACEHOLDER_FOR_GREATER_OP_CODES`).
-    let bytes = Spec::default().with_opcode(150).bytes();
+    // `builtin_code` takes over above 127 (`PLACEHOLDER_FOR_GREATER_OP_CODES`); nanoglia does not
+    // decode the options of DYNAMIC_UPDATE_SLICE.
+    let bytes = Spec::default().with_opcode(151).bytes();
     let model = Model::parse(&bytes).unwrap();
     let op = model.subgraph(0).unwrap().operator(0).unwrap();
-    assert_eq!(op.code, OpCode::Builtin(BuiltinOp(150)));
+    assert_eq!(op.code, OpCode::Builtin(BuiltinOp(151)));
     assert_eq!(op.version, 1);
     assert_eq!(op.options, OpOptions::None);
 
@@ -622,6 +623,41 @@ fn decodes_options() {
             .bytes(),
     );
 
+    let batch_matmul = Spec::default()
+        .with_opcode(126)
+        .with_options(101, vec![(0, Field::I8(1)), (2, Field::I8(1))]);
+    assert_eq!(
+        decode(batch_matmul),
+        "BatchMatMul { adj_x: true, adj_y: false, asymmetric_quantize_inputs: true }"
+    );
+    assert_eq!(
+        decode(Spec::default().with_opcode(126)),
+        "BatchMatMul { adj_x: false, adj_y: false, asymmetric_quantize_inputs: false }"
+    );
+    let gelu = Spec::default()
+        .with_opcode(150)
+        .with_options(116, vec![(0, Field::I8(1))]);
+    assert_eq!(decode(gelu), "Gelu { approximate: true }");
+    assert_eq!(
+        decode(Spec::default().with_opcode(150)),
+        "Gelu { approximate: false }"
+    );
+    let l2_norm = Spec::default()
+        .with_opcode(11)
+        .with_options(12, vec![(0, Field::I8(1))]);
+    assert_eq!(decode(l2_norm), "L2Norm { activation: Relu }");
+    assert_eq!(
+        decode(Spec::default().with_opcode(11)),
+        "L2Norm { activation: None }"
+    );
+    // GELU carrying `BatchMatMulOptions`: malformed.
+    malformed(
+        &Spec::default()
+            .with_opcode(150)
+            .with_options(101, vec![])
+            .bytes(),
+    );
+
     // Operators whose options nanoglia does not decode.
     let reshape = Spec::default()
         .with_opcode(22)
@@ -677,11 +713,13 @@ fn unknown_enum_values() {
             }
         );
     }
-    // Unknown ARG_MAX output type, TRANSPOSE_CONV padding and activation.
+    // Unknown ARG_MAX output type, TRANSPOSE_CONV padding and activation, L2_NORMALIZATION
+    // activation.
     for (opcode, ty, options) in [
         (56, 40, vec![(0, Field::I8(23))]),
         (67, 49, vec![(0, Field::I8(2))]),
         (67, 49, vec![(3, Field::I8(7))]),
+        (11, 12, vec![(0, Field::I8(9))]),
     ] {
         let bytes = Spec::default()
             .with_opcode(opcode)

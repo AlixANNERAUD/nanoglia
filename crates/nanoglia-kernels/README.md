@@ -30,6 +30,7 @@ They cover what the optimized C libraries lack: shape, data-movement and quantiz
 | `CAST` | between `bool`, `i8`, `u8`, `i16`, `i32`, `u32`, `i64`, `f32` |
 | `LOGISTIC`, `TANH` | `f32`, `i8`, `u8`, `i16` (TFLite's interpolated sigmoid table) |
 | `HARD_SWISH` | `f32`, `i8`, `u8` |
+| `GELU` | `f32`, exact (`erfc`) and tanh approximation, with Eigen's approximations as LiteRT computes them |
 | `PAD`, `PADV2` | any |
 | `CONCATENATION` | any (quantized inputs must share the output's parameters) |
 | `TRANSPOSE`, `SLICE`, `STRIDED_SLICE` | any type of 1, 2, 4 or 8 bytes, rank up to 6, constant indices |
@@ -45,9 +46,13 @@ They cover what the optimized C libraries lack: shape, data-movement and quantiz
 | `FULLY_CONNECTED` | `f32`; 16x8 (`i16` activations, `i8` weights per tensor or per channel, `i64` bias) |
 | `AVERAGE_POOL_2D`, `MAX_POOL_2D` | `f32` |
 | `SOFTMAX` | `f32`, `i16` |
+| `BATCH_MATMUL` | `f32`, rank 2 to 6, broadcasting batch dimensions, `adj_x`, `adj_y`, constant or computed operands |
+| `L2_NORMALIZATION` | `f32`, along the last dimension |
 
-Everything is computed when the operator is prepared; evaluation reads only the prepared parameters and the tensors, never allocates and never panics. `#![no_std]`, no allocation; the only dependency besides `nanoglia-core` is [`libm`](https://crates.io/crates/libm) for `expf`, `tanhf` and the `exp` of the int16 softmax tables.
+Everything is computed when the operator is prepared; evaluation reads only the prepared parameters and the tensors, never allocates and never panics. `#![no_std]`, no allocation; the only dependency besides `nanoglia-core` is [`libm`](https://crates.io/crates/libm), for the correctly rounded primitives (`fmaf`, `sqrtf`, `floorf`...) and the `exp` of the int16 softmax tables.
+
+One source file, `src/eigen.rs` (the Eigen functions of the float `GELU`, compiled with `op-gelu`), is a port of Eigen code under the MPL-2.0 (`LICENSE-MPL-2.0`); the rest of the crate is Apache-2.0.
 
 ## Operator features
 
-Each operator has a Cargo feature (`op-reshape`, `op-mean`, `op-conv-2d`...: its name in lower case with dashes after `op-`, 64 in this crate), all on by default through `all-ops`. Without the default features, the backend only has the operators whose feature is named: the others are not claimed and their kernels are not linked, which saves flash when the models are known. `RustKernels::has_operator` tells whether a build has an operator. The [`nanoglia`](https://crates.io/crates/nanoglia) crate forwards these features.
+Each operator has a Cargo feature (`op-reshape`, `op-mean`, `op-conv-2d`...: its name in lower case with dashes after `op-`, 67 in this crate), all on by default through `all-ops`. Without the default features, the backend only has the operators whose feature is named: the others are not claimed and their kernels are not linked, which saves flash when the models are known. `RustKernels::has_operator` tells whether a build has an operator. The [`nanoglia`](https://crates.io/crates/nanoglia) crate forwards these features.

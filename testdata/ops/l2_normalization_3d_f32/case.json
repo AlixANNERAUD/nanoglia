@@ -1,0 +1,30 @@
+{
+  "model": "testdata/ops/l2_normalization_3d_f32/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "float32",
+      "shape": [
+        2,
+        3,
+        8
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "float32",
+      "shape": [
+        2,
+        3,
+        8
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

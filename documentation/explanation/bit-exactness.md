@@ -60,15 +60,15 @@ The reference kernels are the plain C++ implementations TFLite
 specifies its operators with, and they compute the same results as
 TensorFlow Lite Micro.
 
-There are 376 cases:
+There are 411 cases:
 
-- 361 single-operator models written by the generator, mostly in
+- 396 single-operator models written by the generator, mostly in
   int8, 16x8 and float32 versions (plus integer and boolean ones), with weights and output ranges calibrated as a
   converter would;
 - 3 random inputs for each of the 5 MLPerf Tiny models.
 
 `crates/nanoglia/tests/golden.rs` runs every case end to end and
-requires quantized outputs to match exactly. 373 cases pass; the 3
+requires quantized outputs to match exactly. 408 cases pass; the 3
 `ad01_int8` samples are listed in `testdata/pending.json` (see below).
 The test fails if a pending case starts to pass, so the list stays
 current. The same tests run compiled to WebAssembly under wasmtime
@@ -169,6 +169,22 @@ where noted:
   fusions (`mul_add`) in the float convolutions and in `RESIZE_BILINEAR`,
   whose uint8 results otherwise differ by one on some values. A TensorFlow
   Lite Micro build by another compiler may fuse differently.
+- **Vectorized sums.** Where Clang vectorizes a reference loop instead,
+  the rounding changes again: in the sums of `BATCH_MATMUL` and
+  `L2_NORMALIZATION`, LiteRT's AArch64 build rounds each product of the
+  first multiple of eight terms and adds them in order, then fuses the
+  multiply-add of the terms left. Measured against LiteRT for every length
+  from 1 to 40, nanoglia does the same (`dot_by_eight`), and these golden
+  cases match bit for bit.
+- **Eigen's functions.** LiteRT's float `GELU` evaluates `tanh` and `erfc`
+  with Eigen's approximations, in packets of four values and a scalar tail,
+  and Eigen's packet `erfc` uses the NEON reciprocal estimate where the
+  scalar one divides. nanoglia ports these functions as LiteRT's AArch64
+  build computes them, packet and tail included, and matches it on every
+  one of the 2^32 inputs of the packet code, for both variants, and on 12
+  million samples of the tail (a comparison run on a Linux aarch64
+  virtual machine, 2026-11-14, with the LiteRT 2.3.0 wheel of
+  `tools/oracle/uv.lock`, this change on top of commit `c7a6547`).
 
 A backend refuses an operator rather than compute it differently from
 TFLite. For example, CMSIS-NN's int16 softmax is not used (it does not

@@ -14,12 +14,12 @@ Default features: `cmsis-nn`, `kernels`, `float`, `int16`, `all-ops`.
 | `cmsis-nn` | yes | The CMSIS-NN backend (`nanoglia-cmsis-nn`), first in `Registry::default()` (after ESP-NN with `esp-nn`). Compiles the CMSIS-NN C sources shipped with `nanoglia-cmsis-nn-sys`, so it needs a C compiler and the C headers of the target ([Run on a microcontroller](../how-to-guides/run-on-a-microcontroller.md), [Run in the browser](../how-to-guides/run-in-the-browser.md)). |
 | `esp-nn` | no | The ESP-NN backend (`nanoglia-esp-nn`), tried before CMSIS-NN in `Registry::default()`: ESP-NN's optimized kernels on `xtensa-esp32s3-*` targets, its ANSI C kernels elsewhere (slower than CMSIS-NN's portable C: enable it there for testing only). Compiles the ESP-NN C sources shipped with `nanoglia-esp-nn-sys` and CMSIS-NN's, whose kernels it runs while another context uses ESP-NN ([Supported operators](supported-operators.md#esp-nn)). Claims nothing with `single-rounding`. |
 | `kernels` | yes | The pure Rust backend (`nanoglia-kernels`), after CMSIS-NN in `Registry::default()`. |
-| `float` | yes | The f32 kernels of the Rust backend: `CONV_2D`, `DEPTHWISE_CONV_2D`, `TRANSPOSE_CONV`, `FULLY_CONNECTED`, pooling, `SOFTMAX`, `RESIZE_BILINEAR`, the f32 unary operators (`ABS`, `NEG`, `SQRT`, `RSQRT`, `EXP`, `LOG`) and the f32 activations (`RELU`, `RELU6`, `RELU_N1_TO_1`, `LEAKY_RELU`, `PRELU`, `LOGISTIC`, `TANH`, `HARD_SWISH`). Has an effect only with `kernels`. |
+| `float` | yes | The f32 kernels of the Rust backend: `CONV_2D`, `DEPTHWISE_CONV_2D`, `TRANSPOSE_CONV`, `FULLY_CONNECTED`, pooling, `SOFTMAX`, `RESIZE_BILINEAR`, the f32 unary operators (`ABS`, `NEG`, `SQRT`, `RSQRT`, `EXP`, `LOG`), the f32 activations (`RELU`, `RELU6`, `RELU_N1_TO_1`, `LEAKY_RELU`, `PRELU`, `LOGISTIC`, `TANH`, `HARD_SWISH`, `GELU`), `BATCH_MATMUL` and `L2_NORMALIZATION`. Has an effect only with `kernels`. |
 | `int16` | yes | The 16x8 kernels: CMSIS-NN `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`, `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `ADD` and `MUL` on int16, and the Rust `FULLY_CONNECTED` 16x8, int16 `SOFTMAX`, `LOGISTIC` and `TANH`. |
 | `single-rounding` | no | Requantizes with a single rounding (`TFLITE_SINGLE_ROUNDING`) in every crate, CMSIS-NN included (`CMSIS_NN_USE_SINGLE_ROUNDING`), instead of the double rounding of TensorFlow Lite Micro, CMSIS-NN and the TFLite reference kernels. Results then differ from the golden data by design ([Bit-exactness](../explanation/bit-exactness.md#single-and-double-rounding)). |
 | `defmt` | no | `defmt::Format` for `Error`, `ErrorCode`, `Detail`, `DataType`, `Dims`, `BuiltinOp`, `Padding`, `Activation` and `BackendKind`. Forwards `nanoglia-core/defmt`. |
 | `all-ops` | yes | Every operator: all the `op-*` features ([Operator features](#operator-features)). |
-| `op-*` (64 features) | yes, through `all-ops` | The kernels of one operator, in every enabled backend that has some: `op-conv-2d` for `CONV_2D`. Without the feature of an operator, no backend claims it. |
+| `op-*` (67 features) | yes, through `all-ops` | The kernels of one operator, in every enabled backend that has some: `op-conv-2d` for `CONV_2D`. Without the feature of an operator, no backend claims it. |
 
 `float` and `int16` only stop the backends from offering kernels: the
 code that is no longer reachable is dropped by the linker. Some f32 and
@@ -121,6 +121,7 @@ op-features` builds and tests each feature alone
 | `ARG_MAX` | `op-arg-max` | `nanoglia-kernels` |
 | `ARG_MIN` | `op-arg-min` | `nanoglia-kernels` |
 | `AVERAGE_POOL_2D` | `op-average-pool-2d` | `nanoglia-esp-nn`, `nanoglia-cmsis-nn`, `nanoglia-kernels` |
+| `BATCH_MATMUL` | `op-batch-matmul` | `nanoglia-kernels` |
 | `BATCH_TO_SPACE_ND` | `op-batch-to-space-nd` | `nanoglia-kernels` |
 | `CAST` | `op-cast` | `nanoglia-kernels` |
 | `CONCATENATION` | `op-concatenation` | `nanoglia-kernels` |
@@ -134,9 +135,11 @@ op-features` builds and tests each feature alone
 | `EXPAND_DIMS` | `op-expand-dims` | `nanoglia-kernels` |
 | `FULLY_CONNECTED` | `op-fully-connected` | `nanoglia-esp-nn`, `nanoglia-cmsis-nn`, `nanoglia-kernels` |
 | `GATHER` | `op-gather` | `nanoglia-kernels` |
+| `GELU` | `op-gelu` | `nanoglia-kernels` |
 | `GREATER` | `op-greater` | `nanoglia-kernels` |
 | `GREATER_EQUAL` | `op-greater-equal` | `nanoglia-kernels` |
 | `HARD_SWISH` | `op-hard-swish` | `nanoglia-kernels` |
+| `L2_NORMALIZATION` | `op-l2-normalization` | `nanoglia-kernels` |
 | `LEAKY_RELU` | `op-leaky-relu` | `nanoglia-kernels` |
 | `LESS` | `op-less` | `nanoglia-kernels` |
 | `LESS_EQUAL` | `op-less-equal` | `nanoglia-kernels` |
@@ -221,7 +224,7 @@ or Helium flags of the Arm target.
 | `float` | yes (off through `nanoglia` unless its `float` is on) | The f32 kernels listed for `nanoglia/float`. |
 | `int16` | yes (off through `nanoglia` unless its `int16` is on) | `rust/fully_connected_16x8`, `rust/softmax_i16`, `rust/logistic_i16` and `rust/tanh_i16`. |
 | `single-rounding` | no | `nanoglia-core/single-rounding`. |
-| `all-ops` | yes (off through `nanoglia` unless its `all-ops` is on) | The 64 `op-*` features of the crate. |
+| `all-ops` | yes (off through `nanoglia` unless its `all-ops` is on) | The 67 `op-*` features of the crate. |
 | `op-*` | yes, through `all-ops` | The kernels of one operator, every operator of [Operator features](#operator-features). `RustKernels::has_operator` tells whether one is on. |
 
 ## nanoglia-esp-nn

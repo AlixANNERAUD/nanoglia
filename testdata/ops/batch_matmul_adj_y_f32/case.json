@@ -1,0 +1,41 @@
+{
+  "model": "testdata/ops/batch_matmul_adj_y_f32/model.tflite",
+  "inputs": [
+    {
+      "name": "lhs",
+      "dtype": "float32",
+      "shape": [
+        2,
+        3,
+        5
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    },
+    {
+      "name": "rhs",
+      "dtype": "float32",
+      "shape": [
+        2,
+        4,
+        5
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "float32",
+      "shape": [
+        2,
+        3,
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

@@ -90,6 +90,7 @@ impl BuiltinOp {
     pub const HARD_SWISH: Self = Self(117);
     pub const SELECT_V2: Self = Self(123);
     pub const BATCH_MATMUL: Self = Self(126);
+    pub const GELU: Self = Self(150);
 }
 
 /// The names of the builtin operators, indexed by code: the `BuiltinOperator` enum of the TFLite
@@ -176,6 +177,7 @@ impl BuiltinOp {
             Self::ARG_MAX => "op-arg-max",
             Self::ARG_MIN => "op-arg-min",
             Self::AVERAGE_POOL_2D => "op-average-pool-2d",
+            Self::BATCH_MATMUL => "op-batch-matmul",
             Self::BATCH_TO_SPACE_ND => "op-batch-to-space-nd",
             Self::CAST => "op-cast",
             Self::CONCATENATION => "op-concatenation",
@@ -189,9 +191,11 @@ impl BuiltinOp {
             Self::EXPAND_DIMS => "op-expand-dims",
             Self::FULLY_CONNECTED => "op-fully-connected",
             Self::GATHER => "op-gather",
+            Self::GELU => "op-gelu",
             Self::GREATER => "op-greater",
             Self::GREATER_EQUAL => "op-greater-equal",
             Self::HARD_SWISH => "op-hard-swish",
+            Self::L2_NORMALIZATION => "op-l2-normalization",
             Self::LEAKY_RELU => "op-leaky-relu",
             Self::LESS => "op-less",
             Self::LESS_EQUAL => "op-less-equal",
@@ -490,6 +494,27 @@ pub enum OpOptions<'a> {
         /// The height and width of the blocks moved between space and depth.
         block_size: i32,
     },
+    /// `BATCH_MATMUL`.
+    BatchMatMul {
+        /// Whether the last two dimensions of the first input are swapped (adjoint) before the
+        /// product.
+        adj_x: bool,
+        /// Whether the last two dimensions of the second input are swapped (adjoint) before the
+        /// product.
+        adj_y: bool,
+        /// Whether float inputs are quantized on the fly (hybrid models).
+        asymmetric_quantize_inputs: bool,
+    },
+    /// `GELU`.
+    Gelu {
+        /// Whether the tanh approximation is computed instead of the exact, erf-based, function.
+        approximate: bool,
+    },
+    /// `L2_NORMALIZATION`.
+    L2Norm {
+        /// Fused activation.
+        activation: Activation,
+    },
     /// Raw options of a custom operator.
     Custom(&'a [u8]),
 }
@@ -564,6 +589,7 @@ mod tests {
             (BuiltinOp::HARD_SWISH, "HARD_SWISH"),
             (BuiltinOp::SELECT_V2, "SELECT_V2"),
             (BuiltinOp::BATCH_MATMUL, "BATCH_MATMUL"),
+            (BuiltinOp::GELU, "GELU"),
         ] {
             assert_eq!(op.name(), Some(name));
         }
@@ -591,7 +617,7 @@ mod tests {
                 assert_eq!(f, expected, "{feature}");
             }
         }
-        assert_eq!(count, 64);
+        assert_eq!(count, 67);
         assert_eq!(BuiltinOp(-1).feature(), None);
         assert_eq!(BuiltinOp(210).feature(), None);
     }

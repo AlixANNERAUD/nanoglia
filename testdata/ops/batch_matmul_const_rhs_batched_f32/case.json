@@ -1,0 +1,30 @@
+{
+  "model": "testdata/ops/batch_matmul_const_rhs_batched_f32/model.tflite",
+  "inputs": [
+    {
+      "name": "lhs",
+      "dtype": "float32",
+      "shape": [
+        3,
+        2,
+        5
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "float32",
+      "shape": [
+        3,
+        2,
+        4
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}

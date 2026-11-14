@@ -7,7 +7,8 @@ targets = ["thumbv7em-none-eabihf"]
 
 [licenses]
 version = 2
-allow = ["Apache-2.0", "MIT", "Unicode-3.0"]
+# MPL-2.0: one file of nanoglia-kernels, `src/eigen.rs`, ported from Eigen.
+allow = ["Apache-2.0", "MIT", "MPL-2.0", "Unicode-3.0"]
 confidence-threshold = 0.9
 # The register definitions of the nRF52840, generated from Nordic's description of the chip, under
 # Nordic's BSD-3-Clause license: every peripheral access crate of the chip carries it. Only the

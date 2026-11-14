@@ -24,6 +24,8 @@
 mod activation;
 #[cfg(any(feature = "op-arg-max", feature = "op-arg-min"))]
 mod arg_min_max;
+#[cfg(feature = "op-batch-matmul")]
+mod batch_matmul;
 #[cfg(feature = "op-cast")]
 mod cast;
 #[cfg(any(
@@ -48,6 +50,8 @@ mod conv;
 mod copy;
 #[cfg(any(feature = "op-space-to-depth", feature = "op-depth-to-space"))]
 mod depth_space;
+#[cfg(feature = "op-gelu")]
+mod eigen;
 #[cfg(any(
     feature = "op-add",
     feature = "op-sub",
@@ -62,6 +66,10 @@ mod elementwise;
 mod fully_connected;
 #[cfg(feature = "op-gather")]
 mod gather;
+#[cfg(feature = "op-gelu")]
+mod gelu;
+#[cfg(feature = "op-l2-normalization")]
+mod l2_norm;
 mod math;
 #[cfg(any(feature = "op-pad", feature = "op-padv2"))]
 mod pad;
@@ -194,6 +202,14 @@ impl RustKernels {
                 activation::HARD_SWISH_F32,
                 activation::HARD_SWISH_Q
             );
+            "op-gelu" GELU => kernels!(
+                #[cfg(feature = "float")]
+                gelu::GELU_F32
+            );
+            "op-l2-normalization" L2_NORMALIZATION => kernels!(
+                #[cfg(feature = "float")]
+                l2_norm::L2_NORMALIZATION_F32
+            );
             "op-mean" MEAN => kernels!(reduce::MEAN);
             "op-sum" SUM => kernels!(reduce::SUM);
             "op-reduce-max" REDUCE_MAX, "op-reduce-min" REDUCE_MIN =>
@@ -253,6 +269,10 @@ impl RustKernels {
             "op-depthwise-conv-2d" DEPTHWISE_CONV_2D => kernels!(
                 #[cfg(feature = "float")]
                 conv::DEPTHWISE_CONV_2D_F32
+            );
+            "op-batch-matmul" BATCH_MATMUL => kernels!(
+                #[cfg(feature = "float")]
+                batch_matmul::BATCH_MATMUL_F32
             );
             "op-fully-connected" FULLY_CONNECTED => kernels!(
                 #[cfg(feature = "float")]

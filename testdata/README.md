@@ -51,7 +51,9 @@ Every case directory holds:
     the outputs must be bit-exact. For float outputs, a relative bound:
     `|actual - expected| <= tolerance * max(1, |expected|)` (`1e-5`; `0` for
     `dequantize_int8_f32`, whose result is a single correctly rounded product,
-    and for the data-movement operators below, which copy floats unchanged).
+    for the data-movement operators below, which copy floats unchanged, and for
+    the `BATCH_MATMUL`, `GELU` and `L2_NORMALIZATION` cases, which must match
+    bit for bit).
 
 ## Per-op cases
 
@@ -154,6 +156,20 @@ no NaN input (TensorFlow Lite Micro converts NaN to 0, LiteRT 2.3 to the
 largest value). The oracle checks them against NumPy, except the rescaled
 quantized comparisons and the saturating casts.
 
+The transformer operators, all `_f32` and compared without tolerance:
+`BATCH_MATMUL` covers ranks 2 to 5, batch dimensions broadcasting both ways
+and inputs of different ranks, `adj_x`, `adj_y` and both, non-square
+matrices, constant right-hand sides (one with a batch of one, which TFLite
+merges into the rows of the left-hand side), and depths below, at and past a
+multiple of eight (LiteRT's AArch64 build rounds the products of the first
+multiple of eight terms, then fuses the multiply-adds of the others). `GELU`
+covers both variants on zeros, signed zeros, tiny and subnormal values,
+values of the transition (|x| < 12), large values and infinities, with
+lengths that leave 0 to 3 values after the last group of four (Eigen computes
+those in scalar code), and inputs for which Eigen's two `erfc` round
+differently, in a group of four and after it. `L2_NORMALIZATION` covers ranks 1 to 4, all-zero
+vectors and norms below the epsilon (`1e-6`).
+
 Operators covered: `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`,
 `AVERAGE_POOL_2D`, `MAX_POOL_2D`, `SOFTMAX`, `ADD`, `SUB`, `MUL`, `MAXIMUM`,
 `MINIMUM`, `RESHAPE`, `PAD`, `MEAN`, `LOGISTIC`, `TANH`, `RELU`, `RELU6`,
@@ -162,7 +178,8 @@ Operators covered: `CONV_2D`, `DEPTHWISE_CONV_2D`, `FULLY_CONNECTED`,
 `RESIZE_BILINEAR`, `TRANSPOSE_CONV`, `SUM`, `REDUCE_MAX`, `REDUCE_MIN`, `PACK`, `UNPACK`,
 `SPACE_TO_DEPTH`, `DEPTH_TO_SPACE`, `SPACE_TO_BATCH_ND`, `BATCH_TO_SPACE_ND`, `PRELU`, `ABS`, `NEG`, `SQRT`,
 `RSQRT`, `EXP`, `LOG`, `DIV`, `SQUARED_DIFFERENCE`, `EQUAL`, `NOT_EQUAL`, `LESS`,
-`LESS_EQUAL`, `GREATER`, `GREATER_EQUAL`, `SELECT_V2`, `CAST`.
+`LESS_EQUAL`, `GREATER`, `GREATER_EQUAL`, `SELECT_V2`, `CAST`, `BATCH_MATMUL`,
+`GELU`, `L2_NORMALIZATION`.
 
 Not covered: int8 `CONCATENATION` with different input and output
 quantization, which the reference kernel rejects (as TensorFlow Lite Micro does).
@@ -192,7 +209,10 @@ project) which writes the per-op models with `tools/oracle/tflite_builder.py`,
 a small `.tflite` writer built on the `flatbuffers` package, and runs every
 case through LiteRT. Generation is deterministic: every case seeds its own
 random generator from its name, and re-running the script rewrites identical
-files. It deletes and rewrites `ops/` and `mlperf-tiny/golden/`.
+files on the same platform. The committed files come from LiteRT's Linux
+AArch64 wheel: its float kernels round differently on another architecture
+(vectorized sums, Eigen's NEON `tanh` and `erfc`), so regenerate on Linux
+AArch64 only. It deletes and rewrites `ops/` and `mlperf-tiny/golden/`.
 
 ## A PyTorch export
 

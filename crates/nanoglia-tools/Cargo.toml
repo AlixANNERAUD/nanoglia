@@ -29,17 +29,18 @@ single-rounding = ["nanoglia/single-rounding", "nanoglia-cmsis-nn/single-roundin
 ## Check with every operator (feature `all-ops` of `nanoglia`): all the `op-*` features below. On
 ## by default.
 all-ops = [
-  "op-abs", "op-add", "op-arg-max", "op-arg-min", "op-average-pool-2d", "op-batch-to-space-nd",
-  "op-cast", "op-concatenation", "op-conv-2d", "op-depthwise-conv-2d", "op-depth-to-space",
-  "op-dequantize", "op-div", "op-equal", "op-exp", "op-expand-dims", "op-fully-connected",
-  "op-gather", "op-greater", "op-greater-equal", "op-hard-swish", "op-leaky-relu", "op-less",
-  "op-less-equal", "op-log", "op-logistic", "op-maximum", "op-max-pool-2d", "op-mean",
-  "op-minimum", "op-mul", "op-neg", "op-not-equal", "op-pack", "op-pad", "op-padv2", "op-prelu",
-  "op-quantize", "op-reduce-max", "op-reduce-min", "op-relu", "op-relu6", "op-relu-n1-to-1",
-  "op-reshape", "op-resize-bilinear", "op-resize-nearest-neighbor", "op-rsqrt", "op-select-v2",
-  "op-slice", "op-softmax", "op-space-to-batch-nd", "op-space-to-depth", "op-split", "op-split-v",
-  "op-sqrt", "op-squared-difference", "op-squeeze", "op-strided-slice", "op-sub", "op-sum",
-  "op-tanh", "op-transpose", "op-transpose-conv", "op-unpack",
+  "op-abs", "op-add", "op-arg-max", "op-arg-min", "op-average-pool-2d", "op-batch-matmul",
+  "op-batch-to-space-nd", "op-cast", "op-concatenation", "op-conv-2d", "op-depthwise-conv-2d",
+  "op-depth-to-space", "op-dequantize", "op-div", "op-equal", "op-exp", "op-expand-dims",
+  "op-fully-connected", "op-gather", "op-gelu", "op-greater", "op-greater-equal", "op-hard-swish",
+  "op-l2-normalization", "op-leaky-relu", "op-less", "op-less-equal", "op-log", "op-logistic",
+  "op-maximum", "op-max-pool-2d", "op-mean", "op-minimum", "op-mul", "op-neg", "op-not-equal",
+  "op-pack", "op-pad", "op-padv2", "op-prelu", "op-quantize", "op-reduce-max", "op-reduce-min",
+  "op-relu", "op-relu6", "op-relu-n1-to-1", "op-reshape", "op-resize-bilinear",
+  "op-resize-nearest-neighbor", "op-rsqrt", "op-select-v2", "op-slice", "op-softmax",
+  "op-space-to-batch-nd", "op-space-to-depth", "op-split", "op-split-v", "op-sqrt",
+  "op-squared-difference", "op-squeeze", "op-strided-slice", "op-sub", "op-sum", "op-tanh",
+  "op-transpose", "op-transpose-conv", "op-unpack",
 ]
 # One feature per operator, those of `nanoglia`: build the tool without the default features and
 # with the `op-*` features of a firmware to check models against that firmware's operators.
@@ -48,6 +49,7 @@ op-add = ["nanoglia-cmsis-nn/op-add", "nanoglia-esp-nn/op-add", "nanoglia-kernel
 op-arg-max = ["nanoglia-kernels/op-arg-max"]
 op-arg-min = ["nanoglia-kernels/op-arg-min"]
 op-average-pool-2d = ["nanoglia-cmsis-nn/op-average-pool-2d", "nanoglia-esp-nn/op-average-pool-2d", "nanoglia-kernels/op-average-pool-2d"]
+op-batch-matmul = ["nanoglia-kernels/op-batch-matmul"]
 op-batch-to-space-nd = ["nanoglia-kernels/op-batch-to-space-nd"]
 op-cast = ["nanoglia-kernels/op-cast"]
 op-concatenation = ["nanoglia-kernels/op-concatenation"]
@@ -61,9 +63,11 @@ op-exp = ["nanoglia-kernels/op-exp"]
 op-expand-dims = ["nanoglia-kernels/op-expand-dims"]
 op-fully-connected = ["nanoglia-cmsis-nn/op-fully-connected", "nanoglia-esp-nn/op-fully-connected", "nanoglia-kernels/op-fully-connected"]
 op-gather = ["nanoglia-kernels/op-gather"]
+op-gelu = ["nanoglia-kernels/op-gelu"]
 op-greater = ["nanoglia-kernels/op-greater"]
 op-greater-equal = ["nanoglia-kernels/op-greater-equal"]
 op-hard-swish = ["nanoglia-kernels/op-hard-swish"]
+op-l2-normalization = ["nanoglia-kernels/op-l2-normalization"]
 op-leaky-relu = ["nanoglia-kernels/op-leaky-relu"]
 op-less = ["nanoglia-kernels/op-less"]
 op-less-equal = ["nanoglia-kernels/op-less-equal"]

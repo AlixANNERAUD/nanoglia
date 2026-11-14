@@ -1793,6 +1793,138 @@ def logic_cases():
     cast("cast_bool_to_int32", rng.integers(0, 2, size=[6]).astype(np.bool_), np.int32)
 
 
+# --------------------------------------------------------------------------
+# Transformer operators: BATCH_MATMUL, GELU, L2_NORMALIZATION (float32)
+# --------------------------------------------------------------------------
+
+
+def batch_matmul(name, lhs_shape, rhs_shape, adj_x=False, adj_y=False, const_rhs=False):
+    """f32 BATCH_MATMUL of random inputs, the right-hand side a model input or a constant."""
+    rng = rng_for(name)
+    lhs = uniform(rng, lhs_shape, -2.0, 2.0)
+    rhs = uniform(rng, rhs_shape, -2.0, 2.0)
+    a = np.swapaxes(lhs, -1, -2) if adj_x else lhs
+    b = np.swapaxes(rhs, -1, -2) if adj_y else rhs
+    out_shape = list(np.matmul(a, b).shape)
+    m = ModelBuilder()
+    li = add_act(m, "lhs", FLOAT, lhs_shape)
+    if const_rhs:
+        ri = m.add_tensor("rhs", np.float32, rhs_shape, data=rhs)
+    else:
+        ri = add_act(m, "rhs", FLOAT, rhs_shape)
+    y = add_act(m, "output", FLOAT, out_shape)
+    m.add_operator(Op.BATCH_MATMUL, [li, ri], [y],
+                   schema.BatchMatMulOptionsT(adjX=adj_x, adjY=adj_y), version=1)
+    inputs = [li] if const_rhs else [li, ri]
+    save_op_case(name, m.build(inputs, [y]), [lhs] if const_rhs else [lhs, rhs], tolerance=0)
+
+
+def gelu_values(rng, shape):
+    """Values of every magnitude: around zero, in the transition (|x| < 12), large, tiny and
+    subnormal, signed zeros and infinities."""
+    size = int(np.prod(shape))
+    x = np.concatenate([
+        uniform(rng, [size], -12.0, 12.0),
+        uniform(rng, [size], -1.5, 1.5),
+        (rng.choice([-1, 1], size=size) * 10.0 ** rng.uniform(-40, 30, size)).astype(np.float32),
+    ])
+    rng.shuffle(x)
+    x = x[:size]
+    special = [0.0, -0.0, 1.0, -1.0, 1e-30, -1e-42, 100.0, -100.0, 5.0, -5.0, 11.5, -11.5,
+               np.inf, -np.inf]
+    x[:min(size, len(special))] = special[:size]
+    return x.reshape(shape).astype(np.float32)
+
+
+def gelu(name, shape, approximate, special=True):
+    rng = rng_for(name)
+    x = gelu_values(rng, shape) if special else uniform(rng, shape, -4.0, 4.0)
+    b = ModelBuilder()
+    xi = add_act(b, "input", FLOAT, shape)
+    y = add_act(b, "output", FLOAT, shape)
+    b.add_operator(Op.GELU, [xi], [y], schema.GeluOptionsT(approximate=approximate), version=1)
+    save_op_case(name, b.build([xi], [y]), [x], tolerance=0)
+
+
+def gelu_exact_scalar_tail(name):
+    """Exact GELU on inputs for which Eigen's packet `erfc` (the first four) and its scalar
+    `erfc` (the last three, after the last packet of four) round differently: the kernel must
+    follow the same split."""
+    bits = [0xC0C9EB83, 0xC0E19997, 0xC1087AE0, 0xC1261479, 0xC0C9EB83, 0xC0E19997, 0xC1087AE0]
+    x = np.array(bits, dtype=np.uint32).view(np.float32)
+    b = ModelBuilder()
+    xi = add_act(b, "input", FLOAT, [7])
+    y = add_act(b, "output", FLOAT, [7])
+    b.add_operator(Op.GELU, [xi], [y], schema.GeluOptionsT(approximate=False), version=1)
+    save_op_case(name, b.build([xi], [y]), [x], tolerance=0)
+
+
+def l2_normalization(name, shape, zero_rows=(), tiny_rows=()):
+    """f32 L2_NORMALIZATION along the last axis; `zero_rows` are all zero (divided by the
+    epsilon) and `tiny_rows` have a norm below the epsilon."""
+    rng = rng_for(name)
+    x = uniform(rng, shape, -3.0, 3.0).reshape(-1, shape[-1])
+    for r in zero_rows:
+        x[r] = 0.0
+    for r in tiny_rows:
+        x[r] *= np.float32(1e-7)
+    x = x.reshape(shape)
+    b = ModelBuilder()
+    xi = add_act(b, "input", FLOAT, shape)
+    y = add_act(b, "output", FLOAT, shape)
+    b.add_operator(Op.L2_NORMALIZATION, [xi], [y],
+                   schema.L2NormOptionsT(fusedActivationFunction=Act.NONE), version=1)
+    save_op_case(name, b.build([xi], [y]), [x], tolerance=0)
+
+
+def transformer_cases():
+    # BATCH_MATMUL: ranks 2 to 5, broadcast batch dimensions, adjoints, constant right-hand
+    # sides (TFLite merges the batch of the left-hand side into its rows when the right-hand
+    # side has a batch of one and adj_x is off).
+    batch_matmul("batch_matmul_rank2_f32", [3, 5], [5, 4])
+    batch_matmul("batch_matmul_rank3_f32", [2, 3, 5], [2, 5, 4])
+    batch_matmul("batch_matmul_rank4_broadcast_f32", [2, 1, 3, 6], [1, 4, 6, 5])
+    batch_matmul("batch_matmul_rank5_broadcast_f32", [2, 1, 2, 3, 4], [1, 3, 1, 4, 2])
+    batch_matmul("batch_matmul_rank3_by_rank2_f32", [4, 3, 5], [5, 2])
+    batch_matmul("batch_matmul_rank2_by_rank4_f32", [3, 5], [2, 3, 5, 4])
+    batch_matmul("batch_matmul_lhs_broadcast_f32", [1, 3, 4], [3, 4, 2])
+    batch_matmul("batch_matmul_adj_x_f32", [2, 5, 3], [2, 5, 4], adj_x=True)
+    batch_matmul("batch_matmul_adj_y_f32", [2, 3, 5], [2, 4, 5], adj_y=True)
+    batch_matmul("batch_matmul_adj_x_adj_y_broadcast_f32", [3, 1, 6, 4], [1, 2, 7, 6],
+                 adj_x=True, adj_y=True)
+    batch_matmul("batch_matmul_adj_x_rhs_batch1_f32", [2, 4, 3], [1, 4, 5], adj_x=True)
+    batch_matmul("batch_matmul_deep_f32", [1, 8, 96], [1, 96, 16])
+    # Depths past a multiple of eight: LiteRT's AArch64 build rounds the products of the first
+    # multiple of eight terms and fuses the multiply-add of the others.
+    batch_matmul("batch_matmul_depth13_f32", [2, 3, 13], [2, 13, 5])
+    batch_matmul("batch_matmul_depth21_adj_x_adj_y_f32", [2, 21, 3], [4, 21], adj_x=True,
+                 adj_y=True)
+    batch_matmul("batch_matmul_const_rhs_f32", [2, 4, 6], [6, 7], const_rhs=True)
+    batch_matmul("batch_matmul_const_rhs_batch1_f32", [2, 3, 4, 6], [1, 6, 7], const_rhs=True)
+    batch_matmul("batch_matmul_const_rhs_adj_y_f32", [5, 8], [3, 8], adj_y=True,
+                 const_rhs=True)
+    batch_matmul("batch_matmul_const_rhs_batched_f32", [3, 2, 5], [3, 5, 4], const_rhs=True)
+
+    # GELU: both variants, every magnitude, lengths with and without a tail after the last
+    # group of four (Eigen computes the tail with scalar code).
+    for approximate, variant in ((True, "approximate"), (False, "exact")):
+        gelu(f"gelu_{variant}_f32", [4, 64], approximate)
+        gelu(f"gelu_{variant}_tail_f32", [3, 5, 7], approximate)
+        gelu(f"gelu_{variant}_4d_f32", [1, 2, 3, 7], approximate)
+        gelu(f"gelu_{variant}_short_f32", [3], approximate)
+        gelu(f"gelu_{variant}_moderate_f32", [2, 30], approximate, special=False)
+    gelu_exact_scalar_tail("gelu_exact_scalar_tail_f32")
+
+    # L2_NORMALIZATION: ranks 1 to 4, all-zero vectors, norms below the epsilon, and vectors
+    # past a multiple of eight (see BATCH_MATMUL).
+    l2_normalization("l2_normalization_1d_f32", [16])
+    l2_normalization("l2_normalization_2d_f32", [4, 10], zero_rows=[1], tiny_rows=[3])
+    l2_normalization("l2_normalization_3d_f32", [2, 3, 8], zero_rows=[4])
+    l2_normalization("l2_normalization_4d_f32", [1, 2, 3, 5], tiny_rows=[0])
+    l2_normalization("l2_normalization_zero_1d_f32", [7], zero_rows=[0])
+    l2_normalization("l2_normalization_long_f32", [3, 4, 29])
+
+
 def extra_cases():
     reduce_cases()
     layout_cases()
@@ -1800,6 +1932,7 @@ def extra_cases():
     unary_cases()
     binary_cases()
     logic_cases()
+    transformer_cases()
 
 
 def op_cases():

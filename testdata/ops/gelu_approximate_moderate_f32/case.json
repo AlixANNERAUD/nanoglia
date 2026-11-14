@@ -1,0 +1,28 @@
+{
+  "model": "testdata/ops/gelu_approximate_moderate_f32/model.tflite",
+  "inputs": [
+    {
+      "name": "input",
+      "dtype": "float32",
+      "shape": [
+        2,
+        30
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "outputs": [
+    {
+      "name": "output",
+      "dtype": "float32",
+      "shape": [
+        2,
+        30
+      ],
+      "scale": 0.0,
+      "zero_point": 0
+    }
+  ],
+  "tolerance": 0
+}
